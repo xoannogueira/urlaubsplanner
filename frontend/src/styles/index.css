@@ -1,0 +1,102 @@
+@import 'tailwindcss';
+
+/*
+ * Farbsystem: Dunkelblau/Türkis. Alle Farben sind CSS-Variablen,
+ * Dark Mode schaltet nur die Variablen um (Klasse .dark auf <html>).
+ */
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-line: var(--line);
+  --color-text: var(--text);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-accent-ink: var(--accent-ink);
+  --color-accent-soft: var(--accent-soft);
+  --color-star: var(--star);
+  --color-danger: var(--danger);
+  --color-danger-ink: var(--danger-ink);
+
+  --font-sans: 'Plus Jakarta Sans Variable', system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+}
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  --bg: #f2f6f9;
+  --surface: #ffffff;
+  --surface-2: #e9f0f5;
+  --surface-3: #dce7ef;
+  --line: #d2dee8;
+  --text: #0b1e31;
+  --muted: #4a6075;
+  --accent: #0f766e;
+  --accent-ink: #ffffff;
+  --accent-soft: rgb(15 118 110 / 0.12);
+  --star: #b7791f;
+  --danger: #b91c1c;
+  --danger-ink: #ffffff;
+  color-scheme: light;
+}
+
+:root.dark {
+  --bg: #0a1424;
+  --surface: #0f1e33;
+  --surface-2: #152943;
+  --surface-3: #1c3554;
+  --line: #22405f;
+  --text: #e6f0f7;
+  --muted: #9ab2c7;
+  --accent: #2dd4bf;
+  --accent-ink: #04211f;
+  --accent-soft: rgb(45 212 191 / 0.14);
+  --star: #f5b544;
+  --danger: #f87171;
+  --danger-ink: #1a0606;
+  color-scheme: dark;
+}
+
+@layer base {
+  html,
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  input,
+  select,
+  textarea,
+  button {
+    font: inherit;
+    color: inherit;
+  }
+
+  input[type='checkbox'],
+  input[type='range'] {
+    accent-color: var(--accent);
+  }
+
+  dialog::backdrop {
+    background: rgb(4 10 20 / 0.6);
+    backdrop-filter: blur(2px);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      transition-duration: 0ms !important;
+      animation-duration: 0ms !important;
+    }
+  }
+}

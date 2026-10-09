@@ -1,0 +1,37 @@
+using Microsoft.AspNetCore.Diagnostics;
+using Urlaubsplanner.Domain;
+
+namespace Urlaubsplanner.Api;
+
+/// <summary>
+/// Übersetzt fachliche Fehler in passende HTTP-Antworten (RFC 9457 Problem Details).
+/// </summary>
+internal sealed class DomainExceptionHandler : IExceptionHandler
+{
+    public async ValueTask<bool> TryHandleAsync(HttpContext httpContext, Exception exception, CancellationToken cancellationToken)
+    {
+        IResult? result = exception switch
+        {
+            DomainException e => TypedResults.ValidationProblem(
+                new Dictionary<string, string[]> { [e.Field] = [e.Message] },
+                title: "Eingabe ungültig"),
+            NotFoundException e => TypedResults.Problem(
+                statusCode: StatusCodes.Status404NotFound,
+                title: $"{e.Entity} nicht gefunden",
+                detail: e.Message),
+            BadHttpRequestException e => TypedResults.Problem(
+                statusCode: e.StatusCode,
+                title: "Anfrage ungültig",
+                detail: e.InnerException?.Message ?? e.Message),
+            _ => null,
+        };
+
+        if (result is null)
+        {
+            return false;
+        }
+
+        await result.ExecuteAsync(httpContext);
+        return true;
+    }
+}

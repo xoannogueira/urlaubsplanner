@@ -1,0 +1,7 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Urlaubsplanner.Api/Urlaubsplanner.Api.csproj" />
+    <Project Path="src/Urlaubsplanner.Domain/Urlaubsplanner.Domain.csproj" />
+    <Project Path="src/Urlaubsplanner.Infrastructure/Urlaubsplanner.Infrastructure.csproj" />
+  </Folder>
+</Solution>

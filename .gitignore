@@ -1,0 +1,26 @@
+# .NET
+bin/
+obj/
+*.user
+.vs/
+
+# Gebautes Frontend (wird von `npm run build` erzeugt)
+backend/src/Urlaubsplanner.Api/wwwroot/
+
+# Lokale Daten – deine Reisen gehören nicht ins Repo
+backend/src/Urlaubsplanner.Api/data/
+data/
+
+# Node
+node_modules/
+frontend/dist/
+*.tsbuildinfo
+
+# Editor / OS
+.idea/
+.vscode/*
+!.vscode/extensions.json
+.DS_Store
+*.log
+.env
+.env.*
