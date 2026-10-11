@@ -225,8 +225,8 @@ public sealed class FlightApiTests : IDisposable
         var body = await ReadJson(await _client.GetAsync("/api/activities?lat=38.6970&lon=-9.2070&radiusMeters=999999"));
 
         Assert.Equal("Museum", body.GetProperty("activities")[0].GetProperty("category").GetString());
-        Assert.Equal(20000, body.GetProperty("radiusMeters").GetInt32());
-        Assert.Equal(20000, _activities.Last!.RadiusMeters);
+        Assert.Equal(50000, body.GetProperty("radiusMeters").GetInt32());
+        Assert.Equal(50000, _activities.Last!.RadiusMeters);
 
         var missing = await _client.GetAsync("/api/activities");
         Assert.Equal(HttpStatusCode.BadRequest, missing.StatusCode);

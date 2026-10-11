@@ -19,7 +19,7 @@ public enum ActivityCategory
 public sealed record ActivitySearchRequest
 {
     public const int MinRadiusMeters = 500;
-    public const int MaxRadiusMeters = 20_000;
+    public const int MaxRadiusMeters = 50_000;
 
     private ActivitySearchRequest(Coordinates center, int radiusMeters)
     {
