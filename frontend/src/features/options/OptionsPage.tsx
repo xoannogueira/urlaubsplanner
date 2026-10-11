@@ -291,6 +291,7 @@ export function OptionsPage({ kind }: { kind: OptionKind }) {
         open={dialog !== null}
         kind={kind}
         stages={trip.stages}
+        trip={trip}
         option={dialog?.option}
         defaultStageId={defaultStage}
         onClose={() => setDialog(null)}

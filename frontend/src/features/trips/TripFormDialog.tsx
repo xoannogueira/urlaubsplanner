@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react'
 import { ApiError } from '../../api/client'
 import type { Trip, TripInput } from '../../api/types'
 import { Button } from '../../components/ui/Button'
+import { DateField } from '../../components/ui/DateField'
 import { Dialog } from '../../components/ui/Dialog'
 import { FormError, InputField, TextAreaField } from '../../components/ui/Field'
 
@@ -89,12 +90,12 @@ function TripForm({ trip, onSubmit, onSuccess, onClose }: Omit<TripFormDialogPro
           onChange={(e) => setStartDate(e.target.value)}
           error={fe.startDate}
         />
-        <InputField
+        <DateField
           label="Bis (optional)"
-          type="date"
           value={endDate}
-          min={startDate || undefined}
-          onChange={(e) => setEndDate(e.target.value)}
+          onValue={setEndDate}
+          min={startDate || null}
+          openAt={startDate || null}
           error={fe.endDate}
         />
       </div>
