@@ -4,7 +4,7 @@ Ein persönlicher Reiseplaner für mich und Freunde: mehrere Urlaube anlegen, pr
 Aktivitäten sammeln, Favoriten markieren, auswählen – und am Ende alles über eine Checkliste mit Buchungslinks
 einzeln buchen.
 
-## Stand: Phase 4 – Flugsuche
+## Stand: Phase 5 – Aktivitäten-Vorschläge
 
 - Mehrere Reisen anlegen, bearbeiten, löschen
 - Etappen (Ort + Zeitraum) pro Reise, z. B. Lissabon → Porto → Algarve
@@ -42,6 +42,11 @@ einzeln buchen.
 - **Karte mit Flugbögen**: alle Strecken dezent, der gewählte Flug hervorgehoben; gemerkte Flüge ebenfalls als Bögen
 - **Andere Daten prüfen**: Preisleiste ±3 Tage (alle Flüge gemeinsam verschoben, gleiche Reisedauer, max. 6 Abfragen), Klick übernimmt die Daten
 - **Gemerkte Flüge neu prüfen**: gibt es genau diese Flüge noch, was kostet der Tarif jetzt?
+- **Aktivitäten-Vorschläge** pro Etappe – kostenlos, ohne API-Key: Sehenswürdigkeiten, Museen, Aussichtspunkte, Burgen & Schlösser,
+  Kirchen & Klöster, Natur & Parks, Strände, Zoos und Freizeitparks aus **OpenStreetMap**, ergänzt um deutsche Beschreibung, Foto und
+  Wikipedia-Link aus **Wikidata**. Bekannteste zuerst (Anzahl Wikipedia-Sprachversionen), Öffnungszeiten auf Deutsch, „Eintritt frei“,
+  Filter nach Kategorie, Suche, Umkreis 2–20 km, Karte mit Pins. Links zu Wikipedia, Google Maps und Tickets/Führungen (GetYourGuide);
+  „Merken“ speichert den Ort mit Foto als Favorit der Etappe
 - Buchen über **Kayak** (Strecken, Daten, Personen und Klasse vorausgefüllt, auch Gabelflüge) oder **Google Flights**
 
 ## Roadmap
@@ -52,7 +57,7 @@ einzeln buchen.
 | 2 ✅ | Karte (MapLibre) mit Preis-Pins, Ortssuche, Route, Backend-Tests |
 | 3 ✅ | Hotelsuche (LiteAPI) mit Preis-Pins auf der Karte |
 | 4 ✅ | Flugsuche (LiteAPI) – exakte Flughäfen oder Umkreis, Gabelflüge, Tarife, Flugbögen auf der Karte |
-| 5 | Aktivitäten-Vorschläge (OpenTripMap, Wikivoyage) |
+| 5 ✅ | Aktivitäten-Vorschläge (OpenStreetMap + Wikidata, ohne Key) |
 | 6 | Dashboard mit Diagrammen und Zeitplan |
 | später | Accounts für Freunde, Kostenaufteilung, Preisalarm, Abstimmung, Export (.ics/PDF) |
 
@@ -165,6 +170,12 @@ Hinweise:
 - **Flüge** laufen über denselben Key. Die Sandbox liefert Testdaten; für echte Flugpreise muss LiteAPI Flüge für das Konto
   freischalten (Anfrage im Dashboard über *Request Assistance*).
 
+### Aktivitäten-Vorschläge
+
+Funktionieren ohne Einrichtung. Daten: © [OpenStreetMap](https://www.openstreetmap.org/copyright)-Mitwirkende (ODbL) über die
+Overpass API, Beschreibungen und Fotos von Wikidata / Wikimedia Commons. Beide Dienste werden ehrenamtlich betrieben – die App
+cacht Ergebnisse deshalb einen Tag. Andere Server lassen sich unter `Activities` in `appsettings.json` eintragen.
+
 ### Daten
 
 Die Reisen liegen in `backend/src/Urlaubsplanner.Api/data/trips.json` (nicht im Repo). Pfad änderbar in
@@ -202,6 +213,7 @@ Dieselben Checks laufen bei jedem Push in GitHub Actions.
 | GET | `/api/hotels/status` | Ist ein LiteAPI-Key hinterlegt? |
 | POST | `/api/hotels/search` | Hotelsuche: `latitude`, `longitude`, `checkin`, `checkout`, `adults`, optional `rooms`, `radiusMeters` – oder statt Ort `hotelIds` |
 | POST | `/api/hotels/nearby` | Alle Hotels im Umkreis, auch ausgebuchte (ohne Preis) |
+| GET | `/api/activities?lat=…&lon=…&radiusMeters=…` | Aktivitäten-Vorschläge im Umkreis (500 m – 20 km), bekannteste zuerst |
 | GET | `/api/airports?q=…` | Flughafensuche (Code, Stadt, Name; sonst über die Ortssuche in der Nähe) |
 | GET | `/api/airports/near?lat=…&lon=…&radiusKm=…` | Flughäfen im Umkreis |
 | GET | `/api/airports/lookup?codes=STR,LIS` | Flughäfen nach Code |

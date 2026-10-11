@@ -312,7 +312,9 @@ export default function TripMapImpl({
     if (!bounds || container.clientWidth === 0 || container.clientHeight === 0) return
     const first = fittedKey.current === null
     fittedKey.current = key
-    map.fitBounds(bounds, { padding: 64, maxZoom: 14, duration: first ? 0 : 500 })
+    // Pins sind mittig verankert und können breit sein (Preise, Namen) – seitlich mehr Rand, aber nie mehr als ein Fünftel.
+    const side = Math.min(110, Math.round(container.clientWidth * 0.2))
+    map.fitBounds(bounds, { padding: { top: 56, bottom: 56, left: side, right: side }, maxZoom: 14, duration: first ? 0 : 500 })
   }, [pins, airports, arcs, stages, fitTo, shownCount])
 
   return (
