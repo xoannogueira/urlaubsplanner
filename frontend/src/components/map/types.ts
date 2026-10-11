@@ -22,8 +22,26 @@ export interface MapStage {
   name: string
 }
 
+/** Ein Flug als Bogen zwischen zwei Flughäfen. */
+export interface MapArc {
+  id: string
+  from: LatLng
+  to: LatLng
+  /** 'active' = hervorgehoben (gewählter Flug), 'muted' = nur zur Orientierung. */
+  emphasis: 'active' | 'muted'
+}
+
+/** Ein Flughafen als kleines Code-Schild (z. B. „LIS“). */
+export interface MapAirport {
+  code: string
+  position: LatLng
+  title: string
+}
+
 export interface TripMapProps {
   pins: MapPin[]
+  arcs?: MapArc[]
+  airports?: MapAirport[]
   stages?: MapStage[]
   /** Etappen in Reihenfolge mit einer Linie verbinden. */
   showRoute?: boolean
