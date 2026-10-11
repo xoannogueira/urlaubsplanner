@@ -27,6 +27,9 @@ public sealed class LiteApiOptions
     /// <summary>Wie viele Hotels pro Suche höchstens abgefragt werden.</summary>
     public int MaxHotels { get; set; } = 50;
 
+    /// <summary>Wie viele Preise pro Hotel geholt werden – daraus entstehen die Zimmervarianten.</summary>
+    public int MaxRatesPerHotel { get; set; } = 10;
+
     /// <summary>Optional: Domain der eigenen LiteAPI-White-Label-Seite für direkte Buchungslinks.</summary>
     public string? WhitelabelDomain { get; set; }
 }
@@ -124,7 +127,7 @@ public sealed partial class LiteApiHotelSearch(
                 h.Stars is > 0 ? h.Stars : null,
                 NullIfEmpty(h.MainPhoto) ?? NullIfEmpty(h.Thumbnail),
                 HotelBookingLinks.BookingCom(h.Name.Trim(), h.City, request),
-                HotelBookingLinks.Google(h.Name.Trim(), h.City))),
+                HotelBookingLinks.Google(h.Name.Trim(), h.City, request.Checkin, request.Checkout))),
     ];
 
     private void EnsureConfigured()
@@ -179,7 +182,7 @@ public sealed partial class LiteApiHotelSearch(
             ["currency"] = _options.Currency,
             ["guestNationality"] = _options.GuestNationality,
             ["occupancies"] = request.AdultsPerRoom().Select(adults => new { adults }).ToList(),
-            ["maxRatesPerHotel"] = 1,
+            ["maxRatesPerHotel"] = Math.Clamp(_options.MaxRatesPerHotel, 1, 50),
             ["timeout"] = 8,
             ["includeHotelData"] = true,
         };
@@ -199,7 +202,10 @@ public sealed partial class LiteApiHotelSearch(
         return body;
     }
 
-    /// <summary>Verbindet Preise (data) mit Hoteldaten (hotels) und nimmt pro Hotel das günstigste Angebot.</summary>
+    /// <summary>Höchstens so viele Zimmervarianten pro Hotel.</summary>
+    internal const int MaxRoomsPerHotel = 6;
+
+    /// <summary>Verbindet Preise (data) mit Hoteldaten (hotels); pro Hotel alle Zimmervarianten, günstigste zuerst.</summary>
     internal static List<HotelOffer> ToOffers(RatesResponse? body, HotelSearchRequest request, string? whitelabelDomain)
     {
         if (body?.Data is null)
@@ -217,19 +223,23 @@ public sealed partial class LiteApiHotelSearch(
                 continue;
             }
 
-            var cheapest = (entry.RoomTypes ?? [])
-                .Select(rt => (RoomType: rt, Price: PriceOf(rt)))
-                .Where(x => x.Price is not null)
-                .MinBy(x => x.Price!.Value.Amount);
-            if (cheapest.RoomType is null)
+            var rooms = (entry.RoomTypes ?? [])
+                .Select(ToRoom)
+                .OfType<RoomOffer>()
+                .OrderBy(r => r.TotalPrice)
+                .DistinctBy(r => (r.Name, r.BoardName, r.Refundable)) // gleiche Variante nur mit dem besten Preis
+                .Take(MaxRoomsPerHotel)
+                .ToList();
+            if (rooms.Count == 0)
             {
                 continue;
             }
 
-            var rate = cheapest.RoomType.Rates?.FirstOrDefault();
+            var cheapest = rooms[0];
+            var name = hotel.Name.Trim();
             offers.Add(new HotelOffer(
                 entry.HotelId,
-                hotel.Name.Trim(),
+                name,
                 NullIfEmpty(hotel.Address),
                 hotel.Latitude,
                 hotel.Longitude,
@@ -237,16 +247,57 @@ public sealed partial class LiteApiHotelSearch(
                 hotel.ReviewCount is > 0 ? hotel.ReviewCount : null,
                 hotel.Stars is > 0 ? hotel.Stars : null,
                 NullIfEmpty(hotel.MainPhoto) ?? NullIfEmpty(hotel.Thumbnail),
-                decimal.Round(cheapest.Price!.Value.Amount, 2),
-                cheapest.Price.Value.Currency,
-                NullIfEmpty(rate?.Name),
-                NullIfEmpty(rate?.BoardName),
-                string.Equals(rate?.CancellationPolicies?.RefundableTag, "RFN", StringComparison.OrdinalIgnoreCase),
-                HotelBookingLinks.For(entry.HotelId, hotel.Name.Trim(), hotel.CityName, request, whitelabelDomain),
-                HotelBookingLinks.Google(hotel.Name.Trim(), hotel.CityName)));
+                cheapest.TotalPrice,
+                cheapest.Currency,
+                cheapest.Name,
+                cheapest.BoardName,
+                cheapest.Refundable,
+                HotelBookingLinks.For(entry.HotelId, name, hotel.CityName, request, whitelabelDomain),
+                HotelBookingLinks.Google(name, hotel.CityName, request.Checkin, request.Checkout),
+                cheapest.MarketPrice,
+                cheapest.PayAtProperty,
+                cheapest.PayAtPropertyLabel,
+                rooms));
         }
 
         return [.. offers.OrderBy(o => o.TotalPrice)];
+    }
+
+    /// <summary>
+    /// Ein Angebot (roomType) enthält bei mehreren Zimmern einen Preis pro Zimmer (rates) – zusammen ergeben sie das Angebot.
+    /// </summary>
+    private static RoomOffer? ToRoom(RoomType roomType)
+    {
+        if (PriceOf(roomType) is not { } price)
+        {
+            return null;
+        }
+
+        var rates = roomType.Rates ?? [];
+        var market = AmountOf(roomType.SuggestedSellingPrice) ?? SumOrNull(rates.Select(r => AmountOf(r.RetailRate?.SuggestedSellingPrice)));
+        var payLater = rates.SelectMany(r => FeesOf(r.RetailRate?.TaxesAndFees)).Where(f => f.Included == false && f.Amount > 0).ToList();
+
+        return new RoomOffer(
+            RoomName(rates.Select(r => NullIfEmpty(r.Name))),
+            NullIfEmpty(rates.FirstOrDefault()?.BoardName),
+            rates.Count > 0 && rates.All(r => string.Equals(r.CancellationPolicies?.RefundableTag, "RFN", StringComparison.OrdinalIgnoreCase)),
+            decimal.Round(price.Amount, 2),
+            price.Currency,
+            market is > 0 ? decimal.Round(market.Value, 2) : null,
+            payLater.Count > 0 ? decimal.Round(payLater.Sum(f => f.Amount), 2) : null,
+            payLater.Count > 0 ? NullIfEmpty(string.Join(", ", payLater.Select(f => NullIfEmpty(f.Description)).OfType<string>().Distinct().Take(2))) : null);
+    }
+
+    /// <summary>["Doppelzimmer", "Doppelzimmer"] → "2× Doppelzimmer"; verschiedene Zimmer werden mit „+“ verbunden.</summary>
+    internal static string? RoomName(IEnumerable<string?> names)
+    {
+        var list = names.OfType<string>().ToList();
+        if (list.Count == 0)
+        {
+            return null;
+        }
+
+        return string.Join(" + ", list.GroupBy(n => n, StringComparer.OrdinalIgnoreCase).Select(g => g.Count() > 1 ? $"{g.Count()}× {g.Key}" : g.Key));
     }
 
     /// <summary>Gesamtpreis des Angebots: bevorzugt offerRetailRate, sonst Summe der Zimmerpreise.</summary>
@@ -266,6 +317,61 @@ public sealed partial class LiteApiHotelSearch(
         return (totals.Sum(t => t!.Amount), totals[0]!.Currency ?? "EUR");
     }
 
+    private static decimal? SumOrNull(IEnumerable<decimal?> values)
+    {
+        var list = values.ToList();
+        return list.Count > 0 && list.All(v => v is not null) ? list.Sum() : null;
+    }
+
+    /// <summary>Betrag aus { "amount": … } oder [ { "amount": … } ] – LiteAPI nutzt beide Formen.</summary>
+    private static decimal? AmountOf(JsonElement? element)
+    {
+        if (element is not { } e)
+        {
+            return null;
+        }
+
+        if (e.ValueKind == JsonValueKind.Array)
+        {
+            return e.GetArrayLength() > 0 ? AmountOf(e[0]) : null;
+        }
+
+        return e.ValueKind == JsonValueKind.Object && e.TryGetProperty("amount", out var amount) && TryDecimal(amount, out var value) ? value : null;
+    }
+
+    private static IEnumerable<Fee> FeesOf(JsonElement? element)
+    {
+        if (element is not { ValueKind: JsonValueKind.Array } list)
+        {
+            yield break;
+        }
+
+        foreach (var item in list.EnumerateArray())
+        {
+            if (item.ValueKind != JsonValueKind.Object || !item.TryGetProperty("amount", out var amountElement) || !TryDecimal(amountElement, out var amount))
+            {
+                continue;
+            }
+
+            bool? included = item.TryGetProperty("included", out var inc) && inc.ValueKind is JsonValueKind.True or JsonValueKind.False ? inc.GetBoolean() : null;
+            var description = item.TryGetProperty("description", out var d) && d.ValueKind == JsonValueKind.String ? d.GetString() : null;
+            yield return new Fee(included, description, amount);
+        }
+    }
+
+    private static bool TryDecimal(JsonElement element, out decimal value)
+    {
+        value = 0;
+        return element.ValueKind switch
+        {
+            JsonValueKind.Number => element.TryGetDecimal(out value),
+            JsonValueKind.String => decimal.TryParse(element.GetString(), NumberStyles.Number, CultureInfo.InvariantCulture, out value),
+            _ => false,
+        };
+    }
+
+    private sealed record Fee(bool? Included, string? Description, decimal Amount);
+
     private static string? NullIfEmpty(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
     private static string Truncate(string value, int max) => value.Length <= max ? value : value[..max];
@@ -282,11 +388,11 @@ internal sealed record RatesResponse(List<RateEntry>? Data, List<HotelData>? Hot
 
 internal sealed record RateEntry(string? HotelId, List<RoomType>? RoomTypes);
 
-internal sealed record RoomType(string? OfferId, Money? OfferRetailRate, List<Rate>? Rates);
+internal sealed record RoomType(string? OfferId, Money? OfferRetailRate, JsonElement? SuggestedSellingPrice, List<Rate>? Rates);
 
 internal sealed record Rate(string? Name, string? BoardName, RetailRate? RetailRate, CancellationPolicies? CancellationPolicies);
 
-internal sealed record RetailRate(List<Money>? Total);
+internal sealed record RetailRate(List<Money>? Total, JsonElement? SuggestedSellingPrice, JsonElement? TaxesAndFees);
 
 internal sealed record Money(decimal Amount, string? Currency);
 

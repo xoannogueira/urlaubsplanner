@@ -41,8 +41,9 @@ public sealed class ApiTests : IDisposable
                 return Task.FromResult(new HotelSearchResult([], true, DateTimeOffset.UnixEpoch));
             }
 
+            var room = new RoomOffer("Doppelzimmer", null, true, 612m, "EUR", 650m, null, null);
             var offer = new HotelOffer(
-                "lp1", "Hotel Miradouro", "Rua A 1", 38.71, -9.13, 8.7, 1284, 4, null, 612m, "EUR", "Doppelzimmer", null, true, "https://www.booking.com/", "https://www.google.com/travel/search");
+                "lp1", "Hotel Miradouro", "Rua A 1", 38.71, -9.13, 8.7, 1284, 4, null, 612m, "EUR", "Doppelzimmer", null, true, "https://www.booking.com/", "https://www.google.com/travel/search", 650m, null, null, [room]);
             return Task.FromResult(new HotelSearchResult([offer], true, DateTimeOffset.UnixEpoch));
         }
 

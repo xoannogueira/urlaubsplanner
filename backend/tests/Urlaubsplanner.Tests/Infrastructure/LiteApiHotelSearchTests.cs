@@ -26,6 +26,14 @@ public sealed class LiteApiHotelSearchTests
                 {
                   "offerId": "o-guenstig",
                   "offerRetailRate": { "amount": 612.0, "currency": "EUR" },
+                  "suggestedSellingPrice": { "amount": 655.5, "currency": "EUR", "source": "providerDirect" },
+                  "rates": [ { "name": "Doppelzimmer", "boardName": "Nur Übernachtung", "cancellationPolicies": { "refundableTag": "NRFN" },
+                    "retailRate": { "total": [ { "amount": 612, "currency": "EUR" } ],
+                      "taxesAndFees": [ { "included": true, "description": "VAT", "amount": 40 }, { "included": false, "description": "City tax", "amount": "16.00" } ] } } ]
+                },
+                {
+                  "offerId": "o-guenstig-doppelt",
+                  "offerRetailRate": { "amount": 640.0, "currency": "EUR" },
                   "rates": [ { "name": "Doppelzimmer", "boardName": "Nur Übernachtung", "cancellationPolicies": { "refundableTag": "NRFN" } } ]
                 }
               ]
@@ -36,8 +44,8 @@ public sealed class LiteApiHotelSearchTests
                 {
                   "offerId": "o-zwei-zimmer",
                   "rates": [
-                    { "name": "Zimmer A", "retailRate": { "total": [ { "amount": 300, "currency": "EUR" } ] }, "cancellationPolicies": { "refundableTag": "RFN" } },
-                    { "name": "Zimmer B", "retailRate": { "total": [ { "amount": 250, "currency": "EUR" } ] } }
+                    { "name": "Zimmer A", "retailRate": { "total": [ { "amount": 300, "currency": "EUR" } ], "suggestedSellingPrice": [ { "amount": 320 } ] }, "cancellationPolicies": { "refundableTag": "RFN" } },
+                    { "name": "Zimmer A", "retailRate": { "total": [ { "amount": 250, "currency": "EUR" } ], "suggestedSellingPrice": [ { "amount": 270 } ] } }
                   ]
                 }
               ]
@@ -112,6 +120,19 @@ public sealed class LiteApiHotelSearchTests
         Assert.Contains("booking.com", miradouro.BookingUrl, StringComparison.Ordinal);
         Assert.Contains("Lissabon", Uri.UnescapeDataString(miradouro.BookingUrl), StringComparison.Ordinal);
         Assert.StartsWith("https://www.google.com/travel/search?q=", miradouro.GoogleUrl, StringComparison.Ordinal);
+        Assert.Contains("&ts=", miradouro.GoogleUrl, StringComparison.Ordinal);
+
+        // Zimmervarianten: Suite + Doppelzimmer; das zweite, teurere Doppelzimmer-Angebot fällt weg.
+        Assert.Equal(["Doppelzimmer", "Suite"], miradouro.Rooms.Select(r => r.Name!).ToArray());
+        Assert.Equal(655.5m, miradouro.MarketPrice);
+        Assert.Equal(16m, miradouro.PayAtProperty); // nur die nicht enthaltene Kurtaxe
+        Assert.Equal("City tax", miradouro.PayAtPropertyLabel);
+        Assert.True(miradouro.Rooms[1].Refundable);
+        Assert.Null(miradouro.Rooms[1].MarketPrice);
+
+        Assert.Equal("2× Zimmer A", casa.RoomName);
+        Assert.Equal(590m, casa.MarketPrice); // Summe pro Zimmer
+        Assert.False(casa.Refundable); // nur ein Zimmer ist stornierbar
         Assert.Contains("Hotel Miradouro, Lissabon", Uri.UnescapeDataString(miradouro.GoogleUrl), StringComparison.Ordinal);
     }
 
@@ -188,7 +209,7 @@ public sealed class LiteApiHotelSearchTests
         Assert.Equal("EUR", root.GetProperty("currency").GetString());
         Assert.Equal(2, root.GetProperty("occupancies").GetArrayLength());
         Assert.Equal(2, root.GetProperty("occupancies")[0].GetProperty("adults").GetInt32());
-        Assert.Equal(1, root.GetProperty("maxRatesPerHotel").GetInt32());
+        Assert.Equal(10, root.GetProperty("maxRatesPerHotel").GetInt32()); // mehrere Zimmervarianten
     }
 
     [Fact]

@@ -36,13 +36,53 @@ public static class HotelBookingLinks
     }
 
     /// <summary>
-    /// Google Hotels vergleicht viele Anbieter. Die Reisedaten lassen sich dort nicht verlässlich per URL vorbelegen
-    /// (Google kodiert sie intern), deshalb sucht der Link nach dem Hotel und die Daten werden dort gewählt.
+    /// Google Hotels vergleicht viele Anbieter. Google hat kein offizielles Linkformat; die Reisedaten stecken
+    /// im inoffiziellen <c>ts</c>-Parameter (Protobuf, Base64). Personen und Zimmer lassen sich so nicht übergeben –
+    /// Google nimmt dort seine Voreinstellung (meist 2 Personen).
     /// </summary>
-    public static string Google(string hotelName, string? city)
+    public static string Google(string hotelName, string? city, DateOnly? checkin = null, DateOnly? checkout = null)
     {
         var query = string.IsNullOrWhiteSpace(city) ? hotelName : $"{hotelName}, {city}";
-        return $"https://www.google.com/travel/search?q={Uri.EscapeDataString(query)}&hl=de&gl=de";
+        var url = $"https://www.google.com/travel/search?q={Uri.EscapeDataString(query)}&hl=de&gl=de";
+        return checkin is { } from && checkout is { } to && to > from
+            ? $"{url}&qs=CAE4AA&ts={Uri.EscapeDataString(GoogleDates(from, to))}&ap=MAE"
+            : url;
+    }
+
+    /// <summary>
+    /// Baut den <c>ts</c>-Wert: {1: 1, 3: {1: {3: ""}, 2: {2: {1: Anreise, 2: Abreise, 3: Nächte}, 6: {1: 1}}}},
+    /// ein Datum jeweils als {1: Jahr, 2: Monat, 3: Tag}.
+    /// </summary>
+    public static string GoogleDates(DateOnly checkin, DateOnly checkout)
+    {
+        static byte[] Date(DateOnly d) => [.. Varint(1, d.Year), .. Varint(2, d.Month), .. Varint(3, d.Day)];
+
+        var range = Concat(Field(1, Date(checkin)), Field(2, Date(checkout)), Varint(3, checkout.DayNumber - checkin.DayNumber));
+        var stay = Concat(Field(2, range), Field(6, Varint(1, 1)));
+        var search = Concat(Field(1, Field(3, [])), Field(2, stay));
+        var message = Concat(Varint(1, 1), Field(3, search));
+        return Convert.ToBase64String(message).TrimEnd('=');
+    }
+
+    private static byte[] Concat(params byte[][] parts) => [.. parts.SelectMany(p => p)];
+
+    /// <summary>Feld mit Länge (Protobuf wire type 2).</summary>
+    private static byte[] Field(int number, byte[] content) => [.. Encode((ulong)((number << 3) | 2)), .. Encode((ulong)content.Length), .. content];
+
+    /// <summary>Zahlenfeld (Protobuf wire type 0).</summary>
+    private static byte[] Varint(int number, int value) => [.. Encode((ulong)(number << 3)), .. Encode((ulong)value)];
+
+    private static byte[] Encode(ulong value)
+    {
+        var bytes = new List<byte>();
+        do
+        {
+            var b = (byte)(value & 0x7F);
+            value >>= 7;
+            bytes.Add(value > 0 ? (byte)(b | 0x80) : b);
+        }
+        while (value > 0);
+        return [.. bytes];
     }
 
     /// <summary>Format laut LiteAPI-Doku: /hotels/{id}?checkin=…&amp;checkout=…&amp;occupancies=base64(JSON).</summary>

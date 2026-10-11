@@ -135,11 +135,28 @@ public sealed record HotelSearchRequest
     }
 }
 
-/// <summary>Das günstigste verfügbare Angebot eines Hotels für die Suche.</summary>
+/// <summary>Ein buchbares Zimmerangebot (bei mehreren Zimmern: alle Zimmer zusammen).</summary>
+/// <param name="TotalPrice">Gesamtpreis für alle Nächte und Zimmer.</param>
+/// <param name="MarketPrice">
+/// Vom Hotel empfohlener öffentlicher Preis (LiteAPI „suggested selling price“) – ungefähr das, was Booking &amp; Co. zeigen.
+/// </param>
+/// <param name="PayAtProperty">Steuern/Gebühren, die nicht im Preis enthalten sind und vor Ort bezahlt werden (z. B. Kurtaxe).</param>
+public sealed record RoomOffer(
+    string? Name,
+    string? BoardName,
+    bool Refundable,
+    decimal TotalPrice,
+    string Currency,
+    decimal? MarketPrice,
+    decimal? PayAtProperty,
+    string? PayAtPropertyLabel);
+
+/// <summary>Ein Hotel mit seinen Zimmerangeboten; die Felder oben beschreiben das günstigste Zimmer.</summary>
 /// <param name="Rating">Gästebewertung 0–10 (wie bei LiteAPI/Booking).</param>
 /// <param name="Stars">Hotelsterne 0–5.</param>
-/// <param name="TotalPrice">Gesamtpreis für alle Nächte und Zimmer.</param>
+/// <param name="TotalPrice">Gesamtpreis des günstigsten Zimmers für alle Nächte und Zimmer.</param>
 /// <param name="GoogleUrl">Google Hotels vergleicht viele Anbieter – hilfreich, wenn Booking.com ausgebucht ist.</param>
+/// <param name="Rooms">Alle Zimmerangebote, günstigstes zuerst.</param>
 public sealed record HotelOffer(
     string HotelId,
     string Name,
@@ -156,7 +173,11 @@ public sealed record HotelOffer(
     string? BoardName,
     bool Refundable,
     string BookingUrl,
-    string GoogleUrl);
+    string GoogleUrl,
+    decimal? MarketPrice,
+    decimal? PayAtProperty,
+    string? PayAtPropertyLabel,
+    IReadOnlyList<RoomOffer> Rooms);
 
 /// <param name="Sandbox">True, wenn mit einem Sandbox-Key gesucht wurde (Preise sind dann ggf. Testdaten).</param>
 public sealed record HotelSearchResult(IReadOnlyList<HotelOffer> Hotels, bool Sandbox, DateTimeOffset FetchedAt);

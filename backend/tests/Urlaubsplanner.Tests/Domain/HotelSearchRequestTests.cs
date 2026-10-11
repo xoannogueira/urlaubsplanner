@@ -130,4 +130,14 @@ public sealed class HotelSearchRequestTests
             "https://www.google.com/travel/search?q=Hotel%20A%20%26%20B%2C%20Lissabon&hl=de&gl=de",
             HotelBookingLinks.Google("Hotel A & B", "Lissabon"));
     }
+
+    [Fact]
+    public void Google_Link_kodiert_die_Reisedaten_wie_Google()
+    {
+        // Referenzwert aus einer echten Google-Hotels-URL (15.–20. März 2026, 5 Nächte).
+        Assert.Equal("CAEaIAoCGgASGhIUCgcI6g8QAxgPEgcI6g8QAxgUGAUyAggB", HotelBookingLinks.GoogleDates(new DateOnly(2026, 3, 15), new DateOnly(2026, 3, 20)));
+
+        var url = HotelBookingLinks.Google("Hotel", "Lissabon", new DateOnly(2027, 5, 12), new DateOnly(2027, 5, 16));
+        Assert.Contains("&qs=CAE4AA&ts=", url, StringComparison.Ordinal);
+    }
 }
