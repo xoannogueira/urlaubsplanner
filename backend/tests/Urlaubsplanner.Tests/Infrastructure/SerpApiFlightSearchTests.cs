@@ -3,8 +3,10 @@ using System.Text;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+using Urlaubsplanner.Domain;
 using Urlaubsplanner.Domain.Flights;
 using Urlaubsplanner.Infrastructure.Flights;
+using Urlaubsplanner.Infrastructure.SerpApi;
 
 namespace Urlaubsplanner.Tests.Infrastructure;
 
@@ -241,7 +243,7 @@ public sealed class SerpApiFlightSearchTests
 
         var quota = await search.GetQuotaAsync(CancellationToken.None);
 
-        Assert.Equal(new FlightQuota(243, 250), quota);
+        Assert.Equal(new SearchQuota(243, 250), quota);
         Assert.StartsWith("/account.json", handler.Calls[0].AbsolutePath, StringComparison.Ordinal);
     }
 

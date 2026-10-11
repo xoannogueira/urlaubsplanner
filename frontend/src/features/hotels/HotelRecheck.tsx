@@ -24,6 +24,8 @@ export function HotelRecheck({ trip, option }: { trip: Trip; option: TripOption 
     checkout: option.endDate!,
     adults: trip.travelers,
     rooms: defaultRooms(trip.travelers),
+    // Google Hotels braucht einen Suchtext – der Hotelname passt am besten.
+    place: option.title,
   }
 
   const check = () =>
@@ -125,6 +127,7 @@ export function HotelRecheck({ trip, option }: { trip: Trip; option: TripOption 
         pickLabel="Übernehmen"
         isPicked={(alt) => alt.checkin === option.startDate}
         onPick={takeAlternative}
+        perHotel={option.provider === 'serpapi'}
       />
     </div>
   )

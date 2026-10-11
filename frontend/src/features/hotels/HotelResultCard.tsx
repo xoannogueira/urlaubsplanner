@@ -31,10 +31,26 @@ interface HotelResultCardProps {
   /** Nur gesetzt, wenn „Aufteilungen vergleichen“ an ist. */
   splits?: SplitPrice[]
   onPickRooms?: (rooms: number) => void
+  /** Google Hotels: die „Zimmer“ sind Anbieter (Booking.com, Expedia …) mit ihrem Preis. */
+  google?: boolean
 }
 
 export function HotelResultCard(props: HotelResultCardProps) {
-  const { hotel: base, nights, travelers, rooms, distanceKm, saved, saving, selected, onSave, onSelect, splits, onPickRooms } = props
+  const {
+    hotel: base,
+    nights,
+    travelers,
+    rooms,
+    distanceKm,
+    saved,
+    saving,
+    selected,
+    onSave,
+    onSelect,
+    splits,
+    onPickRooms,
+    google,
+  } = props
   const [roomIndex, setRoomIndex] = useState(0)
   const [showRooms, setShowRooms] = useState(false)
   const room = base.rooms[roomIndex] ?? base.rooms[0]
@@ -48,7 +64,9 @@ export function HotelResultCard(props: HotelResultCardProps) {
         <HotelHeading hotel={hotel} distanceKm={distanceKm} />
 
         <div className="flex flex-wrap gap-1.5 text-xs font-semibold">
-          {hotel.roomName && <span className="rounded-md bg-surface-2 px-2 py-1 text-muted">{hotel.roomName}</span>}
+          {hotel.roomName && (
+            <span className="rounded-md bg-surface-2 px-2 py-1 text-muted">{google ? `bei ${hotel.roomName}` : hotel.roomName}</span>
+          )}
           {hotel.boardName && <span className="rounded-md bg-surface-2 px-2 py-1 text-muted">{hotel.boardName}</span>}
           {hotel.refundable && (
             <span className="flex items-center gap-1 rounded-md bg-accent-soft px-2 py-1 text-accent">
@@ -67,10 +85,10 @@ export function HotelResultCard(props: HotelResultCardProps) {
               className="flex w-fit cursor-pointer items-center gap-1 text-[13px] font-bold text-accent hover:underline"
             >
               <ChevronDown size={15} className={clsx('transition-transform duration-100', showRooms && 'rotate-180')} />
-              {base.rooms.length} Zimmervarianten
+              {google ? `Preise von ${base.rooms.length} Anbietern` : `${base.rooms.length} Zimmervarianten`}
             </button>
             {showRooms && (
-              <ul className="flex flex-col gap-1" aria-label={`Zimmer in ${base.name}`}>
+              <ul className="flex flex-col gap-1" aria-label={google ? `Anbieter für ${base.name}` : `Zimmer in ${base.name}`}>
                 {base.rooms.map((r, i) => (
                   <li key={i}>
                     <button
@@ -85,7 +103,11 @@ export function HotelResultCard(props: HotelResultCardProps) {
                       <span className="flex min-w-0 flex-1 flex-col">
                         <span className="truncate font-semibold">{r.name ?? 'Zimmer'}</span>
                         <span className="text-xs text-muted">
-                          {[r.boardName, r.refundable ? 'kostenlos stornierbar' : 'nicht stornierbar'].filter(Boolean).join(' · ')}
+                          {google
+                            ? r.refundable
+                              ? 'kostenlos stornierbar'
+                              : 'Bedingungen beim Anbieter'
+                            : [r.boardName, r.refundable ? 'kostenlos stornierbar' : 'nicht stornierbar'].filter(Boolean).join(' · ')}
                         </span>
                       </span>
                       <span className="shrink-0 font-mono font-semibold">{formatEuro(r.totalPrice)}</span>
@@ -130,6 +152,7 @@ export function HotelResultCard(props: HotelResultCardProps) {
             <span className="font-mono text-lg font-semibold">{formatEuro(hotel.totalPrice)}</span>
             <span className="text-xs text-muted">
               {nights === 1 ? '1 Nacht' : `${nights} Nächte`} · {formatEuro(Math.round(hotel.totalPrice / Math.max(1, nights)))} / Nacht
+              {google && ` · für ${travelers} ${travelers === 1 ? 'Person' : 'Personen'} laut Google`}
             </span>
             {market && (
               <span

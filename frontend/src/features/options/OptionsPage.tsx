@@ -15,6 +15,7 @@ import { toLatLng } from '../../lib/geo'
 import { optionPins, stageMarkers } from '../../lib/mapData'
 import { kindLabels, sortOptions } from '../../lib/options'
 import { canRecheck } from '../../lib/hotels'
+import { useHotelSearchStatus } from '../../api/hotels'
 import { canRecheckFlight, parseSignature, savedFlightArcs } from '../../lib/flights'
 import { ActivitySuggestionsView } from '../activities/ActivitySuggestionsView'
 import { useAirportLookup } from '../../api/airports'
@@ -40,6 +41,8 @@ const GENERAL = 'general'
 export function OptionsPage({ kind }: { kind: OptionKind }) {
   const { trip } = useTripContext()
   const actions = useTripActions(trip.id)
+  // Gemerkte Hotels lassen sich nur mit der Quelle neu prüfen, aus der sie stammen.
+  const hotelStatus = useHotelSearchStatus()
   const [stageFilter, setStageFilter] = useState<string>(ALL)
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
   const [dialog, setDialog] = useState<{ option?: TripOption } | null>(null)
@@ -233,7 +236,7 @@ export function OptionsPage({ kind }: { kind: OptionKind }) {
                       selected={showMap && option.id === selectedId}
                       onSelect={showMap && toLatLng(option) ? () => setSelectedId(option.id) : undefined}
                       extra={
-                        canRecheck(option) ? (
+                        canRecheck(option, undefined, hotelStatus.data?.provider) ? (
                           <HotelRecheck trip={trip} option={option} />
                         ) : canRecheckFlight(option) ? (
                           <FlightRecheck trip={trip} option={option} />

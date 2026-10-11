@@ -3,12 +3,14 @@ import { CalendarSearch, KeyRound, Minus, Plus, Search, SearchX, TriangleAlert }
 import { useCallback, useMemo, useState, type ReactNode } from 'react'
 import { ApiError } from '../../api/client'
 import {
+  mergeHotelPages,
   useHotelSearch,
   useHotelSearchStatus,
   useNearbyHotels,
   useRoomSplitSearches,
   type HotelOffer,
   type HotelSearchParams,
+  type HotelSearchStatus,
 } from '../../api/hotels'
 import { useTripActions } from '../../api/trips'
 import type { Stage, Trip } from '../../api/types'
@@ -16,6 +18,7 @@ import { TripMap } from '../../components/map/TripMap'
 import type { MapPin, PinTone } from '../../components/map/types'
 import { Button } from '../../components/ui/Button'
 import { EmptyState, ErrorState, Skeleton } from '../../components/ui/Feedback'
+import { QuotaBadge } from '../../components/ui/QuotaBadge'
 import { formatDateRange, formatEuro, nightsLabel, peopleLabel } from '../../lib/format'
 import { distanceKm, toLatLng } from '../../lib/geo'
 import {
@@ -42,13 +45,13 @@ interface HotelSearchViewProps {
   onEditStage: () => void
 }
 
-/** Hotelsuche über LiteAPI für eine Etappe: Ergebnisse als Liste und als Preis-Pins auf der Karte. */
+/** Hotelsuche (Google Hotels über SerpApi oder LiteAPI) für eine Etappe: Ergebnisse als Liste und als Preis-Pins auf der Karte. */
 export function HotelSearchView({ trip, stage, onEditStage }: HotelSearchViewProps) {
   const status = useHotelSearchStatus()
   // Stabiles Objekt, damit Liste und Karte nicht bei jedem Rendern neu rechnen.
   const center = useMemo(() => toLatLng(stage), [stage])
 
-  if (status.data && !status.data.configured) return <SetupHint />
+  if (status.data && !status.data.configured) return <SetupHint provider={status.data.provider} />
   if (!stage) {
     return (
       <EmptyState
@@ -73,10 +76,22 @@ export function HotelSearchView({ trip, stage, onEditStage }: HotelSearchViewPro
     )
   }
 
-  return <SearchArea key={stage.id} trip={trip} stage={stage} center={center} />
+  return <SearchArea key={stage.id} trip={trip} stage={stage} center={center} status={status.data ?? null} />
 }
 
-function SearchArea({ trip, stage, center }: { trip: Trip; stage: Stage; center: { latitude: number; longitude: number } }) {
+function SearchArea({
+  trip,
+  stage,
+  center,
+  status,
+}: {
+  trip: Trip
+  stage: Stage
+  center: { latitude: number; longitude: number }
+  status: HotelSearchStatus | null
+}) {
+  // Google Hotels: Preise mehrerer Anbieter, keine Zimmeraufteilung, 20 Hotels pro Seite.
+  const google = status?.provider === 'serpapi'
   const actions = useTripActions(trip.id)
   const [rooms, setRooms] = useState(() => Math.min(defaultRooms(trip.travelers), trip.travelers))
   const [radius, setRadius] = useState(3000)
@@ -90,17 +105,17 @@ function SearchArea({ trip, stage, center }: { trip: Trip; stage: Stage; center:
   const [alternativesFor, setAlternativesFor] = useState<string[] | null>(null)
 
   const search = useHotelSearch(params)
-  const result = search.data
+  const result = useMemo(() => mergeHotelPages(search.data?.pages), [search.data])
   const nights = result?.nights ?? stage.nights
   const nearby = useNearbyHotels(params, showUnavailable)
 
   // Zimmeraufteilungen vergleichen: dieselbe Suche mit 1, 2, 3 … Zimmern (die aktuelle kommt aus der Hauptsuche).
   const [compareSplits, setCompareSplits] = useState(false)
   const splitCounts = useMemo(() => roomSplits(trip.travelers), [trip.travelers])
-  const splitSearches = useRoomSplitSearches(params, splitCounts, compareSplits)
+  const splitSearches = useRoomSplitSearches(params, splitCounts, compareSplits && !google)
   const splitPrices = useMemo(() => {
     const byHotel = new Map<string, SplitPrice[]>()
-    if (!compareSplits) return byHotel
+    if (!compareSplits || google) return byHotel
     for (const hotel of result?.hotels ?? []) {
       byHotel.set(
         hotel.hotelId,
@@ -112,7 +127,7 @@ function SearchArea({ trip, stage, center }: { trip: Trip; stage: Stage; center:
       )
     }
     return byHotel
-  }, [compareSplits, result, splitCounts, splitSearches])
+  }, [compareSplits, google, result, splitCounts, splitSearches])
 
   /** Andere Aufteilung übernehmen: Suche mit dieser Zimmeranzahl (kommt meist schon aus dem Cache). */
   const pickRooms = (count: number) => {
@@ -121,7 +136,12 @@ function SearchArea({ trip, stage, center }: { trip: Trip; stage: Stage; center:
   }
 
   const savedIds = useMemo(
-    () => new Set(trip.options.filter((o) => o.provider === 'liteapi' && o.stageId === stage.id).map((o) => o.externalId)),
+    () =>
+      new Set(
+        trip.options
+          .filter((o) => (o.provider === 'liteapi' || o.provider === 'serpapi') && o.stageId === stage.id)
+          .map((o) => o.externalId),
+      ),
     [trip.options, stage.id],
   )
 
@@ -157,19 +177,22 @@ function SearchArea({ trip, stage, center }: { trip: Trip; stage: Stage; center:
       adults: trip.travelers,
       rooms,
       radiusMeters: radius,
+      place: stage.name,
     })
   }
 
   const save = (hotel: HotelOffer) => {
     setSavingId(hotel.hotelId)
-    actions.addOption.mutate(hotelOptionInput(hotel, stage.id, stage.startDate, stage.endDate), { onSettled: () => setSavingId(null) })
+    actions.addOption.mutate(hotelOptionInput(hotel, stage.id, stage.startDate, stage.endDate, google ? 'serpapi' : 'liteapi'), {
+      onSettled: () => setSavingId(null),
+    })
   }
 
   /** Ausweichtermin aus dem Dialog als eigenen Favoriten merken. */
   const saveAlternative = (alt: AlternativeOffer) =>
-    actions.addOption.mutateAsync(hotelOptionInput(alt.offer, stage.id, alt.checkin, alt.checkout))
+    actions.addOption.mutateAsync(hotelOptionInput(alt.offer, stage.id, alt.checkin, alt.checkout, google ? 'serpapi' : 'liteapi'))
   const isAlternativeSaved = (alt: AlternativeOffer) =>
-    trip.options.some((o) => o.provider === 'liteapi' && o.externalId === alt.offer.hotelId && o.startDate === alt.checkin)
+    trip.options.some((o) => o.externalId === alt.offer.hotelId && o.startDate === alt.checkin)
 
   const selectFromMap = useCallback((id: string | null) => {
     setSelectedId(id)
@@ -183,7 +206,8 @@ function SearchArea({ trip, stage, center }: { trip: Trip; stage: Stage; center:
   const distanceOf = (h: { latitude: number | null; longitude: number | null }) =>
     h.latitude != null && h.longitude != null ? distanceKm(center, { latitude: h.latitude, longitude: h.longitude }) : null
 
-  const error = search.error instanceof ApiError ? search.error : null
+  // Fehler beim Nachladen weiterer Seiten zeigen wir unter der Liste, nicht statt der Liste.
+  const error = search.error instanceof ApiError && !search.isFetchNextPageError ? search.error : null
   const toggle = (patch: Partial<HotelFilters>, active: boolean) =>
     setFilters((f) => ({
       ...f,
@@ -203,34 +227,36 @@ function SearchArea({ trip, stage, center }: { trip: Trip; stage: Stage; center:
             {formatDateRange(stage.startDate, stage.endDate)} · {nightsLabel(stage.nights)} · {peopleLabel(trip.travelers)}
           </span>
         </div>
-        <div className="flex flex-col gap-1.5">
-          <span className="text-[13px] font-bold text-muted" id="rooms-label">
-            Zimmer
-          </span>
-          <div className="flex h-11 items-center gap-1 rounded-xl bg-surface-2 px-1" role="group" aria-labelledby="rooms-label">
-            <button
-              type="button"
-              aria-label="Ein Zimmer weniger"
-              disabled={rooms <= 1}
-              onClick={() => setRooms(rooms - 1)}
-              className="flex size-9 cursor-pointer items-center justify-center rounded-lg hover:bg-surface-3 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              <Minus size={16} />
-            </button>
-            <span className="w-8 text-center font-mono font-semibold" aria-live="polite">
-              {rooms}
+        {!google && (
+          <div className="flex flex-col gap-1.5">
+            <span className="text-[13px] font-bold text-muted" id="rooms-label">
+              Zimmer
             </span>
-            <button
-              type="button"
-              aria-label="Ein Zimmer mehr"
-              disabled={rooms >= trip.travelers}
-              onClick={() => setRooms(rooms + 1)}
-              className="flex size-9 cursor-pointer items-center justify-center rounded-lg hover:bg-surface-3 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              <Plus size={16} />
-            </button>
+            <div className="flex h-11 items-center gap-1 rounded-xl bg-surface-2 px-1" role="group" aria-labelledby="rooms-label">
+              <button
+                type="button"
+                aria-label="Ein Zimmer weniger"
+                disabled={rooms <= 1}
+                onClick={() => setRooms(rooms - 1)}
+                className="flex size-9 cursor-pointer items-center justify-center rounded-lg hover:bg-surface-3 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <Minus size={16} />
+              </button>
+              <span className="w-8 text-center font-mono font-semibold" aria-live="polite">
+                {rooms}
+              </span>
+              <button
+                type="button"
+                aria-label="Ein Zimmer mehr"
+                disabled={rooms >= trip.travelers}
+                onClick={() => setRooms(rooms + 1)}
+                className="flex size-9 cursor-pointer items-center justify-center rounded-lg hover:bg-surface-3 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <Plus size={16} />
+              </button>
+            </div>
           </div>
-        </div>
+        )}
         <label className="flex flex-col gap-1.5">
           <span className="text-[13px] font-bold text-muted">Umkreis</span>
           <select
@@ -246,14 +272,18 @@ function SearchArea({ trip, stage, center }: { trip: Trip; stage: Stage; center:
           </select>
         </label>
         <Button variant="primary" size="lg" icon={<Search size={18} />} onClick={runSearch} disabled={search.isFetching}>
-          {search.isFetching ? 'Suche läuft …' : 'Hotels suchen'}
+          {search.isFetching && !search.isFetchingNextPage ? 'Suche läuft …' : 'Hotels suchen'}
         </Button>
+        {status?.quota && <QuotaBadge quota={status.quota} />}
       </section>
 
       {!params ? (
         <p className="rounded-2xl border border-dashed border-line px-4 py-3 text-sm text-muted">
-          Ort, Daten und Personen kommen aus der Etappe. Gefundene Hotels kannst du mit „Merken“ als Favorit speichern – sie erscheinen dann
-          unter „Gespeichert“ und später in der Checkliste.
+          Ort, Daten und Personen kommen aus der Etappe.{' '}
+          {google &&
+            'Preise kommen von Google Hotels und vergleichen Booking.com, Expedia & Co. – eine Suche liefert ca. 20 Hotels, weitere kosten je eine Google-Suche. '}
+          Gefundene Hotels kannst du mit „Merken“ als Favorit speichern – sie erscheinen dann unter „Gespeichert“ und später in der
+          Checkliste.
         </p>
       ) : error ? (
         <ErrorState message={error.message} onRetry={() => void search.refetch()} />
@@ -279,9 +309,11 @@ function SearchArea({ trip, stage, center }: { trip: Trip; stage: Stage; center:
                 Sandbox – Preise evtl. Testdaten
               </span>
             )}
-            <Chip active={filters.refundableOnly} onClick={() => toggle({ refundableOnly: true }, filters.refundableOnly)}>
-              Kostenlos stornierbar
-            </Chip>
+            {!google && (
+              <Chip active={filters.refundableOnly} onClick={() => toggle({ refundableOnly: true }, filters.refundableOnly)}>
+                Kostenlos stornierbar
+              </Chip>
+            )}
             <Chip active={filters.minRating === 8} onClick={() => toggle({ minRating: 8 }, filters.minRating === 8)}>
               Bewertung 8+
             </Chip>
@@ -291,7 +323,7 @@ function SearchArea({ trip, stage, center }: { trip: Trip; stage: Stage; center:
             <Chip active={showUnavailable} danger onClick={() => setShowUnavailable(!showUnavailable)}>
               Ausgebuchte zeigen
             </Chip>
-            {splitCounts.length > 1 && (
+            {splitCounts.length > 1 && !google && (
               <Chip active={compareSplits} onClick={() => setCompareSplits(!compareSplits)}>
                 Aufteilungen vergleichen
               </Chip>
@@ -354,6 +386,7 @@ function SearchArea({ trip, stage, center }: { trip: Trip; stage: Stage; center:
                     nights={nights}
                     travelers={trip.travelers}
                     rooms={result!.rooms}
+                    google={google}
                     splits={splitPrices.get(hotel.hotelId)}
                     onPickRooms={pickRooms}
                     distanceKm={distanceOf(hotel)}
@@ -364,6 +397,21 @@ function SearchArea({ trip, stage, center }: { trip: Trip; stage: Stage; center:
                     onSelect={() => setSelectedId(hotel.hotelId)}
                   />
                 ))
+              )}
+              {search.hasNextPage && (
+                <Button
+                  variant="secondary"
+                  onClick={() => void search.fetchNextPage()}
+                  disabled={search.isFetchingNextPage}
+                  className="self-center"
+                >
+                  {search.isFetchingNextPage ? 'Lädt …' : 'Weitere Hotels laden (1 Google-Suche)'}
+                </Button>
+              )}
+              {search.isFetchNextPageError && (
+                <p className="text-center text-sm text-danger">
+                  {search.error instanceof ApiError ? search.error.message : 'Weitere Hotels konnten nicht geladen werden.'}
+                </p>
               )}
               {showUnavailable && (
                 <div className="mt-3 flex flex-col gap-3" aria-label="Ausgebuchte Hotels" role="group">
@@ -416,7 +464,14 @@ function SearchArea({ trip, stage, center }: { trip: Trip; stage: Stage; center:
         onClose={() => setAlternativesFor(null)}
         candidates={candidates}
         initialSelected={alternativesFor ?? []}
-        stay={{ checkin: stage.startDate, checkout: stage.endDate, adults: trip.travelers, rooms: params?.rooms ?? rooms }}
+        stay={{
+          checkin: stage.startDate,
+          checkout: stage.endDate,
+          adults: trip.travelers,
+          rooms: params?.rooms ?? rooms,
+          place: stage.name,
+        }}
+        perHotel={google}
         pickLabel="Merken"
         isPicked={isAlternativeSaved}
         onPick={saveAlternative}
@@ -435,7 +490,25 @@ function pinFor(
   return [{ id: hotel.hotelId, position: { latitude: hotel.latitude, longitude: hotel.longitude }, label, title, tone }]
 }
 
-function SetupHint() {
+function SetupHint({ provider }: { provider: HotelSearchStatus['provider'] }) {
+  if (provider === 'serpapi') {
+    return (
+      <section className="flex flex-col gap-3 rounded-[20px] border border-dashed border-line p-6">
+        <span className="flex size-12 items-center justify-center rounded-2xl bg-accent-soft text-accent">
+          <KeyRound size={22} />
+        </span>
+        <h3 className="text-lg font-extrabold">Hotelsuche einrichten</h3>
+        <p className="max-w-2xl text-[15px] leading-relaxed text-muted">
+          Die Hotelsuche nutzt Google Hotels über SerpApi (derselbe Key wie die Flugsuche). Hinterlege ihn einmal im Terminal (im Ordner
+          <code className="mx-1 rounded bg-surface-2 px-1.5 py-0.5 font-mono text-[13px]">backend/src/Urlaubsplanner.Api</code>) und starte
+          das Backend neu:
+        </p>
+        <pre className="overflow-x-auto rounded-xl bg-surface-2 p-4 font-mono text-[13px]">
+          dotnet user-secrets set "SerpApi:ApiKey" "…"
+        </pre>
+      </section>
+    )
+  }
   return (
     <section className="flex flex-col gap-3 rounded-[20px] border border-dashed border-line p-6">
       <span className="flex size-12 items-center justify-center rounded-2xl bg-accent-soft text-accent">

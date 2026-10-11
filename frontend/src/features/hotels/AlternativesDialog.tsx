@@ -12,6 +12,8 @@ import { alternativesByHotel, shiftLabel, type AlternativeOffer } from '../../li
 
 export const MAX_SHIFT_DAYS = 3
 const MAX_HOTELS = 20
+/** Google Hotels: jede Prüfung kostet eine Suche pro Hotel und Zeitraum – deshalb höchstens 2 Hotels (12 Suchen). */
+const MAX_HOTELS_GOOGLE = 2
 
 export interface AlternativeCandidate {
   hotelId: string
@@ -33,11 +35,13 @@ interface AlternativesDialogProps {
   pickLabel: string
   isPicked: (alternative: AlternativeOffer) => boolean
   onPick: (alternative: AlternativeOffer) => Promise<unknown>
+  /** Kostet eine Abfrage pro Hotel und Zeitraum (Google Hotels) statt eine pro Zeitraum. */
+  perHotel?: boolean
 }
 
 /**
  * Prüft ausgewählte Hotels für dieselbe Anzahl Nächte, bis zu 3 Tage früher oder später.
- * Kostet eine LiteAPI-Abfrage pro Zeitraum (höchstens 6) – egal wie viele Hotels ausgewählt sind.
+ * LiteAPI: eine Abfrage pro Zeitraum (höchstens 6), egal wie viele Hotels. Google Hotels: eine Suche pro Hotel und Zeitraum.
  */
 export function AlternativesDialog(props: AlternativesDialogProps) {
   return (
@@ -54,10 +58,21 @@ export function AlternativesDialog(props: AlternativesDialogProps) {
   )
 }
 
-function DialogBody({ candidates, initialSelected, autoStart, stay, pickLabel, isPicked, onPick, onClose }: AlternativesDialogProps) {
-  const [selected, setSelected] = useState<string[]>(() => initialSelected.slice(0, MAX_HOTELS))
+function DialogBody({
+  candidates,
+  initialSelected,
+  autoStart,
+  stay,
+  pickLabel,
+  isPicked,
+  onPick,
+  onClose,
+  perHotel = false,
+}: AlternativesDialogProps) {
+  const max = perHotel ? MAX_HOTELS_GOOGLE : MAX_HOTELS
+  const [selected, setSelected] = useState<string[]>(() => initialSelected.slice(0, max))
   // Bei autoStart gleich im Ergebnis-Schritt starten, ohne Auswahl aufzublitzen.
-  const [checkedIds, setCheckedIds] = useState<string[] | null>(() => (autoStart ? initialSelected.slice(0, MAX_HOTELS) : null))
+  const [checkedIds, setCheckedIds] = useState<string[] | null>(() => (autoStart ? initialSelected.slice(0, max) : null))
   const alternatives = useHotelAlternatives()
   const { mutate } = alternatives
   const started = useRef(false)
@@ -70,12 +85,22 @@ function DialogBody({ candidates, initialSelected, autoStart, stay, pickLabel, i
   useEffect(() => {
     if (autoStart && !started.current && initialSelected.length > 0) {
       started.current = true
-      mutate({ ...stay, hotelIds: initialSelected.slice(0, MAX_HOTELS), shiftDays: MAX_SHIFT_DAYS })
+      mutate({ ...stay, hotelIds: initialSelected.slice(0, max), shiftDays: MAX_SHIFT_DAYS })
     }
-  }, [autoStart, initialSelected, mutate, stay])
+  }, [autoStart, initialSelected, mutate, stay, max])
 
   if (checkedIds === null) {
-    return <SelectStep candidates={candidates} selected={selected} onChange={setSelected} onCancel={onClose} onRun={() => run(selected)} />
+    return (
+      <SelectStep
+        candidates={candidates}
+        selected={selected}
+        max={max}
+        perHotel={perHotel}
+        onChange={setSelected}
+        onCancel={onClose}
+        onRun={() => run(selected)}
+      />
+    )
   }
 
   return (
@@ -96,31 +121,44 @@ function DialogBody({ candidates, initialSelected, autoStart, stay, pickLabel, i
 function SelectStep({
   candidates,
   selected,
+  max,
+  perHotel,
   onChange,
   onCancel,
   onRun,
 }: {
   candidates: AlternativeCandidate[]
   selected: string[]
+  max: number
+  perHotel: boolean
   onChange: (ids: string[]) => void
   onCancel: () => void
   onRun: () => void
 }) {
   const unavailableIds = candidates.filter((c) => c.unavailable).map((c) => c.hotelId)
   const toggle = (id: string) =>
-    onChange(selected.includes(id) ? selected.filter((x) => x !== id) : selected.length < MAX_HOTELS ? [...selected, id] : selected)
+    onChange(selected.includes(id) ? selected.filter((x) => x !== id) : selected.length < max ? [...selected, id] : selected)
 
   return (
     <div className="flex flex-col gap-4">
       <p className="rounded-xl bg-surface-2 px-4 py-3 text-sm leading-relaxed text-muted">
-        Wähle die Hotels, die dich interessieren. Geprüft werden bis zu {MAX_SHIFT_DAYS * 2} Zeiträume – das sind höchstens{' '}
-        {MAX_SHIFT_DAYS * 2} API-Abfragen, egal wie viele Hotels du auswählst (max. {MAX_HOTELS}).
+        {perHotel ? (
+          <>
+            Wähle bis zu {max} Hotels. Geprüft werden bis zu {MAX_SHIFT_DAYS * 2} Zeiträume – bei Google kostet das eine Suche pro Hotel und
+            Zeitraum, also {Math.max(1, selected.length) * MAX_SHIFT_DAYS * 2} Google-Suchen für deine Auswahl.
+          </>
+        ) : (
+          <>
+            Wähle die Hotels, die dich interessieren. Geprüft werden bis zu {MAX_SHIFT_DAYS * 2} Zeiträume – das sind höchstens{' '}
+            {MAX_SHIFT_DAYS * 2} API-Abfragen, egal wie viele Hotels du auswählst (max. {max}).
+          </>
+        )}
       </p>
       <div className="flex flex-wrap items-center gap-2 text-sm">
         <span className="font-bold">{selected.length} ausgewählt</span>
         <span className="flex-1" />
         {unavailableIds.length > 0 && (
-          <button type="button" className={buttonClass('ghost', 'sm')} onClick={() => onChange(unavailableIds.slice(0, MAX_HOTELS))}>
+          <button type="button" className={buttonClass('ghost', 'sm')} onClick={() => onChange(unavailableIds.slice(0, max))}>
             Alle ausgebuchten
           </button>
         )}
@@ -131,7 +169,7 @@ function SelectStep({
       <ul className="flex max-h-[45dvh] flex-col gap-1.5 overflow-y-auto" aria-label="Hotels">
         {candidates.map((c) => {
           const checked = selected.includes(c.hotelId)
-          const full = !checked && selected.length >= MAX_HOTELS
+          const full = !checked && selected.length >= max
           return (
             <li key={c.hotelId}>
               <label

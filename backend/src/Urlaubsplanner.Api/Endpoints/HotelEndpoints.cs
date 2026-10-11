@@ -14,7 +14,11 @@ public sealed record HotelSearchBody(
     int Adults,
     int? Rooms,
     int? RadiusMeters,
-    IReadOnlyList<string>? HotelIds = null);
+    IReadOnlyList<string>? HotelIds = null,
+    string? Place = null);
+
+/// <param name="NextPage">Kennung aus dem vorigen Suchergebnis.</param>
+public sealed record HotelMoreBody(string NextPage);
 
 /// <param name="ShiftDays">Wie viele Tage früher/später geprüft wird (Standard 3).</param>
 public sealed record HotelAlternativesBody(
@@ -23,7 +27,8 @@ public sealed record HotelAlternativesBody(
     DateOnly Checkout,
     int Adults,
     int? Rooms,
-    int? ShiftDays);
+    int? ShiftDays,
+    string? Place = null);
 
 public static class HotelEndpoints
 {
@@ -35,12 +40,26 @@ public static class HotelEndpoints
         var hotels = app.MapGroup("/api/hotels").WithTags("Hotels");
 
         // Sagt dem Frontend, ob die Suche eingerichtet ist – ohne den Key preiszugeben.
-        hotels.MapGet("/status", (IHotelSearch search) => TypedResults.Ok(new { configured = search.IsConfigured }));
+        hotels.MapGet("/status", Status);
         hotels.MapPost("/search", Search);
+        hotels.MapPost("/more", More);
         hotels.MapPost("/nearby", Nearby);
         hotels.MapPost("/alternatives", Alternatives);
 
         return app;
+    }
+
+    private static async Task<IResult> Status(IHotelSearch search, CancellationToken ct)
+    {
+        var quota = search is IHotelSearchQuota q && search.IsConfigured ? await q.GetQuotaAsync(ct) : null;
+        return TypedResults.Ok(new
+        {
+            Configured = search.IsConfigured,
+            search.Provider,
+            // Google Hotels: 20 Hotels pro Seite, weitere auf Klick.
+            Paged = search is IPagedHotelSearch,
+            Quota = quota,
+        });
     }
 
     private static async Task<IResult> Search(HotelSearchBody body, IHotelSearch search, TimeProvider clock, CancellationToken ct)
@@ -55,7 +74,25 @@ public static class HotelEndpoints
             request.Nights,
             request.Rooms,
             request.RadiusMeters,
+            result.NextPage,
         });
+    }
+
+    /// <summary>Weitere Hotels zur selben Suche (nächste Ergebnisseite).</summary>
+    private static async Task<IResult> More(HotelMoreBody body, IHotelSearch search, CancellationToken ct)
+    {
+        if (search is not IPagedHotelSearch paged)
+        {
+            throw new DomainException("nextPage", "Diese Hotelsuche liefert alle Ergebnisse auf einmal.");
+        }
+
+        if (string.IsNullOrWhiteSpace(body.NextPage))
+        {
+            throw new DomainException("nextPage", "Fehlt.");
+        }
+
+        var result = await paged.NextPageAsync(body.NextPage, ct);
+        return TypedResults.Ok(new { result.Hotels, result.Sandbox, result.FetchedAt, result.NextPage });
     }
 
     /// <summary>Alle Hotels im Umkreis, auch ausgebuchte (für den Schalter „Ausgebuchte zeigen“).</summary>
@@ -81,7 +118,7 @@ public static class HotelEndpoints
 
         // Validiert Hotels, Personen und Zimmer einmal vorab; die Zeiträume selbst sind schon geprüft.
         var first = windows[0];
-        var baseRequest = HotelSearchRequest.ForHotels(body.HotelIds, first.Checkin, first.Checkout, body.Adults, RoomsOrDefault(body.Rooms, body.Adults), today);
+        var baseRequest = HotelSearchRequest.ForHotels(body.HotelIds, first.Checkin, first.Checkout, body.Adults, RoomsOrDefault(body.Rooms, body.Adults), today, body.Place);
 
         using var gate = new SemaphoreSlim(ParallelRequests);
         var results = await Task.WhenAll(windows.Select(async window =>
@@ -128,7 +165,7 @@ public static class HotelEndpoints
         var rooms = RoomsOrDefault(body.Rooms, body.Adults);
         if (body.HotelIds is { Count: > 0 })
         {
-            return HotelSearchRequest.ForHotels(body.HotelIds, body.Checkin, body.Checkout, body.Adults, rooms, today);
+            return HotelSearchRequest.ForHotels(body.HotelIds, body.Checkin, body.Checkout, body.Adults, rooms, today, body.Place);
         }
 
         if (body.Latitude is not { } lat || body.Longitude is not { } lng)
@@ -136,7 +173,7 @@ public static class HotelEndpoints
             throw new DomainException("latitude", "Für die Suche fehlt der Ort.");
         }
 
-        return HotelSearchRequest.Create(lat, lng, body.RadiusMeters ?? 3000, body.Checkin, body.Checkout, body.Adults, rooms, today);
+        return HotelSearchRequest.Create(lat, lng, body.RadiusMeters ?? 3000, body.Checkin, body.Checkout, body.Adults, rooms, today, body.Place);
     }
 
     private static int RoomsOrDefault(int? rooms, int adults) => Math.Max(1, rooms ?? (int)Math.Ceiling(adults / 2.0));
