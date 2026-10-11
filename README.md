@@ -4,7 +4,7 @@ Ein persönlicher Reiseplaner für mich und Freunde: mehrere Urlaube anlegen, pr
 Aktivitäten sammeln, Favoriten markieren, auswählen – und am Ende alles über eine Checkliste mit Buchungslinks
 einzeln buchen.
 
-## Stand: Phase 3 – Hotelsuche
+## Stand: Phase 4 – Flugsuche
 
 - Mehrere Reisen anlegen, bearbeiten, löschen
 - Etappen (Ort + Zeitraum) pro Reise, z. B. Lissabon → Porto → Algarve
@@ -18,7 +18,7 @@ einzeln buchen.
 - **Ortssuche** beim Tippen für Etappen, Hotels und Aktivitäten (Photon / OpenStreetMap), Treffer nahe der Etappe zuerst
 - **Karte** (MapLibre + OpenFreeMap) mit Preis-Pins wie bei Airbnb: Pin anklicken → Eintrag in der Liste, Eintrag anklicken → Pin
 - Übersicht mit **Route** zwischen den Etappen und Entfernungen („274 km bis Porto“)
-- Backend-Tests (xUnit): Domain, Speicher, Ortssuche, Hotelsuche und API
+- Backend-Tests (xUnit): Domain, Speicher, Ortssuche, Hotel- und Flugsuche (mit echter LiteAPI-Antwort), Flughäfen und API
 - **Hotelsuche** (LiteAPI) pro Etappe: Fotos, Sterne, Bewertung, Zimmer & Verpflegung, Gesamtpreis – als Liste und als Preis-Pins auf der Karte,
   mit Filtern (stornierbar, Bewertung 8+, 4 Sterne+) und Sortierung (Preis, Bewertung, Entfernung). „Merken“ speichert das Hotel als Favorit
   inklusive Foto und vorausgefülltem Buchungslink
@@ -32,6 +32,17 @@ einzeln buchen.
 - Links zu **Booking.com** (Daten, Personen und Zimmer vorausgefüllt) und **Google Hotels** (vergleicht viele Anbieter; Reisedaten
   vorausgefüllt über Googles inoffiziellen `ts`-Parameter, Personen bitte dort prüfen).
   Hinweis: LiteAPI und Booking.com haben getrennte Kontingente – „frei“ in der App heißt nicht immer „frei auf Booking.com“
+- **Flugsuche** (LiteAPI, gleicher Key wie Hotels) für die ganze Reise: **Hin & zurück**, **Gabelflug** (zurück von der letzten Etappe)
+  oder **Nur Hinflug**. Ziel- und Rückflughäfen werden aus den Etappen vorgeschlagen (nächster großer Flughafen), der Heimatflughafen
+  wird im Browser gemerkt
+- **Flughäfen im Umkreis** (100–250 km) zum Antippen und mehrere Flughäfen pro Seite – jede Kombination ist eine Suche (max. 8)
+- Flughafensuche nach Code, Stadt oder Ort (auch deutsche Namen wie „Lissabon“) – 3.244 Flughäfen aus [OurAirports](https://ourairports.com) (gemeinfrei)
+- Ergebnisse mit Zeiten, Dauer, Umstiegen, Airline, **Tarifen** (z. B. Light / Standard / Flex) mit Gepäck, Umbuchung und Erstattung;
+  Filter „Nur Direktflüge“ und „Mit Koffer“, Sortierung nach Preis, Flugzeit, Abflug
+- **Karte mit Flugbögen**: alle Strecken dezent, der gewählte Flug hervorgehoben; gemerkte Flüge ebenfalls als Bögen
+- **Andere Daten prüfen**: Preisleiste ±3 Tage (alle Flüge gemeinsam verschoben, gleiche Reisedauer, max. 6 Abfragen), Klick übernimmt die Daten
+- **Gemerkte Flüge neu prüfen**: gibt es genau diese Flüge noch, was kostet der Tarif jetzt?
+- Buchen über **Kayak** (Strecken, Daten, Personen und Klasse vorausgefüllt, auch Gabelflüge) oder **Google Flights**
 
 ## Roadmap
 
@@ -40,7 +51,7 @@ einzeln buchen.
 | 1 ✅ | Grundgerüst: Reisen, Etappen, manuelle Optionen, Status, Checkliste |
 | 2 ✅ | Karte (MapLibre) mit Preis-Pins, Ortssuche, Route, Backend-Tests |
 | 3 ✅ | Hotelsuche (LiteAPI) mit Preis-Pins auf der Karte |
-| 4 | Flugsuche (Ignav) – exakte Flughäfen oder Umkreissuche, Fallback-Links zu Google Flights/Skyscanner |
+| 4 ✅ | Flugsuche (LiteAPI) – exakte Flughäfen oder Umkreis, Gabelflüge, Tarife, Flugbögen auf der Karte |
 | 5 | Aktivitäten-Vorschläge (OpenTripMap, Wikivoyage) |
 | 6 | Dashboard mit Diagrammen und Zeitplan |
 | später | Accounts für Freunde, Kostenaufteilung, Preisalarm, Abstimmung, Export (.ics/PDF) |
@@ -150,7 +161,9 @@ Hinweise:
 - Gesucht wird pro Etappe rund um ihren Ort (Umkreis 1–10 km), mit deren Daten und der Personenzahl der Reise. Ergebnisse werden 15 Minuten gecacht.
 - Der Buchungslink ist eine vorausgefüllte Booking.com-Suche. Wer eine LiteAPI-White-Label-Seite einrichtet, trägt deren Domain in
   `appsettings.json` unter `LiteApi:WhitelabelDomain` ein – dann führen die Links direkt zum Hotel auf dieser Seite.
-- Weitere Einstellungen unter `LiteApi` in `appsettings.json`: `Currency` (EUR), `GuestNationality` (DE), `MaxHotels` (50).
+- Weitere Einstellungen unter `LiteApi` in `appsettings.json`: `Currency` (EUR), `GuestNationality` (DE), `MaxHotels` (50), `MaxRatesPerHotel` (10).
+- **Flüge** laufen über denselben Key. Die Sandbox liefert Testdaten; für echte Flugpreise muss LiteAPI Flüge für das Konto
+  freischalten (Anfrage im Dashboard über *Request Assistance*).
 
 ### Daten
 
@@ -189,6 +202,13 @@ Dieselben Checks laufen bei jedem Push in GitHub Actions.
 | GET | `/api/hotels/status` | Ist ein LiteAPI-Key hinterlegt? |
 | POST | `/api/hotels/search` | Hotelsuche: `latitude`, `longitude`, `checkin`, `checkout`, `adults`, optional `rooms`, `radiusMeters` – oder statt Ort `hotelIds` |
 | POST | `/api/hotels/nearby` | Alle Hotels im Umkreis, auch ausgebuchte (ohne Preis) |
+| GET | `/api/airports?q=…` | Flughafensuche (Code, Stadt, Name; sonst über die Ortssuche in der Nähe) |
+| GET | `/api/airports/near?lat=…&lon=…&radiusKm=…` | Flughäfen im Umkreis |
+| GET | `/api/airports/lookup?codes=STR,LIS` | Flughäfen nach Code |
+| GET | `/api/flights/status` | Ist ein LiteAPI-Key hinterlegt? |
+| POST | `/api/flights/search` | Flugsuche: `legs` [{`origins`, `destinations`, `date`}], `adults`, optional `cabin` |
+| POST | `/api/flights/alternatives` | Günstigster Preis für ±1–3 Tage verschobene Daten: `legs` [{`origin`, `destination`, `date`}], `adults` |
+| POST | `/api/flights/recheck` | Gemerkten Flug neu prüfen: `signature` (ExternalId der Option), `adults` |
 | POST | `/api/hotels/alternatives` | Ausweichdaten: `hotelIds`, `checkin`, `checkout`, `adults`, optional `rooms`, `shiftDays` (Standard 3) |
 
 Fehler kommen als Problem Details (RFC 9457), Eingabefehler mit dem betroffenen Feld, z. B.

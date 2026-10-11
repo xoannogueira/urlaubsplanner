@@ -15,6 +15,10 @@ import { toLatLng } from '../../lib/geo'
 import { optionPins, stageMarkers } from '../../lib/mapData'
 import { kindLabels, sortOptions } from '../../lib/options'
 import { canRecheck } from '../../lib/hotels'
+import { canRecheckFlight, parseSignature, savedFlightArcs } from '../../lib/flights'
+import { useAirportLookup } from '../../api/airports'
+import { FlightRecheck } from '../flights/FlightRecheck'
+import { FlightSearchView } from '../flights/FlightSearchView'
 import { HotelRecheck } from '../hotels/HotelRecheck'
 import { HotelSearchView } from '../hotels/HotelSearchView'
 import { OptionCard } from './OptionCard'
@@ -29,7 +33,6 @@ const icons: Record<OptionKind, ReactNode> = {
 }
 
 const upcoming: Partial<Record<OptionKind, string>> = {
-  Flight: 'Die automatische Flugsuche mit Umkreis-Flughäfen und Karte kommt in Phase 4.',
   Activity: 'Vorschläge für Sehenswürdigkeiten und Aktivitäten kommen in Phase 5.',
 }
 
@@ -46,9 +49,10 @@ export function OptionsPage({ kind }: { kind: OptionKind }) {
   const [toDelete, setToDelete] = useState<TripOption | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [view, setView] = useState<'list' | 'map'>('list')
-  // Nur bei Hotels: gespeicherte Hotels oder Live-Suche
+  // Hotels und Flüge: gespeicherte Einträge oder Live-Suche
   const [mode, setMode] = useState<'saved' | 'search'>('saved')
-  const searching = kind === 'Hotel' && mode === 'search'
+  const searchable = kind === 'Hotel' || kind === 'Flight'
+  const searching = searchable && mode === 'search'
   const navigate = useNavigate()
   // Die Suche braucht eine konkrete Etappe: die gewählte, sonst die erste mit Ort.
   const searchStage = trip.stages.find((s) => s.id === stageFilter) ?? trip.stages.find((s) => s.latitude != null) ?? trip.stages[0] ?? null
@@ -62,13 +66,18 @@ export function OptionsPage({ kind }: { kind: OptionKind }) {
   const ofKind = useMemo(() => trip.options.filter((o) => o.kind === kind), [trip.options, kind])
   const stageById = useMemo(() => new Map(trip.stages.map((s) => [s.id, s])), [trip.stages])
 
-  const visible = sortOptions(
-    ofKind.filter((o) => {
-      const stageOk = stageFilter === ALL || (stageFilter === GENERAL ? !o.stageId : o.stageId === stageFilter)
-      const statusOk =
-        statusFilter === 'all' || (statusFilter === 'Favorite' ? o.status === 'Favorite' : o.status === 'Selected' || o.status === 'Booked')
-      return stageOk && statusOk
-    }),
+  const visible = useMemo(
+    () =>
+      sortOptions(
+        ofKind.filter((o) => {
+          const stageOk = stageFilter === ALL || (stageFilter === GENERAL ? !o.stageId : o.stageId === stageFilter)
+          const statusOk =
+            statusFilter === 'all' ||
+            (statusFilter === 'Favorite' ? o.status === 'Favorite' : o.status === 'Selected' || o.status === 'Booked')
+          return stageOk && statusOk
+        }),
+      ),
+    [ofKind, stageFilter, statusFilter],
   )
 
   const count = (pred: (o: TripOption) => boolean) => ofKind.filter(pred).length
@@ -80,7 +89,21 @@ export function OptionsPage({ kind }: { kind: OptionKind }) {
 
   // Flüge haben meist keinen festen Ort – die Karte erscheint dort nur, wenn es Punkte gibt.
   const showMap = kind !== 'Flight' || ofKind.some((o) => toLatLng(o))
-  const pins = useMemo(() => optionPins(visible), [visible])
+  // Flüge aus der Suche erscheinen als Bögen (siehe unten) – ein Preis-Pin läge dort genau auf dem Flughafen.
+  const pins = useMemo(
+    () => optionPins(kind === 'Flight' ? visible.filter((o) => !parseSignature(o.externalId)) : visible),
+    [kind, visible],
+  )
+  // Gemerkte Flüge als Bögen zwischen den Flughäfen (aus der gespeicherten Kennung).
+  const flightCodes = useMemo(
+    () => (kind === 'Flight' ? visible.flatMap((o) => o.externalId?.match(/[A-Z]{3}(?=[-@])/g) ?? []) : []),
+    [kind, visible],
+  )
+  const airportLookup = useAirportLookup(flightCodes)
+  const flightArcs = useMemo(
+    () => (kind === 'Flight' ? savedFlightArcs(visible, airportLookup.data ?? [], selectedId) : { arcs: [], airports: [] }),
+    [kind, visible, airportLookup.data, selectedId],
+  )
   const mapStages = useMemo(
     () => stageMarkers(trip.stages).filter((s) => stageFilter === ALL || stageFilter === GENERAL || s.id === stageFilter),
     [trip.stages, stageFilter],
@@ -100,17 +123,26 @@ export function OptionsPage({ kind }: { kind: OptionKind }) {
 
   return (
     <div className="flex flex-col gap-5 px-4 md:px-8 pb-10 pt-5">
-      {kind === 'Hotel' && (
-        <div role="tablist" aria-label="Hotels" className="flex self-start rounded-xl bg-surface-2 p-1">
-          <ModeTab active={!searching} onClick={() => setMode('saved')} icon={<BedDouble size={16} />}>
+      {searchable && (
+        <div role="tablist" aria-label={labels.plural} className="flex self-start rounded-xl bg-surface-2 p-1">
+          <ModeTab
+            active={!searching}
+            onClick={() => setMode('saved')}
+            icon={kind === 'Flight' ? <Plane size={16} /> : <BedDouble size={16} />}
+          >
             Gespeichert · {ofKind.length}
           </ModeTab>
           <ModeTab active={searching} onClick={() => setMode('search')} icon={<Search size={16} />}>
-            Hotels suchen
+            {kind === 'Flight' ? 'Flüge suchen' : 'Hotels suchen'}
           </ModeTab>
         </div>
       )}
-      <div role="tablist" aria-label="Etappen" className="-mx-1 flex gap-2.5 overflow-x-auto px-1 pb-1">
+      {/* Flüge werden für die ganze Reise gesucht – dort keine Etappen-Auswahl. */}
+      <div
+        role="tablist"
+        aria-label="Etappen"
+        className={clsx('-mx-1 flex gap-2.5 overflow-x-auto px-1 pb-1', searching && kind === 'Flight' && 'hidden')}
+      >
         {!searching && (
           <StageTab active={stageFilter === ALL} onClick={() => setStageFilter(ALL)} title="Alle" sub={`${ofKind.length} gespeichert`} />
         )}
@@ -137,7 +169,9 @@ export function OptionsPage({ kind }: { kind: OptionKind }) {
         )}
       </div>
 
-      {searching ? (
+      {searching && kind === 'Flight' ? (
+        <FlightSearchView trip={trip} />
+      ) : searching ? (
         <HotelSearchView trip={trip} stage={searchStage} onEditStage={() => void navigate(`/trips/${trip.id}`)} />
       ) : (
         <>
@@ -199,7 +233,13 @@ export function OptionsPage({ kind }: { kind: OptionKind }) {
                       onDelete={() => setToDelete(option)}
                       selected={showMap && option.id === selectedId}
                       onSelect={showMap && toLatLng(option) ? () => setSelectedId(option.id) : undefined}
-                      extra={canRecheck(option) ? <HotelRecheck trip={trip} option={option} /> : undefined}
+                      extra={
+                        canRecheck(option) ? (
+                          <HotelRecheck trip={trip} option={option} />
+                        ) : canRecheckFlight(option) ? (
+                          <FlightRecheck trip={trip} option={option} />
+                        ) : undefined
+                      }
                     />
                   ))}
                 </div>
@@ -219,6 +259,8 @@ export function OptionsPage({ kind }: { kind: OptionKind }) {
                   <TripMap
                     label={`Karte: ${labels.plural}`}
                     pins={pins}
+                    arcs={flightArcs.arcs}
+                    airports={flightArcs.airports}
                     stages={mapStages}
                     selectedId={selectedId}
                     onSelect={selectFromMap}

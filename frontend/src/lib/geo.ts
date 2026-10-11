@@ -45,3 +45,25 @@ export function distanceKm(a: LatLng, b: LatLng): number {
 export function formatDistance(km: number): string {
   return km < 1 ? `${Math.round(km * 1000)} m` : `${km.toLocaleString('de-DE', { maximumFractionDigits: km < 10 ? 1 : 0 })} km`
 }
+
+/**
+ * Bogen zwischen zwei Punkten für Fluglinien auf der Karte: eine leicht gekrümmte Kurve (quadratische Bézierkurve),
+ * damit Hin- und Rückflug nicht übereinander liegen. Liefert [Länge, Breite]-Paare für GeoJSON.
+ */
+export function arcPath(from: LatLng, to: LatLng, steps = 32): [number, number][] {
+  const dx = to.longitude - from.longitude
+  const dy = to.latitude - from.latitude
+  // Kontrollpunkt seitlich der Mitte, immer zur gleichen Seite der Flugrichtung.
+  const cx = from.longitude + dx / 2 - dy * 0.2
+  const cy = from.latitude + dy / 2 + dx * 0.2
+  const points: [number, number][] = []
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps
+    const u = 1 - t
+    points.push([
+      u * u * from.longitude + 2 * u * t * cx + t * t * to.longitude,
+      u * u * from.latitude + 2 * u * t * cy + t * t * to.latitude,
+    ])
+  }
+  return points
+}
