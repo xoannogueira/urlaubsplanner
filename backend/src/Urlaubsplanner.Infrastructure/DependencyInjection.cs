@@ -1,9 +1,11 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Urlaubsplanner.Domain.Activities;
 using Urlaubsplanner.Domain.Flights;
 using Urlaubsplanner.Domain.Hotels;
 using Urlaubsplanner.Domain.Places;
 using Urlaubsplanner.Domain.Trips;
+using Urlaubsplanner.Infrastructure.Activities;
 using Urlaubsplanner.Infrastructure.Flights;
 using Urlaubsplanner.Infrastructure.Hotels;
 using Urlaubsplanner.Infrastructure.Persistence;
@@ -42,6 +44,14 @@ public static class DependencyInjection
             http.Timeout = TimeSpan.FromSeconds(45);
         });
         services.AddSingleton<IAirportDirectory, AirportDirectory>();
+
+        // Aktivitäten aus OpenStreetMap + Wikidata (frei, ohne Key). Beide bitten um einen erkennbaren User-Agent.
+        services.Configure<ActivityOptions>(configuration.GetSection(ActivityOptions.Section));
+        services.AddHttpClient<IActivitySearch, OsmActivitySearch>(http =>
+        {
+            http.Timeout = TimeSpan.FromSeconds(35);
+            http.DefaultRequestHeaders.UserAgent.ParseAdd("Urlaubsplanner/1.0 (privates Hobbyprojekt; https://github.com/xoannogueira/urlaubsplanner)");
+        });
 
         return services;
     }

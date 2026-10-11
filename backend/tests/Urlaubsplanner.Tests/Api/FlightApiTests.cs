@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
+using Urlaubsplanner.Domain.Activities;
 using Urlaubsplanner.Domain.Flights;
 using Urlaubsplanner.Domain.Places;
 
@@ -53,6 +54,21 @@ public sealed class FlightApiTests : IDisposable
         }
     }
 
+    private sealed class FakeActivitySearch : IActivitySearch
+    {
+        public ActivitySearchRequest? Last { get; private set; }
+
+        public Task<ActivitySearchResult> SearchAsync(ActivitySearchRequest request, CancellationToken cancellationToken)
+        {
+            Last = request;
+            var museum = new ActivitySuggestion(
+                "node/4", "Museu Coleção Berardo", ActivityCategory.Museum, 38.6955, -9.2085, 0.2, "Kunstmuseum", null, null, null, "Tu-Su 10:00-19:00", true, 10, "Q1053052");
+            return Task.FromResult(new ActivitySearchResult([museum], DateTimeOffset.UnixEpoch));
+        }
+    }
+
+    private readonly FakeActivitySearch _activities = new();
+
     private sealed class FakePlaceSearch : IPlaceSearch
     {
         public Task<IReadOnlyList<Place>> SearchAsync(string query, Coordinates? near, CancellationToken cancellationToken) =>
@@ -64,7 +80,7 @@ public sealed class FlightApiTests : IDisposable
         _factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
         {
             builder.UseSetting("Storage:FilePath", _dataFile);
-            builder.ConfigureTestServices(services => services.AddSingleton<IFlightSearch>(_flights).AddSingleton<IPlaceSearch>(new FakePlaceSearch()));
+            builder.ConfigureTestServices(services => services.AddSingleton<IFlightSearch>(_flights).AddSingleton<IPlaceSearch>(new FakePlaceSearch()).AddSingleton<IActivitySearch>(_activities));
         });
         _client = _factory.CreateClient();
     }
@@ -201,5 +217,30 @@ public sealed class FlightApiTests : IDisposable
 
         var lookup = await ReadJson(await _client.GetAsync("/api/airports/lookup?codes=STR,lis,XXX"));
         Assert.Equal(2, lookup.GetArrayLength());
+    }
+
+    [Fact]
+    public async Task Aktivitaeten_Vorschlaege_mit_Kategorie_und_begrenztem_Umkreis()
+    {
+        var body = await ReadJson(await _client.GetAsync("/api/activities?lat=38.6970&lon=-9.2070&radiusMeters=999999"));
+
+        Assert.Equal("Museum", body.GetProperty("activities")[0].GetProperty("category").GetString());
+        Assert.Equal(20000, body.GetProperty("radiusMeters").GetInt32());
+        Assert.Equal(20000, _activities.Last!.RadiusMeters);
+
+        var missing = await _client.GetAsync("/api/activities");
+        Assert.Equal(HttpStatusCode.BadRequest, missing.StatusCode);
+    }
+
+    [Fact]
+    public async Task Vorschlag_laesst_sich_als_Aktivitaet_merken()
+    {
+        var trip = await ReadJson(await _client.PostAsJsonAsync("/api/trips", new { name = "Portugal", travelers = 2 }));
+        var id = trip.GetProperty("id").GetString();
+
+        var response = await _client.PostAsJsonAsync($"/api/trips/{id}/options", new { kind = "Activity", title = "Museu Coleção Berardo", provider = "osm", externalId = "node/4" });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("osm", (await ReadJson(response)).GetProperty("options")[0].GetProperty("provider").GetString());
     }
 }
