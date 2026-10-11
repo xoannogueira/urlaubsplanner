@@ -80,13 +80,14 @@ Alle Befehle laufen im **Terminal auf dem MacBook**.
 ### Einmalig installieren
 
 1. **.NET 10 SDK**: <https://dotnet.microsoft.com/download/dotnet/10.0> (macOS-Installer, Apple Silicon = Arm64)
-2. **Node.js 22 LTS**: <https://nodejs.org> oder `brew install node@22`
+2. **Node.js 24 LTS** (bringt npm 11 mit): <https://nodejs.org> oder `brew install node@24`
 
 Prüfen:
 
 ```bash
 dotnet --version   # 10.x
-node --version     # v22.x
+node --version     # v24.x
+npm --version      # 11.x
 ```
 
 ### Entwickeln (zwei Terminal-Fenster)
@@ -102,7 +103,7 @@ Terminal 2 – Frontend:
 
 ```bash
 cd urlaubsplanner/frontend
-npm install        # nur beim ersten Mal oder nach Änderungen an package.json
+npm ci             # installiert exakt die Versionen aus package-lock.json (ändert sie nie)
 npm run dev
 ```
 
