@@ -43,7 +43,9 @@ public sealed partial class LiteApiHotelSearch(
     TimeProvider clock,
     ILogger<LiteApiHotelSearch> logger) : IHotelSearch
 {
+    private const int MaxListedHotels = 200;
     private static readonly TimeSpan CacheDuration = TimeSpan.FromMinutes(15);
+    private static readonly TimeSpan ListCacheDuration = TimeSpan.FromHours(12);
 
     internal static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
     {
@@ -58,14 +60,12 @@ public sealed partial class LiteApiHotelSearch(
     public async Task<HotelSearchResult> SearchAsync(HotelSearchRequest request, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
-        if (!IsConfigured)
-        {
-            throw new HotelSearchNotConfiguredException();
-        }
+        EnsureConfigured();
 
-        var cacheKey = string.Create(
-            CultureInfo.InvariantCulture,
-            $"liteapi:{request.Center.Latitude:F4},{request.Center.Longitude:F4}:{request.RadiusMeters}:{request.Checkin}:{request.Checkout}:{string.Join('-', request.AdultsPerRoom())}");
+        var target = request.Center is { } c
+            ? string.Create(CultureInfo.InvariantCulture, $"{c.Latitude:F4},{c.Longitude:F4}:{request.RadiusMeters}")
+            : "ids:" + string.Join(',', request.HotelIds);
+        var cacheKey = $"liteapi:rates:{target}:{request.Checkin:O}:{request.Checkout:O}:{string.Join('-', request.AdultsPerRoom())}";
         if (cache.TryGetValue(cacheKey, out HotelSearchResult? cached) && cached is not null)
         {
             return cached;
@@ -75,37 +75,7 @@ public sealed partial class LiteApiHotelSearch(
         {
             Content = JsonContent.Create(BuildRequest(request), options: Json),
         };
-        message.Headers.Add("X-API-Key", _options.ApiKey);
-
-        RatesResponse? body;
-        try
-        {
-            using var response = await http.SendAsync(message, cancellationToken).ConfigureAwait(false);
-            if (response.StatusCode == HttpStatusCode.NoContent)
-            {
-                body = null; // keine Verfügbarkeit
-            }
-            else if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
-            {
-                throw new HotelSearchUnavailableException("LiteAPI lehnt den API-Key ab. Ist er richtig hinterlegt?");
-            }
-            else if (!response.IsSuccessStatusCode)
-            {
-                var detail = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-                LogFailedStatus((int)response.StatusCode, Truncate(detail, 300));
-                throw new HotelSearchUnavailableException($"LiteAPI hat mit Fehler {(int)response.StatusCode} geantwortet.");
-            }
-            else
-            {
-                body = await response.Content.ReadFromJsonAsync<RatesResponse>(Json, cancellationToken).ConfigureAwait(false);
-            }
-        }
-        // Zeitüberschreitung = TaskCanceledException, aber nur wenn nicht der Aufrufer selbst abgebrochen hat.
-        catch (Exception e) when (e is HttpRequestException or JsonException or TaskCanceledException && !cancellationToken.IsCancellationRequested)
-        {
-            LogFailed(e);
-            throw new HotelSearchUnavailableException("Die Hotelsuche ist gerade nicht erreichbar.", e);
-        }
+        var body = await SendAsync<RatesResponse>(message, cancellationToken).ConfigureAwait(false);
 
         var result = new HotelSearchResult(
             ToOffers(body, request, _options.WhitelabelDomain),
@@ -115,21 +85,119 @@ public sealed partial class LiteApiHotelSearch(
         return result;
     }
 
-    internal object BuildRequest(HotelSearchRequest request) => new
+    public async Task<IReadOnlyList<HotelListing>> ListAsync(HotelSearchRequest request, CancellationToken cancellationToken)
     {
-        latitude = request.Center.Latitude,
-        longitude = request.Center.Longitude,
-        radius = request.RadiusMeters,
-        checkin = request.Checkin.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
-        checkout = request.Checkout.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
-        currency = _options.Currency,
-        guestNationality = _options.GuestNationality,
-        occupancies = request.AdultsPerRoom().Select(adults => new { adults }).ToList(),
-        maxRatesPerHotel = 1,
-        limit = _options.MaxHotels,
-        timeout = 8,
-        includeHotelData = true,
-    };
+        ArgumentNullException.ThrowIfNull(request);
+        EnsureConfigured();
+        var center = request.Center ?? throw new ArgumentException("Die Hotelliste braucht eine Umkreissuche.", nameof(request));
+
+        // Hotelstammdaten ändern sich selten – ein halber Tag Cache reicht und spart Abfragen.
+        var radius = Math.Max(1000, request.RadiusMeters);
+        var cacheKey = string.Create(CultureInfo.InvariantCulture, $"liteapi:list:{center.Latitude:F4},{center.Longitude:F4}:{radius}");
+        if (!cache.TryGetValue(cacheKey, out List<ListedHotel>? hotels) || hotels is null)
+        {
+            var url = string.Create(
+                CultureInfo.InvariantCulture,
+                $"data/hotels?latitude={center.Latitude}&longitude={center.Longitude}&radius={radius}&limit={MaxListedHotels}&timeout=8");
+            using var message = new HttpRequestMessage(HttpMethod.Get, url);
+            var body = await SendAsync<HotelListResponse>(message, cancellationToken).ConfigureAwait(false);
+            hotels = body?.Data ?? [];
+            cache.Set(cacheKey, hotels, ListCacheDuration);
+        }
+
+        return ToListings(hotels, request);
+    }
+
+    internal static List<HotelListing> ToListings(IEnumerable<ListedHotel> hotels, HotelSearchRequest request) =>
+    [
+        .. hotels
+            .Where(h => !string.IsNullOrWhiteSpace(h.Id) && !string.IsNullOrWhiteSpace(h.Name))
+            .DistinctBy(h => h.Id)
+            .Select(h => new HotelListing(
+                h.Id!,
+                h.Name!.Trim(),
+                NullIfEmpty(h.Address),
+                h.Latitude,
+                h.Longitude,
+                h.Rating is > 0 ? h.Rating : null,
+                h.ReviewCount is > 0 ? h.ReviewCount : null,
+                h.Stars is > 0 ? h.Stars : null,
+                NullIfEmpty(h.MainPhoto) ?? NullIfEmpty(h.Thumbnail),
+                HotelBookingLinks.BookingCom(h.Name.Trim(), h.City, request),
+                HotelBookingLinks.Google(h.Name.Trim(), h.City))),
+    ];
+
+    private void EnsureConfigured()
+    {
+        if (!IsConfigured)
+        {
+            throw new HotelSearchNotConfiguredException();
+        }
+    }
+
+    /// <summary>Schickt die Anfrage mit API-Key; 204 (keine Verfügbarkeit) ergibt null.</summary>
+    private async Task<T?> SendAsync<T>(HttpRequestMessage message, CancellationToken cancellationToken)
+        where T : class
+    {
+        message.Headers.Add("X-API-Key", _options.ApiKey);
+        try
+        {
+            using var response = await http.SendAsync(message, cancellationToken).ConfigureAwait(false);
+            if (response.StatusCode == HttpStatusCode.NoContent)
+            {
+                return null;
+            }
+
+            if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
+            {
+                throw new HotelSearchUnavailableException("LiteAPI lehnt den API-Key ab. Ist er richtig hinterlegt?");
+            }
+
+            if (!response.IsSuccessStatusCode)
+            {
+                var detail = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+                LogFailedStatus((int)response.StatusCode, Truncate(detail, 300));
+                throw new HotelSearchUnavailableException($"LiteAPI hat mit Fehler {(int)response.StatusCode} geantwortet.");
+            }
+
+            return await response.Content.ReadFromJsonAsync<T>(Json, cancellationToken).ConfigureAwait(false);
+        }
+        // Zeitüberschreitung = TaskCanceledException, aber nur wenn nicht der Aufrufer selbst abgebrochen hat.
+        catch (Exception e) when (e is HttpRequestException or JsonException or TaskCanceledException && !cancellationToken.IsCancellationRequested)
+        {
+            LogFailed(e);
+            throw new HotelSearchUnavailableException("Die Hotelsuche ist gerade nicht erreichbar.", e);
+        }
+    }
+
+    internal object BuildRequest(HotelSearchRequest request)
+    {
+        var body = new Dictionary<string, object>
+        {
+            ["checkin"] = request.Checkin.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+            ["checkout"] = request.Checkout.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+            ["currency"] = _options.Currency,
+            ["guestNationality"] = _options.GuestNationality,
+            ["occupancies"] = request.AdultsPerRoom().Select(adults => new { adults }).ToList(),
+            ["maxRatesPerHotel"] = 1,
+            ["timeout"] = 8,
+            ["includeHotelData"] = true,
+        };
+
+        if (request.Center is { } center)
+        {
+            body["latitude"] = center.Latitude;
+            body["longitude"] = center.Longitude;
+            body["radius"] = request.RadiusMeters;
+            body["limit"] = _options.MaxHotels;
+        }
+        else
+        {
+            body["hotelIds"] = request.HotelIds;
+        }
+
+        return body;
+    }
 
     /// <summary>Verbindet Preise (data) mit Hoteldaten (hotels) und nimmt pro Hotel das günstigste Angebot.</summary>
     internal static List<HotelOffer> ToOffers(RatesResponse? body, HotelSearchRequest request, string? whitelabelDomain)
@@ -174,7 +242,8 @@ public sealed partial class LiteApiHotelSearch(
                 NullIfEmpty(rate?.Name),
                 NullIfEmpty(rate?.BoardName),
                 string.Equals(rate?.CancellationPolicies?.RefundableTag, "RFN", StringComparison.OrdinalIgnoreCase),
-                HotelBookingLinks.For(entry.HotelId, hotel.Name.Trim(), hotel.CityName, request, whitelabelDomain)));
+                HotelBookingLinks.For(entry.HotelId, hotel.Name.Trim(), hotel.CityName, request, whitelabelDomain),
+                HotelBookingLinks.Google(hotel.Name.Trim(), hotel.CityName)));
         }
 
         return [.. offers.OrderBy(o => o.TotalPrice)];
@@ -235,3 +304,19 @@ internal sealed record HotelData(
     double? Rating,
     double? Stars,
     [property: JsonPropertyName("review_count")] int? ReviewCount);
+
+// Antwortformat von GET /data/hotels.
+internal sealed record HotelListResponse(List<ListedHotel>? Data);
+
+internal sealed record ListedHotel(
+    string? Id,
+    string? Name,
+    [property: JsonPropertyName("main_photo")] string? MainPhoto,
+    string? Thumbnail,
+    string? Address,
+    string? City,
+    double? Latitude,
+    double? Longitude,
+    double? Rating,
+    double? Stars,
+    int? ReviewCount);

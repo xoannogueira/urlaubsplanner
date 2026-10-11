@@ -137,6 +137,20 @@ public sealed class TripTests
     }
 
     [Fact]
+    public void Preis_bestaetigen_setzt_Pruefzeitpunkt_auch_ohne_Aenderung()
+    {
+        var trip = NewTrip();
+        var option = trip.AddOption(new OptionData(OptionKind.Hotel, "Hotel", Price: 612m), Now);
+        var later = Now.AddDays(30);
+
+        trip.ConfirmOptionPrice(option.Id, 612m, later);
+
+        Assert.Equal(612m, option.Price);
+        Assert.Equal(later, option.PriceCheckedAt);
+        Assert.Throws<DomainException>(() => trip.ConfirmOptionPrice(option.Id, -5m, later));
+    }
+
+    [Fact]
     public void Koordinaten_nur_zusammen_und_im_gueltigen_Bereich()
     {
         var trip = NewTrip();

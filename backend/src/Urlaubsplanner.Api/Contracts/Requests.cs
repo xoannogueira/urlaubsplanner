@@ -50,3 +50,6 @@ public sealed record OptionRequest(
 }
 
 public sealed record StatusRequest(OptionStatus Status);
+
+/// <summary>Neu geprüfter Preis einer Option (z. B. nach „Verfügbarkeit prüfen“).</summary>
+public sealed record PriceRequest(decimal Price);

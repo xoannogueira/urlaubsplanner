@@ -127,6 +127,14 @@ public sealed class TripOption
 
     internal void Update(OptionData data, DateTimeOffset now) => Apply(data, now);
 
+    /// <summary>Preis wurde (neu) geprüft – setzt den Prüfzeitpunkt auch dann, wenn der Preis gleich geblieben ist.</summary>
+    internal void ConfirmPrice(decimal price, DateTimeOffset now)
+    {
+        Price = Guard.OptionalPrice(price, "price");
+        PriceCheckedAt = now;
+        UpdatedAt = now;
+    }
+
     internal void ChangeStatus(OptionStatus status, DateTimeOffset now)
     {
         if (!Enum.IsDefined(status))
