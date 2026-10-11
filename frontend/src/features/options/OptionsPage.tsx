@@ -16,6 +16,7 @@ import { optionPins, stageMarkers } from '../../lib/mapData'
 import { kindLabels, sortOptions } from '../../lib/options'
 import { canRecheck } from '../../lib/hotels'
 import { canRecheckFlight, parseSignature, savedFlightArcs } from '../../lib/flights'
+import { ActivitySuggestionsView } from '../activities/ActivitySuggestionsView'
 import { useAirportLookup } from '../../api/airports'
 import { FlightRecheck } from '../flights/FlightRecheck'
 import { FlightSearchView } from '../flights/FlightSearchView'
@@ -30,10 +31,6 @@ const icons: Record<OptionKind, ReactNode> = {
   Activity: <Compass size={22} />,
   Transport: <Plane size={22} />,
   Other: <Compass size={22} />,
-}
-
-const upcoming: Partial<Record<OptionKind, string>> = {
-  Activity: 'Vorschläge für Sehenswürdigkeiten und Aktivitäten kommen in Phase 5.',
 }
 
 type StatusFilter = 'all' | 'Favorite' | 'chosen'
@@ -51,7 +48,7 @@ export function OptionsPage({ kind }: { kind: OptionKind }) {
   const [view, setView] = useState<'list' | 'map'>('list')
   // Hotels und Flüge: gespeicherte Einträge oder Live-Suche
   const [mode, setMode] = useState<'saved' | 'search'>('saved')
-  const searchable = kind === 'Hotel' || kind === 'Flight'
+  const searchable = kind === 'Hotel' || kind === 'Flight' || kind === 'Activity'
   const searching = searchable && mode === 'search'
   const navigate = useNavigate()
   // Die Suche braucht eine konkrete Etappe: die gewählte, sonst die erste mit Ort.
@@ -128,12 +125,12 @@ export function OptionsPage({ kind }: { kind: OptionKind }) {
           <ModeTab
             active={!searching}
             onClick={() => setMode('saved')}
-            icon={kind === 'Flight' ? <Plane size={16} /> : <BedDouble size={16} />}
+            icon={kind === 'Flight' ? <Plane size={16} /> : kind === 'Activity' ? <Compass size={16} /> : <BedDouble size={16} />}
           >
             Gespeichert · {ofKind.length}
           </ModeTab>
           <ModeTab active={searching} onClick={() => setMode('search')} icon={<Search size={16} />}>
-            {kind === 'Flight' ? 'Flüge suchen' : 'Hotels suchen'}
+            {kind === 'Flight' ? 'Flüge suchen' : kind === 'Activity' ? 'Vorschläge' : 'Hotels suchen'}
           </ModeTab>
         </div>
       )}
@@ -171,6 +168,8 @@ export function OptionsPage({ kind }: { kind: OptionKind }) {
 
       {searching && kind === 'Flight' ? (
         <FlightSearchView trip={trip} />
+      ) : searching && kind === 'Activity' ? (
+        <ActivitySuggestionsView trip={trip} stage={searchStage} onEditStage={() => void navigate(`/trips/${trip.id}`)} />
       ) : searching ? (
         <HotelSearchView trip={trip} stage={searchStage} onEditStage={() => void navigate(`/trips/${trip.id}`)} />
       ) : (
@@ -285,10 +284,6 @@ export function OptionsPage({ kind }: { kind: OptionKind }) {
               </aside>
             )}
           </div>
-
-          {upcoming[kind] && (
-            <p className="rounded-2xl border border-dashed border-line px-4 py-3 text-[13px] text-muted">{upcoming[kind]}</p>
-          )}
         </>
       )}
 
