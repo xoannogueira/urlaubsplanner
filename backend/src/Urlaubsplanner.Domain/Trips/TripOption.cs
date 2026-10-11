@@ -7,7 +7,7 @@ namespace Urlaubsplanner.Domain.Trips;
 public sealed class TripOption
 {
     /// <summary>Erlaubte Herkunft einer Option. "manual" = selbst eingetragen.</summary>
-    public static readonly IReadOnlySet<string> KnownProviders = new HashSet<string>(StringComparer.Ordinal) { "manual", "liteapi", "osm" };
+    public static readonly IReadOnlySet<string> KnownProviders = new HashSet<string>(StringComparer.Ordinal) { "manual", "liteapi", "serpapi", "osm" };
 
     private TripOption(Guid id, OptionKind kind, OptionStatus status, string provider, DateTimeOffset createdAt)
     {

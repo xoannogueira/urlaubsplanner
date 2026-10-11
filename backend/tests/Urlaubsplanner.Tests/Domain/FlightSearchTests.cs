@@ -62,6 +62,23 @@ public sealed class FlightSearchTests
     }
 
     [Fact]
+    public void Zusammenfassen_fuer_Google_hat_keine_Kombinations_Grenze_prueft_aber_Daten()
+    {
+        var request = FlightQuery.Combine(
+            [new FlightLegOptions(["str", "FRA", "MUC"], ["LIS", "OPO", "FAO"], May12), new FlightLegOptions(["LIS"], ["STR"], May19)],
+            2,
+            CabinClass.Economy,
+            Today);
+        Assert.Equal(["STR", "FRA", "MUC"], request.Legs[0].Origins);
+        Assert.Equal(["LIS", "OPO", "FAO"], request.Legs[0].Destinations);
+
+        Assert.Equal("legs[1].date", Assert.Throws<DomainException>(() => FlightQuery.Combine(
+            [new FlightLegOptions(["STR"], ["LIS"], May19), new FlightLegOptions(["LIS"], ["STR"], May12)], 2, CabinClass.Economy, Today)).Field);
+        Assert.Equal("legs[0].destinations", Assert.Throws<DomainException>(() => FlightQuery.Combine(
+            [new FlightLegOptions(["STR"], ["STR"], May12)], 2, CabinClass.Economy, Today)).Field);
+    }
+
+    [Fact]
     public void Verschieben_betrifft_alle_Strecken()
     {
         var shifted = Create(new FlightLeg("STR", "LIS", May12), new FlightLeg("OPO", "STR", May19)).ShiftedBy(-2);

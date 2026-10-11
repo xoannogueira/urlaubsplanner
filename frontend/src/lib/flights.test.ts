@@ -4,6 +4,7 @@ import type { Stage, TripOption } from '../api/types'
 import {
   canRecheckFlight,
   combinationCount,
+  fareSummary,
   filterAndSortFlights,
   flightNotes,
   flightOptionInput,
@@ -56,6 +57,7 @@ const journey = (patch: Partial<FlightJourney> & { stops?: boolean }): FlightJou
       ]
     : [segment('STR', 'LIS', '2027-05-12T14:25:00', '2027-05-12T16:25:00', '2604')]
   return {
+    continuation: null,
     signature: 'sig',
     legs: [
       {
@@ -117,6 +119,15 @@ describe('Flugplan', () => {
     )
   })
 
+  it('kennt mit Google Flights keine Obergrenze für Flughafen-Kombinationen', () => {
+    const many = {
+      ...plan('oneway'),
+      outbound: { origins: ['STR', 'FRA', 'MUC'], destinations: ['LIS', 'OPO', 'FAO'], date: '2027-05-12' },
+    }
+    expect(planProblem(many, '2026-10-11')).toContain('höchstens 8')
+    expect(planProblem(many, '2026-10-11', true)).toBeNull()
+  })
+
   it('schlägt einen Gabelflug vor, wenn erste und letzte Etappe weit auseinander liegen', () => {
     const stage = (lat: number, lng: number) => ({ latitude: lat, longitude: lng }) as Stage
     expect(suggestTripType([stage(38.72, -9.14), stage(41.15, -8.61)])).toBe('openjaw') // Lissabon → Porto
@@ -144,6 +155,14 @@ describe('Ergebnisse', () => {
     ])
     const withBag = filterAndSortFlights([direct, cheapStops], { nonstop: false, withBag: true }, 'price')
     expect(withBag.map((x) => [x.journey.signature, x.fare.family])).toEqual([['b', 'Standard']])
+  })
+
+  it('beschreibt Google-Preise ohne erfundene Gepäckangaben', () => {
+    expect(fareSummary(fare({ family: 'Google Flights', checkedBags: null }))).toBe(
+      'Preis laut Google Flights · Gepäck und Bedingungen beim Buchen prüfen',
+    )
+    const google = journey({ signature: 'g', fares: [fare({ checkedBags: null })] })
+    expect(filterAndSortFlights([google], { nonstop: false, withBag: true }, 'price')).toEqual([])
   })
 
   it('beschriftet Dauer und Umstiege', () => {
@@ -192,6 +211,7 @@ describe('Merken und neu prüfen', () => {
     expect(canRecheckFlight(option, '2026-10-11')).toBe(true)
     expect(canRecheckFlight(option, '2027-05-13')).toBe(false)
     expect(canRecheckFlight({ ...option, provider: 'manual' }, '2026-10-11')).toBe(false)
+    expect(canRecheckFlight({ ...option, provider: 'serpapi' }, '2026-10-11')).toBe(true)
   })
 
   it('verschiebt Daten über Monatsgrenzen', () => {

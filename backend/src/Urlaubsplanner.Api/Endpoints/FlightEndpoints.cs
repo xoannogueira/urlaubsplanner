@@ -15,6 +15,9 @@ public sealed record FlightAlternativesBody(IReadOnlyList<FlightLegBody> Legs, i
 /// <param name="Signature">Kennung eines gemerkten Flugs (ExternalId der Option, ggf. mit „#Tarif“).</param>
 public sealed record FlightRecheckBody(string Signature, int Adults, CabinClass? Cabin);
 
+/// <param name="Continuation">Kennung einer Teil-Verbindung (z. B. gewählter Hinflug), siehe FlightJourney.Continuation.</param>
+public sealed record FlightContinueBody(string Continuation);
+
 public static class FlightEndpoints
 {
     /// <summary>LiteAPI-Sandbox erlaubt 5 Anfragen pro Sekunde – zwei parallel bleiben sicher darunter.</summary>
@@ -24,15 +27,52 @@ public static class FlightEndpoints
     public static IEndpointRouteBuilder MapFlightEndpoints(this IEndpointRouteBuilder app)
     {
         var flights = app.MapGroup("/api/flights").WithTags("Flüge");
-        flights.MapGet("/status", (IFlightSearch search) => TypedResults.Ok(new { configured = search.IsConfigured }));
+        flights.MapGet("/status", Status);
         flights.MapPost("/search", Search);
+        flights.MapPost("/continue", Continue);
         flights.MapPost("/alternatives", Alternatives);
         flights.MapPost("/recheck", Recheck);
         return app;
     }
 
+    private static async Task<IResult> Status(IFlightSearch search, CancellationToken ct)
+    {
+        var quota = search is IFlightSearchQuota q && search.IsConfigured ? await q.GetQuotaAsync(ct) : null;
+        return TypedResults.Ok(new
+        {
+            Configured = search.IsConfigured,
+            search.Provider,
+            // Google liefert erst Hinflüge, Rückflüge kommen nach der Wahl (eine Suche mehr).
+            Stepwise = search is IStepwiseFlightSearch,
+            Quota = quota,
+        });
+    }
+
     private static async Task<IResult> Search(FlightSearchBody body, IFlightSearch search, TimeProvider clock, CancellationToken ct)
     {
+        if (search is IMultiAirportFlightSearch multi)
+        {
+            if (!search.IsConfigured)
+            {
+                throw new FlightSearchNotConfiguredException();
+            }
+
+            var combined = FlightQuery.Combine(
+                body.Legs?.Select(l => new FlightLegOptions(l.Origins, l.Destinations, l.Date)).ToList(),
+                body.Adults,
+                body.Cabin ?? CabinClass.Economy,
+                Today(clock));
+            var found = await multi.SearchAsync(combined, ct);
+            return TypedResults.Ok(new
+            {
+                Journeys = found.Journeys.Select(JourneyResponse.From),
+                Requests = 1,
+                Failed = 0,
+                found.Sandbox,
+                FetchedAt = clock.GetUtcNow(),
+            });
+        }
+
         var requests = FlightQuery.Expand(
             body.Legs?.Select(l => new FlightLegOptions(l.Origins, l.Destinations, l.Date)).ToList(),
             body.Adults,
@@ -60,6 +100,30 @@ public static class FlightEndpoints
             Requests = requests.Count,
             Failed = results.Count(r => r.Result is null),
             Sandbox = results.Any(r => r.Result?.Sandbox == true),
+            FetchedAt = clock.GetUtcNow(),
+        });
+    }
+
+    /// <summary>Nächste Strecke zu einer Teil-Verbindung, z. B. die Rückflüge zum gewählten Hinflug.</summary>
+    private static async Task<IResult> Continue(FlightContinueBody body, IFlightSearch search, TimeProvider clock, CancellationToken ct)
+    {
+        if (search is not IStepwiseFlightSearch stepwise)
+        {
+            throw new DomainException("continuation", "Diese Flugsuche liefert Verbindungen immer vollständig.");
+        }
+
+        if (string.IsNullOrWhiteSpace(body.Continuation))
+        {
+            throw new DomainException("continuation", "Fehlt.");
+        }
+
+        var result = await stepwise.ContinueAsync(body.Continuation, ct);
+        return TypedResults.Ok(new
+        {
+            Journeys = result.Journeys.Select(JourneyResponse.From),
+            Requests = 1,
+            Failed = 0,
+            result.Sandbox,
             FetchedAt = clock.GetUtcNow(),
         });
     }
@@ -117,10 +181,25 @@ public static class FlightEndpoints
         var legs = FlightSignature.ParseLegs(body.Signature)
             ?? throw new DomainException("signature", "Dieser Flug lässt sich nicht erneut prüfen.");
         var request = FlightSearchRequest.Create(legs, body.Adults, body.Cabin ?? CabinClass.Economy, Today(clock));
-        var result = await search.SearchAsync(request, ct);
+        if (!search.IsConfigured)
+        {
+            throw new FlightSearchNotConfiguredException();
+        }
 
         var parts = body.Signature.Split('#', 2);
-        var journey = result.Journeys.FirstOrDefault(j => j.Signature == parts[0]);
+        FlightSearchResult result;
+        FlightJourney? journey;
+        if (search is IStepwiseFlightSearch stepwise)
+        {
+            (journey, result) = await stepwise.FindAsync(request, body.Signature, ct);
+        }
+        else
+        {
+            result = await search.SearchAsync(request, ct);
+            journey = result.Journeys.FirstOrDefault(j => j.Signature == parts[0]);
+        }
+
+        // Gemerkter Tarif, sonst der günstigste (z. B. Flug mit LiteAPI gemerkt, jetzt über Google geprüft).
         var fare = journey?.Fares.FirstOrDefault(f => parts.Length > 1 && string.Equals(f.Family, parts[1], StringComparison.OrdinalIgnoreCase))
             ?? journey?.Fares[0];
 
@@ -176,8 +255,9 @@ public sealed record JourneyResponse(
     decimal TotalPrice,
     IReadOnlyList<FlightFare> Fares,
     string BookingUrl,
-    string GoogleUrl)
+    string GoogleUrl,
+    string? Continuation)
 {
     public static JourneyResponse From(FlightJourney j) =>
-        new(j.Signature, j.Legs, j.TotalMinutes, j.TotalPrice, j.Fares, j.BookingUrl, j.GoogleUrl);
+        new(j.Signature, j.Legs, j.TotalMinutes, j.TotalPrice, j.Fares, j.BookingUrl, j.GoogleUrl, j.Continuation);
 }
