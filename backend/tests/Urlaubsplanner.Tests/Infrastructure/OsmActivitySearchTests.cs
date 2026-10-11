@@ -62,10 +62,13 @@ public sealed class OsmActivitySearchTests
 
         public string? OverpassQuery { get; private set; }
 
+        public List<string> Hosts { get; } = [];
+
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
-            Calls.Add(request.RequestUri!.Host);
-            if (request.RequestUri.Host == "overpass.test")
+            Calls.Add(request.RequestUri!.Host.StartsWith("overpass", StringComparison.Ordinal) ? "overpass.test" : request.RequestUri.Host);
+            Hosts.Add(request.RequestUri.Host);
+            if (request.RequestUri.Host.StartsWith("overpass", StringComparison.Ordinal))
             {
                 OverpassQuery = Uri.UnescapeDataString((await request.Content!.ReadAsStringAsync(cancellationToken)).Replace('+', ' '));
             }
@@ -79,12 +82,16 @@ public sealed class OsmActivitySearchTests
     private static (OsmActivitySearch Search, FakeHandler Handler) Create(Func<HttpRequestMessage, HttpResponseMessage> respond)
     {
         var handler = new FakeHandler(respond);
-        var options = Options.Create(new ActivityOptions { OverpassUrl = "https://overpass.test/api/interpreter", WikidataSparqlUrl = "https://wikidata.test/sparql" });
+        var settings = new ActivityOptions { WikidataSparqlUrl = "https://wikidata.test/sparql" };
+        settings.OverpassUrls.Clear();
+        settings.OverpassUrls.Add("https://overpass.test/api/interpreter");
+        settings.OverpassUrls.Add("https://overpass2.test/api/interpreter");
+        var options = Options.Create(settings);
         var search = new OsmActivitySearch(new HttpClient(handler), new MemoryCache(new MemoryCacheOptions()), options, TimeProvider.System, NullLogger<OsmActivitySearch>.Instance);
         return (search, handler);
     }
 
-    private static HttpResponseMessage Both(HttpRequestMessage r) => Json(r.RequestUri!.Host == "overpass.test" ? Overpass : Sparql);
+    private static HttpResponseMessage Both(HttpRequestMessage r) => Json(r.RequestUri!.Host.StartsWith("overpass", StringComparison.Ordinal) ? Overpass : Sparql);
 
     [Fact]
     public async Task Orte_werden_mit_Wikidata_angereichert_und_nach_Bekanntheit_sortiert()
@@ -128,7 +135,9 @@ public sealed class OsmActivitySearchTests
 
         await search.SearchAsync(Request, CancellationToken.None);
 
-        Assert.Contains("(around:3000,38.69700,-9.20700)", handler.OverpassQuery, StringComparison.Ordinal);
+        // Rechteck um ±3 km statt „around“ (schneller auf dem Server)
+        Assert.Contains("[bbox:38.67005,-9.24153,38.72395,-9.17247]", handler.OverpassQuery, StringComparison.Ordinal);
+        Assert.DoesNotContain("around", handler.OverpassQuery, StringComparison.Ordinal);
         Assert.Contains("museum", handler.OverpassQuery, StringComparison.Ordinal);
         Assert.Contains("[out:json]", handler.OverpassQuery, StringComparison.Ordinal);
         Assert.Contains("wd:Q193131 wd:Q213366 wd:Q1053052", OsmActivitySearch.BuildSparql(["Q193131", "Q213366", "Q1053052", "kaputt"]), StringComparison.Ordinal);
@@ -139,6 +148,7 @@ public sealed class OsmActivitySearchTests
     {
         var (search, _) = Create(r => r.RequestUri!.Host == "overpass.test" ? Json(Overpass) : new HttpResponseMessage(HttpStatusCode.ServiceUnavailable));
 
+
         var result = await search.SearchAsync(Request, CancellationToken.None);
 
         Assert.Equal(4, result.Activities.Count);
@@ -147,12 +157,48 @@ public sealed class OsmActivitySearchTests
     }
 
     [Fact]
-    public async Task Ausgelastetes_OpenStreetMap_wird_verstaendlich_gemeldet()
+    public async Task Ausgelastete_OpenStreetMap_Server_werden_verstaendlich_gemeldet()
     {
-        var (search, _) = Create(_ => new HttpResponseMessage(HttpStatusCode.TooManyRequests));
+        var (search, handler) = Create(_ => new HttpResponseMessage(HttpStatusCode.TooManyRequests));
 
         var e = await Assert.ThrowsAsync<ActivitySearchUnavailableException>(() => search.SearchAsync(Request, CancellationToken.None));
         Assert.Contains("ausgelastet", e.Message, StringComparison.Ordinal);
+        Assert.Equal(["overpass.test", "overpass2.test"], handler.Hosts.ToArray()); // beide Server probiert
+    }
+
+    [Fact]
+    public async Task Faellt_ein_Server_aus_springt_der_naechste_ein()
+    {
+        var (search, handler) = Create(r => r.RequestUri!.Host switch
+        {
+            "overpass.test" => new HttpResponseMessage(HttpStatusCode.GatewayTimeout),
+            _ => Both(r),
+        });
+
+        var result = await search.SearchAsync(Request, CancellationToken.None);
+
+        Assert.Equal(4, result.Activities.Count);
+        Assert.Equal(["overpass.test", "overpass2.test", "wikidata.test"], handler.Hosts.ToArray());
+    }
+
+    [Fact]
+    public async Task Zeitueberschreitung_mit_remark_gilt_als_Fehler()
+    {
+        const string timeout = """{ "elements": [], "remark": "runtime error: Query timed out in \"query\" at line 1 after 26 seconds." }""";
+        var (search, _) = Create(r => r.RequestUri!.Host.StartsWith("overpass", StringComparison.Ordinal) ? Json(timeout) : Json(Sparql));
+
+        var e = await Assert.ThrowsAsync<ActivitySearchUnavailableException>(() => search.SearchAsync(Request, CancellationToken.None));
+        Assert.Contains("Zeitüberschreitung", e.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Ecken_des_Rechtecks_ausserhalb_des_Umkreises_fallen_weg()
+    {
+        var (search, _) = Create(Both);
+
+        var result = await search.SearchAsync(ActivitySearchRequest.Create(38.6970, -9.2070, 600), CancellationToken.None);
+
+        Assert.All(result.Activities, a => Assert.True(a.DistanceKm <= 0.6));
     }
 
     [Fact]

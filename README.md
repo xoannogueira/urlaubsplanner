@@ -174,7 +174,13 @@ Hinweise:
 
 Funktionieren ohne Einrichtung. Daten: © [OpenStreetMap](https://www.openstreetmap.org/copyright)-Mitwirkende (ODbL) über die
 Overpass API, Beschreibungen und Fotos von Wikidata / Wikimedia Commons. Beide Dienste werden ehrenamtlich betrieben – die App
-cacht Ergebnisse deshalb einen Tag. Andere Server lassen sich unter `Activities` in `appsettings.json` eintragen.
+cacht Ergebnisse deshalb einen Tag.
+
+- Gesucht wird in einem Rechteck um die Etappe (schnell für den Server), danach wird auf den Kreis zugeschnitten.
+- Ist ein Overpass-Server überlastet oder bricht ab, probiert die App automatisch den nächsten
+  (overpass-api.de → overpass.private.coffee → maps.mail.ru). Weitere Server lassen sich unter `Activities:OverpassUrls`
+  in `appsettings.json` ergänzen. Was schiefging, steht im Backend-Terminal („Overpass (…) antwortete mit …“).
+- Angezeigt werden erst 10 Vorschläge, beim Scrollen ans Listenende kommen jeweils 10 weitere – ohne neue Abfrage bei OpenStreetMap.
 
 ### Daten
 
@@ -213,7 +219,7 @@ Dieselben Checks laufen bei jedem Push in GitHub Actions.
 | GET | `/api/hotels/status` | Ist ein LiteAPI-Key hinterlegt? |
 | POST | `/api/hotels/search` | Hotelsuche: `latitude`, `longitude`, `checkin`, `checkout`, `adults`, optional `rooms`, `radiusMeters` – oder statt Ort `hotelIds` |
 | POST | `/api/hotels/nearby` | Alle Hotels im Umkreis, auch ausgebuchte (ohne Preis) |
-| GET | `/api/activities?lat=…&lon=…&radiusMeters=…` | Aktivitäten-Vorschläge im Umkreis (500 m – 50 km), bekannteste zuerst |
+| GET | `/api/activities?lat=…&lon=…&radiusMeters=…&offset=0&limit=10` | Aktivitäten-Vorschläge seitenweise (500 m – 50 km), optional `category`, `q`, `sort=Distance` |
 | GET | `/api/airports?q=…` | Flughafensuche (Code, Stadt, Name; sonst über die Ortssuche in der Nähe) |
 | GET | `/api/airports/near?lat=…&lon=…&radiusKm=…` | Flughäfen im Umkreis |
 | GET | `/api/airports/lookup?codes=STR,LIS` | Flughäfen nach Code |

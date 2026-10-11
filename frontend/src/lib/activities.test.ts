@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { ActivitySuggestion } from '../api/activities'
-import { activityOptionInput, categoryCounts, fameLabel, filterAndSortActivities, openingHoursDe, ticketsUrl } from './activities'
+import { activityOptionInput, fameLabel, openingHoursDe, ticketsUrl } from './activities'
 
 const activity = (patch: Partial<ActivitySuggestion>): ActivitySuggestion => ({
   id: 'node/1',
@@ -18,26 +18,6 @@ const activity = (patch: Partial<ActivitySuggestion>): ActivitySuggestion => ({
   popularity: 0,
   wikidataId: null,
   ...patch,
-})
-
-const list = [
-  activity({ id: 'a', name: 'Turm von Belém', category: 'Castle', distanceKm: 1.2 }),
-  activity({ id: 'b', name: 'Museu Berardo', category: 'Museum', distanceKm: 0.2, description: 'Kunstmuseum' }),
-  activity({ id: 'c', name: 'Miradouro', category: 'Viewpoint', distanceKm: 0.8 }),
-  activity({ id: 'd', name: 'Museu de Marinha', category: 'Museum', distanceKm: 0.5 }),
-]
-
-describe('Vorschläge filtern', () => {
-  it('nach Kategorie, Suchtext und Entfernung', () => {
-    expect(filterAndSortActivities(list, 'Museum', '', 'popular').map((a) => a.id)).toEqual(['b', 'd'])
-    expect(filterAndSortActivities(list, null, 'kunst', 'popular').map((a) => a.id)).toEqual(['b'])
-    expect(filterAndSortActivities(list, null, '', 'distance').map((a) => a.id)).toEqual(['b', 'd', 'c', 'a'])
-    expect(filterAndSortActivities(list, null, '', 'popular').map((a) => a.id)).toEqual(['a', 'b', 'c', 'd'])
-  })
-
-  it('zählt Kategorien, häufigste zuerst', () => {
-    expect(categoryCounts(list)[0]).toEqual(['Museum', 2])
-  })
 })
 
 describe('Anzeige', () => {

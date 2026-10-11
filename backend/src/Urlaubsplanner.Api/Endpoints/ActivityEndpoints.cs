@@ -10,8 +10,21 @@ public static class ActivityEndpoints
         return app;
     }
 
-    /// <summary>GET /api/activities?lat=38.72&amp;lon=-9.14&amp;radiusMeters=5000 – Vorschläge, bekannteste zuerst.</summary>
-    private static async Task<IResult> Search(double? lat, double? lon, int? radiusMeters, IActivitySearch search, CancellationToken ct)
+    /// <summary>
+    /// GET /api/activities?lat=38.72&amp;lon=-9.14&amp;radiusMeters=5000&amp;offset=0&amp;limit=10&amp;category=Museum&amp;q=…&amp;sort=Distance
+    /// Die Suche selbst läuft einmal und bleibt einen Tag im Cache – weitere Seiten kosten keine neue Abfrage.
+    /// </summary>
+    private static async Task<IResult> Search(
+        double? lat,
+        double? lon,
+        int? radiusMeters,
+        int? offset,
+        int? limit,
+        ActivityCategory? category,
+        string? q,
+        ActivitySort? sort,
+        IActivitySearch search,
+        CancellationToken ct)
     {
         if (lat is null || lon is null)
         {
@@ -22,6 +35,13 @@ public static class ActivityEndpoints
 
         var request = ActivitySearchRequest.Create(lat.Value, lon.Value, radiusMeters ?? 5000);
         var result = await search.SearchAsync(request, ct);
-        return TypedResults.Ok(new { result.Activities, result.FetchedAt, request.RadiusMeters });
+        var page = ActivityPaging.Page(
+            result.Activities,
+            category,
+            q,
+            sort ?? ActivitySort.Popular,
+            offset ?? 0,
+            limit ?? ActivityPaging.DefaultLimit);
+        return TypedResults.Ok(new { page.Activities, page.Total, page.Offset, page.Categories, result.FetchedAt, request.RadiusMeters });
     }
 }

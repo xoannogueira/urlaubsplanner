@@ -13,31 +13,6 @@ export const categoryLabels: Record<ActivityCategory, { plural: string; singular
   ThemePark: { plural: 'Freizeitparks', singular: 'Freizeitpark' },
 }
 
-export type ActivitySort = 'popular' | 'distance'
-
-/** Filtert nach Kategorie und Suchtext; „popular“ behält die Reihenfolge vom Server (Bekanntheit, Foto, Nähe). */
-export function filterAndSortActivities(
-  activities: ActivitySuggestion[],
-  category: ActivityCategory | null,
-  query: string,
-  sort: ActivitySort,
-): ActivitySuggestion[] {
-  const q = query.trim().toLowerCase()
-  const filtered = activities.filter(
-    (a) =>
-      (category === null || a.category === category) &&
-      (q === '' || a.name.toLowerCase().includes(q) || (a.description ?? '').toLowerCase().includes(q)),
-  )
-  return sort === 'distance' ? [...filtered].sort((a, b) => a.distanceKm - b.distanceKm) : filtered
-}
-
-/** Anzahl pro Kategorie, häufigste zuerst – für die Filter-Chips. */
-export function categoryCounts(activities: ActivitySuggestion[]): [ActivityCategory, number][] {
-  const counts = new Map<ActivityCategory, number>()
-  for (const a of activities) counts.set(a.category, (counts.get(a.category) ?? 0) + 1)
-  return [...counts.entries()].sort((a, b) => b[1] - a[1])
-}
-
 const days: Record<string, string> = { Mo: 'Mo', Tu: 'Di', We: 'Mi', Th: 'Do', Fr: 'Fr', Sa: 'Sa', Su: 'So' }
 
 /** "Tu-Su 10:00-18:00; Mo off" → "Di–So 10:00–18:00 · Mo geschlossen" */

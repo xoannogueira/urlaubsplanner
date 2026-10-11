@@ -16,12 +16,20 @@ public sealed class ActivityOptions
 {
     public const string Section = "Activities";
 
-    public string OverpassUrl { get; set; } = "https://overpass-api.de/api/interpreter";
+    /// <summary>
+    /// Öffentliche Overpass-Server, der Reihe nach probiert: Ist einer überlastet oder bricht ab, kommt der nächste dran.
+    /// </summary>
+    public IList<string> OverpassUrls { get; } =
+    [
+        "https://overpass-api.de/api/interpreter",
+        "https://overpass.private.coffee/api/interpreter",
+        "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
+    ];
 
     public string WikidataSparqlUrl { get; set; } = "https://query.wikidata.org/sparql";
 
-    /// <summary>So viele Vorschläge kommen höchstens zurück (die bekanntesten zuerst).</summary>
-    public int MaxResults { get; set; } = 80;
+    /// <summary>So viele Vorschläge werden höchstens vorgehalten (die bekanntesten zuerst); angezeigt wird seitenweise.</summary>
+    public int MaxResults { get; set; } = 200;
 }
 
 /// <summary>
@@ -54,7 +62,9 @@ public sealed partial class OsmActivitySearch(
         }
 
         var elements = await QueryOverpassAsync(request, cancellationToken).ConfigureAwait(false);
-        var candidates = ToCandidates(elements, request.Center);
+        var candidates = ToCandidates(elements, request.Center)
+            .Where(c => c.DistanceKm * 1000 <= request.RadiusMeters) // Rechteck → Kreis
+            .ToList();
 
         var wikidataIds = candidates.Select(c => c.WikidataId).OfType<string>().Distinct().Take(150).ToList();
         var wikidata = await QueryWikidataAsync(wikidataIds, cancellationToken).ConfigureAwait(false);
@@ -64,50 +74,82 @@ public sealed partial class OsmActivitySearch(
         return result;
     }
 
-    /// <summary>Overpass-Abfrage: Sehenswürdigkeiten, Museen, Aussichtspunkte, Burgen, Strände, Parks …</summary>
+    /// <summary>
+    /// Overpass-Abfrage: Sehenswürdigkeiten, Museen, Aussichtspunkte, Burgen, Strände, Parks …
+    /// Gesucht wird in einem Rechteck um den Mittelpunkt (globales [bbox]) – das nutzt den räumlichen Index des Servers
+    /// und ist bei großem Umkreis viel schneller als „around“. Was außerhalb des Kreises liegt, fällt danach heraus.
+    /// </summary>
     internal static string BuildQuery(ActivitySearchRequest request)
     {
-        var around = string.Create(
-            CultureInfo.InvariantCulture,
-            $"(around:{request.RadiusMeters},{request.Center.Latitude:F5},{request.Center.Longitude:F5})");
+        var (south, west, north, east) = BoundingBox(request);
+        var bbox = string.Create(CultureInfo.InvariantCulture, $"[bbox:{south:F5},{west:F5},{north:F5},{east:F5}]");
         var parts = new[]
         {
-            $"nwr{around}[\"tourism\"~\"^(attraction|museum|gallery|viewpoint|zoo|aquarium|theme_park)$\"][\"name\"];",
-            $"nwr{around}[\"historic\"~\"^(castle|fort|palace|monument|ruins|archaeological_site|city_gate)$\"][\"name\"];",
-            $"nwr{around}[\"natural\"=\"beach\"][\"name\"];",
-            $"nwr{around}[\"leisure\"=\"water_park\"][\"name\"];",
+            "nwr[\"tourism\"~\"^(attraction|museum|gallery|viewpoint|zoo|aquarium|theme_park)$\"][\"name\"];",
+            "nwr[\"historic\"~\"^(castle|fort|palace|monument|ruins|archaeological_site|city_gate)$\"][\"name\"];",
+            "nwr[\"natural\"=\"beach\"][\"name\"];",
+            "nwr[\"leisure\"=\"water_park\"][\"name\"];",
             // Häufige Arten nur, wenn sie einen Wikidata-Eintrag haben (sonst jede kleine Kapelle und jeder Spielplatz).
-            $"nwr{around}[\"leisure\"~\"^(park|garden|nature_reserve)$\"][\"name\"][\"wikidata\"];",
-            $"nwr{around}[\"amenity\"=\"place_of_worship\"][\"name\"][\"wikidata\"];",
-            $"nwr{around}[\"historic\"=\"memorial\"][\"name\"][\"wikidata\"];",
-            $"nwr{around}[\"natural\"=\"peak\"][\"name\"][\"wikidata\"];",
+            "nwr[\"leisure\"~\"^(park|garden|nature_reserve)$\"][\"name\"][\"wikidata\"];",
+            "nwr[\"amenity\"=\"place_of_worship\"][\"name\"][\"wikidata\"];",
+            "nwr[\"historic\"=\"memorial\"][\"name\"][\"wikidata\"];",
+            "nwr[\"natural\"=\"peak\"][\"name\"][\"wikidata\"];",
         };
-        return $"[out:json][timeout:25];({string.Concat(parts)});out center tags 500;";
+        return $"[out:json][timeout:25]{bbox};({string.Concat(parts)});out center tags 800;";
     }
 
+    internal static (double South, double West, double North, double East) BoundingBox(ActivitySearchRequest request)
+    {
+        var dLat = request.RadiusMeters / 111_320.0;
+        var dLon = request.RadiusMeters / (111_320.0 * Math.Max(0.05, Math.Cos(request.Center.Latitude * Math.PI / 180)));
+        return (
+            Math.Max(-90, request.Center.Latitude - dLat),
+            Math.Max(-180, request.Center.Longitude - dLon),
+            Math.Min(90, request.Center.Latitude + dLat),
+            Math.Min(180, request.Center.Longitude + dLon));
+    }
+
+    /// <summary>Probiert die Overpass-Server nacheinander; gemeldet wird nur, wenn keiner antwortet.</summary>
     private async Task<List<OverpassElement>> QueryOverpassAsync(ActivitySearchRequest request, CancellationToken cancellationToken)
     {
-        try
+        var query = BuildQuery(request);
+        var problems = new List<string>();
+        foreach (var url in _options.OverpassUrls.Where(u => !string.IsNullOrWhiteSpace(u)))
         {
-            using var content = new FormUrlEncodedContent([new KeyValuePair<string, string>("data", BuildQuery(request))]);
-            using var response = await http.PostAsync(_options.OverpassUrl, content, cancellationToken).ConfigureAwait(false);
-            if (!response.IsSuccessStatusCode)
+            var host = Uri.TryCreate(url, UriKind.Absolute, out var uri) ? uri.Host : url;
+            try
             {
-                LogFailedStatus("Overpass", (int)response.StatusCode);
-                throw new ActivitySearchUnavailableException(
-                    (int)response.StatusCode == 429
-                        ? "OpenStreetMap ist gerade ausgelastet. Bitte in einer Minute nochmal versuchen."
-                        : "OpenStreetMap ist gerade nicht erreichbar.");
-            }
+                using var content = new FormUrlEncodedContent([new KeyValuePair<string, string>("data", query)]);
+                using var response = await http.PostAsync(url, content, cancellationToken).ConfigureAwait(false);
+                if (!response.IsSuccessStatusCode)
+                {
+                    LogFailedStatus($"Overpass ({host})", (int)response.StatusCode);
+                    problems.Add((int)response.StatusCode == 429 ? "ausgelastet" : $"Fehler {(int)response.StatusCode}");
+                    continue;
+                }
 
-            var body = await response.Content.ReadFromJsonAsync<OverpassResponse>(Json, cancellationToken).ConfigureAwait(false);
-            return body?.Elements ?? [];
+                var body = await response.Content.ReadFromJsonAsync<OverpassResponse>(Json, cancellationToken).ConfigureAwait(false);
+                // Bei Zeitüberschreitung antwortet Overpass mit 200 und einem „remark“ statt Daten.
+                if (body?.Remark is { } remark && remark.Contains("error", StringComparison.OrdinalIgnoreCase) && (body.Elements?.Count ?? 0) == 0)
+                {
+                    LogRemark(host, remark);
+                    problems.Add("Zeitüberschreitung");
+                    continue;
+                }
+
+                return body?.Elements ?? [];
+            }
+            catch (Exception e) when (e is HttpRequestException or JsonException or TaskCanceledException && !cancellationToken.IsCancellationRequested)
+            {
+                LogFailed($"Overpass ({host})", e);
+                problems.Add(e is TaskCanceledException ? "Zeitüberschreitung" : "nicht erreichbar");
+            }
         }
-        catch (Exception e) when (e is HttpRequestException or JsonException or TaskCanceledException && !cancellationToken.IsCancellationRequested)
-        {
-            LogFailed("Overpass", e);
-            throw new ActivitySearchUnavailableException("OpenStreetMap ist gerade nicht erreichbar.", e);
-        }
+
+        throw new ActivitySearchUnavailableException(
+            problems.Count > 0 && problems.All(p => p == "ausgelastet")
+                ? "Die OpenStreetMap-Server sind gerade ausgelastet. Bitte in einer Minute nochmal versuchen."
+                : $"OpenStreetMap ist gerade nicht erreichbar ({string.Join(", ", problems.Distinct())}). Kleinerer Umkreis oder später nochmal versuchen.");
     }
 
     /// <summary>Holt Beschreibung, Foto, Wikipedia-Link und Bekanntheit. Fehler sind nicht schlimm – dann eben ohne.</summary>
@@ -343,6 +385,9 @@ public sealed partial class OsmActivitySearch(
     [LoggerMessage(Level = LogLevel.Warning, Message = "{Service} antwortete mit {Status}")]
     private partial void LogFailedStatus(string service, int status);
 
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Overpass ({Host}) meldet: {Remark}")]
+    private partial void LogRemark(string host, string remark);
+
     [LoggerMessage(Level = LogLevel.Warning, Message = "{Service}-Anfrage fehlgeschlagen")]
     private partial void LogFailed(string service, Exception exception);
 }
@@ -364,7 +409,7 @@ internal sealed record Candidate(
 internal sealed record WikidataInfo(string? Label, string? Description, string? ImageUrl, int Sitelinks, string? WikipediaUrl);
 
 // Overpass: { "elements": [ { "type": "way", "id": 1, "center": { "lat": …, "lon": … }, "tags": { … } } ] }
-internal sealed record OverpassResponse(List<OverpassElement>? Elements);
+internal sealed record OverpassResponse(List<OverpassElement>? Elements, string? Remark);
 
 internal sealed record OverpassElement(string Type, long Id, double? Lat, double? Lon, OverpassCenter? Center, Dictionary<string, string>? Tags);
 
