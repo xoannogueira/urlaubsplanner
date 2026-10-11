@@ -1,5 +1,10 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
 
+  <PropertyGroup>
+    <!-- API-Keys liegen in den .NET User Secrets (außerhalb des Repos): dotnet user-secrets set "LiteApi:ApiKey" "…" -->
+    <UserSecretsId>urlaubsplanner-api-3f6c1d2e</UserSecretsId>
+  </PropertyGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\Urlaubsplanner.Domain\Urlaubsplanner.Domain.csproj" />
     <ProjectReference Include="..\Urlaubsplanner.Infrastructure\Urlaubsplanner.Infrastructure.csproj" />
