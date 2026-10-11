@@ -222,9 +222,11 @@ public sealed class FlightApiTests : IDisposable
     [Fact]
     public async Task Aktivitaeten_Vorschlaege_mit_Kategorie_und_begrenztem_Umkreis()
     {
-        var body = await ReadJson(await _client.GetAsync("/api/activities?lat=38.6970&lon=-9.2070&radiusMeters=999999"));
+        var body = await ReadJson(await _client.GetAsync("/api/activities?lat=38.6970&lon=-9.2070&radiusMeters=999999&offset=0&limit=10&category=Museum&sort=Distance"));
 
         Assert.Equal("Museum", body.GetProperty("activities")[0].GetProperty("category").GetString());
+        Assert.Equal(1, body.GetProperty("total").GetInt32());
+        Assert.Equal("Museum", body.GetProperty("categories")[0].GetProperty("category").GetString());
         Assert.Equal(50000, body.GetProperty("radiusMeters").GetInt32());
         Assert.Equal(50000, _activities.Last!.RadiusMeters);
 

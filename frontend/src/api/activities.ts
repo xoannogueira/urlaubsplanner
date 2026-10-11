@@ -1,4 +1,4 @@
-import { keepPreviousData, useQuery } from '@tanstack/react-query'
+import { keepPreviousData, useInfiniteQuery } from '@tanstack/react-query'
 import { api } from './client'
 import type { LatLng } from './types'
 
@@ -25,18 +25,49 @@ export interface ActivitySuggestion {
   wikidataId: string | null
 }
 
-export interface ActivitySearchResponse {
+export type ActivitySort = 'Popular' | 'Distance'
+
+export interface ActivityPage {
   activities: ActivitySuggestion[]
+  /** Treffer insgesamt (nach Kategorie und Suchtext) */
+  total: number
+  offset: number
+  /** Anzahl pro Kategorie (nach Suchtext, ohne Kategoriefilter) */
+  categories: { category: ActivityCategory; count: number }[]
   fetchedAt: string
   radiusMeters: number
 }
 
-/** Vorschläge rund um die Etappe – kostenlos, deshalb lädt die Liste direkt (und bleibt einen Tag im Cache). */
-export function useActivitySuggestions(center: LatLng | null, radiusMeters: number) {
-  return useQuery({
-    queryKey: ['activities', center?.latitude.toFixed(3), center?.longitude.toFixed(3), radiusMeters],
-    queryFn: ({ signal }) =>
-      api<ActivitySearchResponse>(`/activities?lat=${center!.latitude}&lon=${center!.longitude}&radiusMeters=${radiusMeters}`, { signal }),
+export interface ActivityFilter {
+  category: ActivityCategory | null
+  query: string
+  sort: ActivitySort
+}
+
+export const PAGE_SIZE = 10
+
+/**
+ * Vorschläge seitenweise (10 Stück). Die Suche bei OpenStreetMap läuft auf dem Server nur einmal und bleibt
+ * einen Tag im Cache – weitere Seiten, Filter und Sortierung kosten keine neue Abfrage dort.
+ */
+export function useActivityPages(center: LatLng | null, radiusMeters: number, filter: ActivityFilter) {
+  return useInfiniteQuery({
+    queryKey: ['activities', center?.latitude.toFixed(3), center?.longitude.toFixed(3), radiusMeters, filter],
+    queryFn: ({ signal, pageParam }) => {
+      const params = new URLSearchParams({
+        lat: String(center!.latitude),
+        lon: String(center!.longitude),
+        radiusMeters: String(radiusMeters),
+        offset: String(pageParam),
+        limit: String(PAGE_SIZE),
+        sort: filter.sort,
+      })
+      if (filter.category) params.set('category', filter.category)
+      if (filter.query.trim()) params.set('q', filter.query.trim())
+      return api<ActivityPage>(`/activities?${params.toString()}`, { signal })
+    },
+    initialPageParam: 0,
+    getNextPageParam: (last) => (last.offset + last.activities.length < last.total ? last.offset + last.activities.length : undefined),
     enabled: center !== null,
     staleTime: 6 * 60 * 60_000,
     gcTime: 6 * 60 * 60_000,

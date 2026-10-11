@@ -1,15 +1,16 @@
 import clsx from 'clsx'
-import { Search, SearchX } from 'lucide-react'
-import { useCallback, useMemo, useState, type ReactNode } from 'react'
-import { useActivitySuggestions, type ActivityCategory, type ActivitySuggestion } from '../../api/activities'
+import { LoaderCircle, Search, SearchX } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { PAGE_SIZE, useActivityPages, type ActivityCategory, type ActivitySort, type ActivitySuggestion } from '../../api/activities'
 import { ApiError } from '../../api/client'
+import { useDebouncedValue } from '../../api/places'
 import { useTripActions } from '../../api/trips'
 import type { LatLng, Stage, Trip } from '../../api/types'
 import { TripMap } from '../../components/map/TripMap'
 import type { MapPin } from '../../components/map/types'
 import { Button } from '../../components/ui/Button'
 import { EmptyState, ErrorState, Skeleton } from '../../components/ui/Feedback'
-import { activityOptionInput, categoryCounts, categoryLabels, filterAndSortActivities, type ActivitySort } from '../../lib/activities'
+import { activityOptionInput, categoryLabels } from '../../lib/activities'
 import { toLatLng } from '../../lib/geo'
 import { stageMarkers } from '../../lib/mapData'
 import { ActivityCard } from './ActivityCard'
@@ -59,15 +60,32 @@ function Suggestions({ trip, stage, center }: { trip: Trip; stage: Stage; center
   const [radius, setRadius] = useState(5000)
   const [category, setCategory] = useState<ActivityCategory | null>(null)
   const [query, setQuery] = useState('')
-  const [sort, setSort] = useState<ActivitySort>('popular')
+  const [sort, setSort] = useState<ActivitySort>('Popular')
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [savingId, setSavingId] = useState<string | null>(null)
   const [view, setView] = useState<'list' | 'map'>('list')
 
-  const suggestions = useActivitySuggestions(center, radius)
-  const all = useMemo(() => suggestions.data?.activities ?? [], [suggestions.data])
-  const counts = useMemo(() => categoryCounts(all), [all])
-  const shown = useMemo(() => filterAndSortActivities(all, category, query, sort), [all, category, query, sort])
+  const debouncedQuery = useDebouncedValue(query, 300)
+  const filter = useMemo(() => ({ category, query: debouncedQuery, sort }), [category, debouncedQuery, sort])
+  const suggestions = useActivityPages(center, radius, filter)
+  const pages = suggestions.data?.pages
+  const shown = useMemo(() => pages?.flatMap((p) => p.activities) ?? [], [pages])
+  const total = pages?.[0]?.total ?? 0
+  const counts = pages?.[0]?.categories ?? []
+  const allCount = counts.reduce((n, c) => n + c.count, 0)
+
+  // Am Ende der Liste automatisch die nächsten 10 laden.
+  const sentinel = useRef<HTMLDivElement>(null)
+  const { hasNextPage, isFetchingNextPage, fetchNextPage } = suggestions
+  useEffect(() => {
+    const el = sentinel.current
+    if (!el || !hasNextPage) return
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((e) => e.isIntersecting) && !isFetchingNextPage) void fetchNextPage()
+    })
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage])
 
   const savedIds = useMemo(
     () => new Set(trip.options.filter((o) => o.kind === 'Activity' && o.provider === 'osm').map((o) => o.externalId)),
@@ -153,16 +171,14 @@ function Suggestions({ trip, stage, center }: { trip: Trip; stage: Stage; center
       ) : (
         <>
           <div className="flex flex-wrap items-center gap-2.5">
-            <span className="mr-2 text-lg font-extrabold">
-              {shown.length === all.length ? `${all.length} Vorschläge` : `${shown.length} von ${all.length}`}
-            </span>
+            <span className="mr-2 text-lg font-extrabold">{total === allCount ? `${total} Vorschläge` : `${total} von ${allCount}`}</span>
             <Chip active={category === null} onClick={() => setCategory(null)}>
               Alle
             </Chip>
-            {counts.map(([c, n]) => (
+            {counts.map(({ category: c, count }) => (
               <Chip key={c} active={category === c} onClick={() => setCategory(category === c ? null : c)}>
                 <CategoryIcon category={c} size={15} />
-                {categoryLabels[c].plural} · {n}
+                {categoryLabels[c].plural} · {count}
               </Chip>
             ))}
             <div className="flex-1" />
@@ -181,8 +197,8 @@ function Suggestions({ trip, stage, center }: { trip: Trip; stage: Stage; center
                 onChange={(e) => setSort(e.target.value as ActivitySort)}
                 className="h-10 rounded-xl border border-line bg-surface px-3 font-semibold text-text"
               >
-                <option value="popular">Bekanntheit</option>
-                <option value="distance">Entfernung</option>
+                <option value="Popular">Bekanntheit</option>
+                <option value="Distance">Entfernung</option>
               </select>
             </label>
           </div>
@@ -195,9 +211,9 @@ function Suggestions({ trip, stage, center }: { trip: Trip; stage: Stage; center
               {shown.length === 0 ? (
                 <EmptyState
                   icon={<SearchX size={22} />}
-                  title={all.length === 0 ? 'Keine Vorschläge gefunden' : 'Nichts passt zur Suche'}
+                  title={allCount === 0 && !debouncedQuery ? 'Keine Vorschläge gefunden' : 'Nichts passt zur Suche'}
                   text={
-                    all.length === 0
+                    allCount === 0 && !debouncedQuery
                       ? 'Versuch einen größeren Umkreis – bei Regionen oder ganzen Ländern z. B. 50 km.'
                       : 'Ändere den Suchtext oder die Kategorie.'
                   }
@@ -214,6 +230,21 @@ function Suggestions({ trip, stage, center }: { trip: Trip; stage: Stage; center
                     onSave={() => save(a)}
                   />
                 ))
+              )}
+              {hasNextPage && (
+                <div ref={sentinel} className="flex justify-center py-2">
+                  <Button
+                    variant="secondary"
+                    icon={isFetchingNextPage ? <LoaderCircle size={16} className="animate-spin" /> : undefined}
+                    disabled={isFetchingNextPage}
+                    onClick={() => void fetchNextPage()}
+                  >
+                    {isFetchingNextPage ? 'Lädt …' : `Weitere ${Math.min(PAGE_SIZE, total - shown.length)} Vorschläge`}
+                  </Button>
+                </div>
+              )}
+              {!hasNextPage && shown.length > PAGE_SIZE && (
+                <p className="text-center text-sm text-muted">Das waren alle {total} Vorschläge im Umkreis.</p>
               )}
               <p className="text-center text-xs text-muted">
                 Daten: ©{' '}
