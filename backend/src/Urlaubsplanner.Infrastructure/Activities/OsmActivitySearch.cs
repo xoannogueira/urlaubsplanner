@@ -46,6 +46,7 @@ public sealed partial class OsmActivitySearch(
     ILogger<OsmActivitySearch> logger) : IActivitySearch
 {
     private static readonly TimeSpan CacheDuration = TimeSpan.FromDays(1);
+    private static readonly Lock PendingGate = new();
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) { NumberHandling = JsonNumberHandling.AllowReadingFromString };
     private readonly ActivityOptions _options = options.Value;
 
@@ -61,17 +62,45 @@ public sealed partial class OsmActivitySearch(
             return cached;
         }
 
-        var elements = await QueryOverpassAsync(request, cancellationToken).ConfigureAwait(false);
-        var candidates = ToCandidates(elements, request.Center)
-            .Where(c => c.DistanceKm * 1000 <= request.RadiusMeters) // Rechteck → Kreis
-            .ToList();
+        // Läuft dieselbe Suche schon (z. B. weil im Frontend Filter oder Seiten gewechselt wurden, während sie lädt),
+        // warten alle auf diese eine Abfrage. Sonst landen viele gleiche Anfragen gleichzeitig bei Overpass – und der
+        // Server lehnt ab (504), weil er pro Absender nur wenige gleichzeitig erlaubt.
+        var pendingKey = "pending:" + cacheKey;
+        Lazy<Task<ActivitySearchResult>>? pending;
+        lock (PendingGate)
+        {
+            if (!cache.TryGetValue(pendingKey, out pending) || pending is null)
+            {
+                pending = new Lazy<Task<ActivitySearchResult>>(() => LoadAsync(request, cacheKey, pendingKey));
+                cache.Set(pendingKey, pending, TimeSpan.FromMinutes(5));
+            }
+        }
 
-        var wikidataIds = candidates.Select(c => c.WikidataId).OfType<string>().Distinct().Take(150).ToList();
-        var wikidata = await QueryWikidataAsync(wikidataIds, cancellationToken).ConfigureAwait(false);
+        // Bricht ein Aufrufer ab (Frontend wechselt den Filter), läuft die Suche für die anderen und den Cache weiter.
+        return await pending.Value.WaitAsync(cancellationToken).ConfigureAwait(false);
+    }
 
-        var result = new ActivitySearchResult(Rank(candidates, wikidata, _options.MaxResults), clock.GetUtcNow());
-        cache.Set(cacheKey, result, CacheDuration);
-        return result;
+    private async Task<ActivitySearchResult> LoadAsync(ActivitySearchRequest request, string cacheKey, string pendingKey)
+    {
+        try
+        {
+            var elements = await QueryOverpassAsync(request, CancellationToken.None).ConfigureAwait(false);
+            var candidates = ToCandidates(elements, request.Center)
+                .Where(c => c.DistanceKm * 1000 <= request.RadiusMeters) // Rechteck → Kreis
+                .ToList();
+
+            var wikidataIds = candidates.Select(c => c.WikidataId).OfType<string>().Distinct().Take(150).ToList();
+            var wikidata = await QueryWikidataAsync(wikidataIds, CancellationToken.None).ConfigureAwait(false);
+
+            var result = new ActivitySearchResult(Rank(candidates, wikidata, _options.MaxResults), clock.GetUtcNow());
+            cache.Set(cacheKey, result, CacheDuration);
+            return result;
+        }
+        finally
+        {
+            // Fertig oder fehlgeschlagen: Nächste Anfrage liest den Cache bzw. versucht es neu.
+            cache.Remove(pendingKey);
+        }
     }
 
     /// <summary>
