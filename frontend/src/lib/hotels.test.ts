@@ -5,6 +5,10 @@ import type { TripOption } from '../api/types'
 import {
   alternativesByHotel,
   canRecheck,
+  marketComparison,
+  roomSplits,
+  splitLabel,
+  withRoom,
   defaultRooms,
   filterAndSortHotels,
   hotelNotes,
@@ -32,6 +36,10 @@ const hotel = (patch: Partial<HotelOffer>): HotelOffer => ({
   refundable: false,
   bookingUrl: 'https://www.booking.com/',
   googleUrl: 'https://www.google.com/travel/search',
+  marketPrice: null,
+  payAtProperty: null,
+  payAtPropertyLabel: null,
+  rooms: [],
   ...patch,
 })
 
@@ -180,5 +188,43 @@ describe('canRecheck', () => {
     expect(canRecheck(saved, '2027-05-13')).toBe(false)
     expect(canRecheck({ ...saved, provider: 'manual' }, '2026-10-11')).toBe(false)
     expect(canRecheck({ ...saved, endDate: null }, '2026-10-11')).toBe(false)
+  })
+})
+
+describe('Zimmer und Marktpreis', () => {
+  it('schlägt sinnvolle Aufteilungen vor', () => {
+    expect(roomSplits(6)).toEqual([1, 2, 3])
+    expect(roomSplits(4)).toEqual([1, 2])
+    expect(roomSplits(2)).toEqual([1, 2])
+    expect(roomSplits(1)).toEqual([1])
+    expect(roomSplits(10)).toEqual([1, 3, 4, 5])
+  })
+
+  it('beschriftet Aufteilungen', () => {
+    expect(splitLabel(3, 6)).toBe('3 Zimmer à 2 Pers.')
+    expect(splitLabel(2, 5)).toBe('2 Zimmer für 5 Pers.')
+  })
+
+  it('meldet den Marktpreis nur bei spürbarem Unterschied', () => {
+    expect(marketComparison(1000, 1100)).toEqual({ kind: 'higher', diff: 100 })
+    expect(marketComparison(1000, 900)).toEqual({ kind: 'lower', diff: 100 })
+    expect(marketComparison(1000, 1010)).toBeNull()
+    expect(marketComparison(1000, null)).toBeNull()
+  })
+
+  it('übernimmt ein anderes Zimmer samt Kosten vor Ort in die Notiz', () => {
+    const room = {
+      name: 'Suite',
+      boardName: 'Frühstück',
+      refundable: true,
+      totalPrice: 980,
+      currency: 'EUR',
+      marketPrice: 1050,
+      payAtProperty: 32,
+      payAtPropertyLabel: 'City tax',
+    }
+    const picked = withRoom(hotel({ totalPrice: 612, roomName: 'Doppelzimmer' }), room)
+    expect(picked.totalPrice).toBe(980)
+    expect(hotelNotes(picked).replace(/\s/g, ' ')).toBe('Suite · Frühstück · kostenlos stornierbar · zzgl. 32 € vor Ort')
   })
 })

@@ -1,6 +1,6 @@
-import type { HotelAlternativesResponse, HotelListing, HotelOffer } from '../api/hotels'
+import type { HotelAlternativesResponse, HotelListing, HotelOffer, RoomOffer } from '../api/hotels'
 import type { LatLng, OptionInput, TripOption } from '../api/types'
-import { todayIso } from './format'
+import { formatEuro, todayIso } from './format'
 import { distanceKm } from './geo'
 
 export type HotelSort = 'price' | 'rating' | 'distance'
@@ -48,7 +48,58 @@ export const defaultRooms = (travelers: number) => Math.max(1, Math.ceil(travele
 
 /** Notiz, die beim Merken eines Hotels gespeichert wird. */
 export function hotelNotes(hotel: HotelOffer): string {
-  return [hotel.roomName, hotel.boardName, hotel.refundable ? 'kostenlos stornierbar' : 'nicht stornierbar'].filter(Boolean).join(' · ')
+  return [
+    hotel.roomName,
+    hotel.boardName,
+    hotel.refundable ? 'kostenlos stornierbar' : 'nicht stornierbar',
+    hotel.payAtProperty ? `zzgl. ${formatEuro(hotel.payAtProperty)} vor Ort` : null,
+  ]
+    .filter(Boolean)
+    .join(' · ')
+}
+
+/** Das Hotel mit einem anderen Zimmer als Hauptangebot (für Anzeige und Merken). */
+export function withRoom(hotel: HotelOffer, room: RoomOffer): HotelOffer {
+  return {
+    ...hotel,
+    roomName: room.name,
+    boardName: room.boardName,
+    refundable: room.refundable,
+    totalPrice: room.totalPrice,
+    currency: room.currency,
+    marketPrice: room.marketPrice,
+    payAtProperty: room.payAtProperty,
+    payAtPropertyLabel: room.payAtPropertyLabel,
+  }
+}
+
+/**
+ * Hinweis zum Marktpreis (was Booking & Co. ungefähr verlangen), nur wenn er spürbar abweicht:
+ * 'higher' = woanders vermutlich teurer, 'lower' = woanders vermutlich günstiger.
+ */
+export function marketComparison(price: number, market: number | null): { kind: 'higher' | 'lower'; diff: number } | null {
+  if (market == null || market <= 0) return null
+  const diff = Math.round(market - price)
+  if (Math.abs(diff) < Math.max(5, price * 0.02)) return null
+  return { kind: diff > 0 ? 'higher' : 'lower', diff: Math.abs(diff) }
+}
+
+/**
+ * Sinnvolle Zimmeraufteilungen zum Vergleichen: 1 Zimmer, ~4, ~3 und ~2 Personen pro Zimmer (höchstens 4 Varianten).
+ * 6 Personen → [1, 2, 3], 4 Personen → [1, 2], 2 Personen → [1, 2].
+ */
+export function roomSplits(travelers: number): number[] {
+  const set = new Set([1, Math.ceil(travelers / 4), Math.ceil(travelers / 3), Math.ceil(travelers / 2)])
+  if (set.size === 1 && travelers >= 2) set.add(2)
+  return [...set].sort((a, b) => a - b).slice(0, 4)
+}
+
+/** "3 Zimmer à 2 Personen", "2 Zimmer für 5 Personen" */
+export function splitLabel(rooms: number, travelers: number): string {
+  const r = rooms === 1 ? '1 Zimmer' : `${rooms} Zimmer`
+  return travelers % rooms === 0
+    ? `${r} à ${travelers / rooms} ${travelers / rooms === 1 ? 'Person' : 'Pers.'}`
+    : `${r} für ${travelers} Pers.`
 }
 
 /**

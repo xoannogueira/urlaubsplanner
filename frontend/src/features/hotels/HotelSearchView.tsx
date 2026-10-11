@@ -2,7 +2,14 @@ import clsx from 'clsx'
 import { CalendarSearch, KeyRound, Minus, Plus, Search, SearchX, TriangleAlert } from 'lucide-react'
 import { useCallback, useMemo, useState, type ReactNode } from 'react'
 import { ApiError } from '../../api/client'
-import { useHotelSearch, useHotelSearchStatus, useNearbyHotels, type HotelOffer, type HotelSearchParams } from '../../api/hotels'
+import {
+  useHotelSearch,
+  useHotelSearchStatus,
+  useNearbyHotels,
+  useRoomSplitSearches,
+  type HotelOffer,
+  type HotelSearchParams,
+} from '../../api/hotels'
 import { useTripActions } from '../../api/trips'
 import type { Stage, Trip } from '../../api/types'
 import { TripMap } from '../../components/map/TripMap'
@@ -16,6 +23,7 @@ import {
   filterAndSortHotels,
   hotelOptionInput,
   noFilters,
+  roomSplits,
   unavailableHotels,
   type AlternativeOffer,
   type HotelFilters,
@@ -23,7 +31,7 @@ import {
 } from '../../lib/hotels'
 import { stageMarkers } from '../../lib/mapData'
 import { AlternativesDialog, type AlternativeCandidate } from './AlternativesDialog'
-import { HotelResultCard, UnavailableHotelCard } from './HotelResultCard'
+import { HotelResultCard, UnavailableHotelCard, type SplitPrice } from './HotelResultCard'
 
 const radiusOptions = [1000, 3000, 5000, 10_000]
 
@@ -85,6 +93,32 @@ function SearchArea({ trip, stage, center }: { trip: Trip; stage: Stage; center:
   const result = search.data
   const nights = result?.nights ?? stage.nights
   const nearby = useNearbyHotels(params, showUnavailable)
+
+  // Zimmeraufteilungen vergleichen: dieselbe Suche mit 1, 2, 3 … Zimmern (die aktuelle kommt aus der Hauptsuche).
+  const [compareSplits, setCompareSplits] = useState(false)
+  const splitCounts = useMemo(() => roomSplits(trip.travelers), [trip.travelers])
+  const splitSearches = useRoomSplitSearches(params, splitCounts, compareSplits)
+  const splitPrices = useMemo(() => {
+    const byHotel = new Map<string, SplitPrice[]>()
+    if (!compareSplits) return byHotel
+    for (const hotel of result?.hotels ?? []) {
+      byHotel.set(
+        hotel.hotelId,
+        splitCounts.map((count, i) => ({
+          rooms: count,
+          price: splitSearches[i].data?.hotels.find((h) => h.hotelId === hotel.hotelId)?.totalPrice ?? null,
+          loading: splitSearches[i].isFetching,
+        })),
+      )
+    }
+    return byHotel
+  }, [compareSplits, result, splitCounts, splitSearches])
+
+  /** Andere Aufteilung übernehmen: Suche mit dieser Zimmeranzahl (kommt meist schon aus dem Cache). */
+  const pickRooms = (count: number) => {
+    setRooms(count)
+    setParams((p) => (p ? { ...p, rooms: count } : p))
+  }
 
   const savedIds = useMemo(
     () => new Set(trip.options.filter((o) => o.provider === 'liteapi' && o.stageId === stage.id).map((o) => o.externalId)),
@@ -257,6 +291,11 @@ function SearchArea({ trip, stage, center }: { trip: Trip; stage: Stage; center:
             <Chip active={showUnavailable} danger onClick={() => setShowUnavailable(!showUnavailable)}>
               Ausgebuchte zeigen
             </Chip>
+            {splitCounts.length > 1 && (
+              <Chip active={compareSplits} onClick={() => setCompareSplits(!compareSplits)}>
+                Aufteilungen vergleichen
+              </Chip>
+            )}
             <Button
               variant="secondary"
               size="sm"
@@ -310,14 +349,18 @@ function SearchArea({ trip, stage, center }: { trip: Trip; stage: Stage; center:
               ) : (
                 hotels.map((hotel) => (
                   <HotelResultCard
-                    key={hotel.hotelId}
+                    key={`${hotel.hotelId}:${result!.rooms}`}
                     hotel={hotel}
                     nights={nights}
+                    travelers={trip.travelers}
+                    rooms={result!.rooms}
+                    splits={splitPrices.get(hotel.hotelId)}
+                    onPickRooms={pickRooms}
                     distanceKm={distanceOf(hotel)}
                     saved={savedIds.has(hotel.hotelId)}
                     saving={savingId === hotel.hotelId}
                     selected={selectedId === hotel.hotelId}
-                    onSave={() => save(hotel)}
+                    onSave={save}
                     onSelect={() => setSelectedId(hotel.hotelId)}
                   />
                 ))

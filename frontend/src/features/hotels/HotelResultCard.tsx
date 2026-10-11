@@ -1,24 +1,46 @@
 import clsx from 'clsx'
-import { BedDouble, CalendarSearch, Check, ExternalLink, Heart, MapPin, Star } from 'lucide-react'
+import { BedDouble, CalendarSearch, Check, ChevronDown, ExternalLink, Heart, MapPin, Star } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 import type { HotelListing, HotelOffer } from '../../api/hotels'
 import { buttonClass } from '../../components/ui/buttonStyles'
 import { formatEuro } from '../../lib/format'
 import { formatDistance } from '../../lib/geo'
-import { ratingLabel } from '../../lib/hotels'
+import { marketComparison, ratingLabel, splitLabel, withRoom } from '../../lib/hotels'
+
+/** Preis desselben Hotels bei einer anderen Zimmeraufteilung. */
+export interface SplitPrice {
+  rooms: number
+  /** null = bei dieser Aufteilung nicht verfügbar */
+  price: number | null
+  loading: boolean
+}
 
 interface HotelResultCardProps {
   hotel: HotelOffer
   nights: number
+  travelers: number
+  /** Aktuelle Zimmeranzahl der Suche. */
+  rooms: number
   distanceKm: number | null
   saved: boolean
   saving: boolean
   selected: boolean
-  onSave: () => void
+  /** Speichert das Hotel mit dem gewählten Zimmer. */
+  onSave: (hotel: HotelOffer) => void
   onSelect: () => void
+  /** Nur gesetzt, wenn „Aufteilungen vergleichen“ an ist. */
+  splits?: SplitPrice[]
+  onPickRooms?: (rooms: number) => void
 }
 
-export function HotelResultCard({ hotel, nights, distanceKm, saved, saving, selected, onSave, onSelect }: HotelResultCardProps) {
+export function HotelResultCard(props: HotelResultCardProps) {
+  const { hotel: base, nights, travelers, rooms, distanceKm, saved, saving, selected, onSave, onSelect, splits, onPickRooms } = props
+  const [roomIndex, setRoomIndex] = useState(0)
+  const [showRooms, setShowRooms] = useState(false)
+  const room = base.rooms[roomIndex] ?? base.rooms[0]
+  const hotel = room ? withRoom(base, room) : base
+  const market = marketComparison(hotel.totalPrice, hotel.marketPrice)
+
   return (
     <CardFrame hotel={hotel} selected={selected} onSelect={onSelect}>
       <HotelPhoto url={hotel.photoUrl} />
@@ -36,12 +58,93 @@ export function HotelResultCard({ hotel, nights, distanceKm, saved, saving, sele
           )}
         </div>
 
+        {base.rooms.length > 1 && (
+          <div className="flex flex-col gap-1.5">
+            <button
+              type="button"
+              aria-expanded={showRooms}
+              onClick={() => setShowRooms(!showRooms)}
+              className="flex w-fit cursor-pointer items-center gap-1 text-[13px] font-bold text-accent hover:underline"
+            >
+              <ChevronDown size={15} className={clsx('transition-transform duration-100', showRooms && 'rotate-180')} />
+              {base.rooms.length} Zimmervarianten
+            </button>
+            {showRooms && (
+              <ul className="flex flex-col gap-1" aria-label={`Zimmer in ${base.name}`}>
+                {base.rooms.map((r, i) => (
+                  <li key={i}>
+                    <button
+                      type="button"
+                      aria-pressed={i === roomIndex}
+                      onClick={() => setRoomIndex(i)}
+                      className={clsx(
+                        'flex w-full cursor-pointer items-center gap-3 rounded-lg border px-3 py-2 text-left text-[13px]',
+                        i === roomIndex ? 'border-accent bg-accent-soft' : 'border-line hover:bg-surface-2',
+                      )}
+                    >
+                      <span className="flex min-w-0 flex-1 flex-col">
+                        <span className="truncate font-semibold">{r.name ?? 'Zimmer'}</span>
+                        <span className="text-xs text-muted">
+                          {[r.boardName, r.refundable ? 'kostenlos stornierbar' : 'nicht stornierbar'].filter(Boolean).join(' · ')}
+                        </span>
+                      </span>
+                      <span className="shrink-0 font-mono font-semibold">{formatEuro(r.totalPrice)}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+
+        {splits && (
+          <div className="flex flex-wrap items-center gap-1.5 text-xs" role="group" aria-label="Zimmeraufteilung">
+            <span className="mr-1 font-bold text-muted">Aufteilung</span>
+            {splits.map((split) => {
+              const current = split.rooms === rooms
+              const price = current ? base.totalPrice : split.price
+              return (
+                <button
+                  key={split.rooms}
+                  type="button"
+                  aria-pressed={current}
+                  title={splitLabel(split.rooms, travelers)}
+                  disabled={current || split.loading || price == null}
+                  onClick={() => onPickRooms?.(split.rooms)}
+                  className={clsx(
+                    'flex h-8 items-center gap-1.5 rounded-lg border px-2.5 font-semibold',
+                    current ? 'border-accent bg-accent-soft text-accent' : 'border-line enabled:cursor-pointer enabled:hover:bg-surface-2',
+                    !current && price == null && !split.loading && 'text-muted line-through',
+                  )}
+                >
+                  {split.rooms === 1 ? '1 Zimmer' : `${split.rooms} Zimmer`}
+                  <span className="font-mono">{split.loading && !current ? '…' : price == null ? '–' : formatEuro(price)}</span>
+                </button>
+              )
+            })}
+          </div>
+        )}
+
         <div className="mt-auto flex flex-wrap items-end justify-between gap-3 pt-1">
           <div className="flex flex-col gap-0.5">
             <span className="font-mono text-lg font-semibold">{formatEuro(hotel.totalPrice)}</span>
             <span className="text-xs text-muted">
               {nights === 1 ? '1 Nacht' : `${nights} Nächte`} · {formatEuro(Math.round(hotel.totalPrice / Math.max(1, nights)))} / Nacht
             </span>
+            {market && (
+              <span
+                className={clsx('text-xs font-semibold', market.kind === 'higher' ? 'text-accent' : 'text-star')}
+                title="Vom Hotel empfohlener öffentlicher Preis – ungefähr das, was Booking & Co. zeigen"
+              >
+                Booking & Co. ca. {formatEuro(hotel.marketPrice!)} ·{' '}
+                {market.kind === 'higher' ? `hier ${formatEuro(market.diff)} günstiger` : `dort evtl. ${formatEuro(market.diff)} günstiger`}
+              </span>
+            )}
+            {hotel.payAtProperty != null && (
+              <span className="text-xs text-muted" title={hotel.payAtPropertyLabel ?? undefined}>
+                zzgl. {formatEuro(hotel.payAtProperty)} vor Ort{hotel.payAtPropertyLabel ? ` (${hotel.payAtPropertyLabel})` : ''}
+              </span>
+            )}
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <ExternalLinks bookingUrl={hotel.bookingUrl} googleUrl={hotel.googleUrl} />
@@ -51,7 +154,7 @@ export function HotelResultCard({ hotel, nights, distanceKm, saved, saving, sele
                 Gemerkt
               </span>
             ) : (
-              <button type="button" onClick={onSave} disabled={saving} className={buttonClass('primary', 'sm')}>
+              <button type="button" onClick={() => onSave(hotel)} disabled={saving} className={buttonClass('primary', 'sm')}>
                 <Heart size={15} />
                 Merken
               </button>
@@ -203,7 +306,7 @@ export function ExternalLinks({ bookingUrl, googleUrl }: { bookingUrl: string; g
         href={googleUrl}
         target="_blank"
         rel="noopener noreferrer"
-        title="Google Hotels vergleicht viele Anbieter – Reisedaten dort auswählen"
+        title="Google Hotels vergleicht viele Anbieter – Reisedaten sind übernommen, Personen bitte dort prüfen"
         className={buttonClass('secondary', 'sm')}
       >
         Google
