@@ -5,6 +5,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Flughäfen aus OurAirports (gemeinfrei), siehe AirportDirectory -->
+    <EmbeddedResource Include="Flights\airports.json" LogicalName="Urlaubsplanner.Infrastructure.Flights.airports.json" />
+  </ItemGroup>
+
+  <ItemGroup>
     <InternalsVisibleTo Include="Urlaubsplanner.Tests" />
   </ItemGroup>
 
