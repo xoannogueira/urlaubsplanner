@@ -72,6 +72,7 @@ export function useActivityPages(center: LatLng | null, radiusMeters: number, fi
     staleTime: 6 * 60 * 60_000,
     gcTime: 6 * 60 * 60_000,
     placeholderData: keepPreviousData,
-    retry: 1,
+    // Das Backend probiert schon mehrere Server – ein weiterer Versuch würde OpenStreetMap nur zusätzlich belasten.
+    retry: false,
   })
 }

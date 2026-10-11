@@ -212,6 +212,49 @@ public sealed class OsmActivitySearchTests
         Assert.Equal(2, handler.Calls.Count);
     }
 
+    [Fact]
+    public async Task Gleichzeitige_gleiche_Suchen_fragen_OpenStreetMap_nur_einmal()
+    {
+        // Overpass antwortet erst, wenn wir es freigeben – so laufen alle Anfragen garantiert gleichzeitig.
+        var release = new TaskCompletionSource();
+        var overpassCalls = 0;
+        var handler = new BlockingHandler(async r =>
+        {
+            if (r.RequestUri!.Host.StartsWith("overpass", StringComparison.Ordinal))
+            {
+                Interlocked.Increment(ref overpassCalls);
+                await release.Task;
+                return Json(Overpass);
+            }
+
+            return Json(Sparql);
+        });
+        var settings = new ActivityOptions { WikidataSparqlUrl = "https://wikidata.test/sparql" };
+        settings.OverpassUrls.Clear();
+        settings.OverpassUrls.Add("https://overpass.test/api/interpreter");
+        var search = new OsmActivitySearch(new HttpClient(handler), new MemoryCache(new MemoryCacheOptions()), Options.Create(settings), TimeProvider.System, NullLogger<OsmActivitySearch>.Instance);
+
+        using var abort = new CancellationTokenSource();
+        var cancelled = search.SearchAsync(Request, abort.Token);
+        var others = Enumerable.Range(0, 4).Select(_ => search.SearchAsync(Request, CancellationToken.None)).ToList();
+        await abort.CancelAsync(); // z. B. Filter im Frontend gewechselt
+        release.SetResult();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => cancelled);
+        var results = await Task.WhenAll(others);
+        Assert.Equal(1, overpassCalls);
+        Assert.All(results, r => Assert.Equal(4, r.Activities.Count));
+
+        // Danach kommt alles aus dem Cache.
+        await search.SearchAsync(Request, CancellationToken.None);
+        Assert.Equal(1, overpassCalls);
+    }
+
+    private sealed class BlockingHandler(Func<HttpRequestMessage, Task<HttpResponseMessage>> respond) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) => respond(request);
+    }
+
     [Theory]
     [InlineData("pt:Torre de Belém", "https://pt.wikipedia.org/wiki/Torre_de_Bel%C3%A9m")]
     [InlineData("kaputt", null)]
