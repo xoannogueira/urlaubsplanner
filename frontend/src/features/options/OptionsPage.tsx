@@ -14,6 +14,8 @@ import { formatDateRange, formatEuro, hostOf, nightsLabel } from '../../lib/form
 import { toLatLng } from '../../lib/geo'
 import { optionPins, stageMarkers } from '../../lib/mapData'
 import { kindLabels, sortOptions } from '../../lib/options'
+import { canRecheck } from '../../lib/hotels'
+import { HotelRecheck } from '../hotels/HotelRecheck'
 import { HotelSearchView } from '../hotels/HotelSearchView'
 import { OptionCard } from './OptionCard'
 import { OptionFormDialog } from './OptionFormDialog'
@@ -197,6 +199,7 @@ export function OptionsPage({ kind }: { kind: OptionKind }) {
                       onDelete={() => setToDelete(option)}
                       selected={showMap && option.id === selectedId}
                       onSelect={showMap && toLatLng(option) ? () => setSelectedId(option.id) : undefined}
+                      extra={canRecheck(option) ? <HotelRecheck trip={trip} option={option} /> : undefined}
                     />
                   ))}
                 </div>

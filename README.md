@@ -22,6 +22,12 @@ einzeln buchen.
 - **Hotelsuche** (LiteAPI) pro Etappe: Fotos, Sterne, Bewertung, Zimmer & Verpflegung, Gesamtpreis – als Liste und als Preis-Pins auf der Karte,
   mit Filtern (stornierbar, Bewertung 8+, 4 Sterne+) und Sortierung (Preis, Bewertung, Entfernung). „Merken“ speichert das Hotel als Favorit
   inklusive Foto und vorausgefülltem Buchungslink
+- **Ausgebuchte Hotels** per Schalter „Ausgebuchte zeigen“: rot umrandet in der Liste und gestrichelt auf der Karte
+- **Andere Daten prüfen**: ausgewählte Hotels für dieselbe Anzahl Nächte, bis zu 3 Tage früher oder später –
+  höchstens 6 LiteAPI-Abfragen, egal wie viele Hotels. Ausweichtermine lassen sich direkt merken
+- **Gemerkte Hotels neu prüfen** (z. B. Monate später): noch frei? Preis gleich? Neuen Preis oder Ausweichtermin übernehmen
+- Links zu **Booking.com** (mit Daten vorausgefüllt) und **Google Hotels** (vergleicht viele Anbieter; Daten dort wählen).
+  Hinweis: LiteAPI und Booking.com haben getrennte Kontingente – „frei“ in der App heißt nicht immer „frei auf Booking.com“
 
 ## Roadmap
 
@@ -174,9 +180,12 @@ Dieselben Checks laufen bei jedem Push in GitHub Actions.
 | POST | `/api/trips/{id}/options` | Flug/Hotel/Aktivität speichern |
 | PUT / DELETE | `/api/trips/{id}/options/{optionId}` | Option ändern, löschen |
 | PATCH | `/api/trips/{id}/options/{optionId}/status` | Status setzen |
+| PATCH | `/api/trips/{id}/options/{optionId}/price` | Neu geprüften Preis bestätigen (setzt „geprüft am“) |
 | GET | `/api/places?q=…&lat=…&lon=…` | Ortssuche (lat/lon optional: Treffer in der Nähe bevorzugen) |
 | GET | `/api/hotels/status` | Ist ein LiteAPI-Key hinterlegt? |
-| POST | `/api/hotels/search` | Hotelsuche: `latitude`, `longitude`, `checkin`, `checkout`, `adults`, optional `rooms`, `radiusMeters` |
+| POST | `/api/hotels/search` | Hotelsuche: `latitude`, `longitude`, `checkin`, `checkout`, `adults`, optional `rooms`, `radiusMeters` – oder statt Ort `hotelIds` |
+| POST | `/api/hotels/nearby` | Alle Hotels im Umkreis, auch ausgebuchte (ohne Preis) |
+| POST | `/api/hotels/alternatives` | Ausweichdaten: `hotelIds`, `checkin`, `checkout`, `adults`, optional `rooms`, `shiftDays` (Standard 3) |
 
 Fehler kommen als Problem Details (RFC 9457), Eingabefehler mit dem betroffenen Feld, z. B.
 `{"errors": {"url": ["Muss ein gültiger http- oder https-Link sein."]}}`.

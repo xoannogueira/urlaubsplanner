@@ -1,4 +1,4 @@
-import { keepPreviousData, useQuery } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQuery } from '@tanstack/react-query'
 import { api, json } from './client'
 
 export interface HotelOffer {
@@ -19,6 +19,57 @@ export interface HotelOffer {
   boardName: string | null
   refundable: boolean
   bookingUrl: string
+  /** Google Hotels – vergleicht viele Anbieter; Daten werden dort gewählt. */
+  googleUrl: string
+}
+
+/** Hotel im Umkreis ohne Preis – für „Ausgebuchte zeigen“. */
+export interface HotelListing {
+  hotelId: string
+  name: string
+  address: string | null
+  latitude: number | null
+  longitude: number | null
+  rating: number | null
+  reviewCount: number | null
+  stars: number | null
+  photoUrl: string | null
+  bookingUrl: string
+  googleUrl: string
+}
+
+export interface AlternativeWindow {
+  checkin: string
+  checkout: string
+  /** -2 = zwei Tage früher */
+  shiftDays: number
+  nights: number
+  /** Abfrage für diesen Zeitraum ist fehlgeschlagen. */
+  failed: boolean
+  hotels: HotelOffer[]
+}
+
+export interface HotelAlternativesResponse {
+  windows: AlternativeWindow[]
+  requests: number
+  sandbox: boolean
+}
+
+export interface HotelAlternativesParams {
+  hotelIds: string[]
+  checkin: string
+  checkout: string
+  adults: number
+  rooms: number
+  shiftDays?: number
+}
+
+export interface HotelRecheckParams {
+  hotelIds: string[]
+  checkin: string
+  checkout: string
+  adults: number
+  rooms: number
 }
 
 export interface HotelSearchResponse {
@@ -61,5 +112,32 @@ export function useHotelSearch(params: HotelSearchParams | null) {
     gcTime: 30 * 60_000,
     placeholderData: keepPreviousData,
     retry: false,
+  })
+}
+
+/** Alle Hotels im Umkreis (auch ausgebuchte). Lädt erst, wenn der Schalter an ist. */
+export function useNearbyHotels(params: HotelSearchParams | null, enabled: boolean) {
+  return useQuery({
+    queryKey: ['hotels', 'nearby', params],
+    queryFn: ({ signal }) => api<{ hotels: HotelListing[] }>('/hotels/nearby', { method: 'POST', signal, ...json(params) }),
+    enabled: enabled && params !== null,
+    staleTime: 60 * 60_000,
+    gcTime: 60 * 60_000,
+    retry: false,
+  })
+}
+
+/** Ausweichdaten (±3 Tage, gleiche Nächteanzahl) für ausgewählte Hotels – nur auf Klick. */
+export function useHotelAlternatives() {
+  return useMutation({
+    mutationFn: (params: HotelAlternativesParams) =>
+      api<HotelAlternativesResponse>('/hotels/alternatives', { method: 'POST', ...json(params) }),
+  })
+}
+
+/** Prüft gemerkte Hotels erneut für ihren Zeitraum (eine Abfrage). */
+export function useHotelRecheck() {
+  return useMutation({
+    mutationFn: (params: HotelRecheckParams) => api<HotelSearchResponse>('/hotels/search', { method: 'POST', ...json(params) }),
   })
 }

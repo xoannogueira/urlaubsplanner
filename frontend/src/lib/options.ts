@@ -1,4 +1,4 @@
-import type { OptionKind, OptionStatus, Trip, TripOption } from '../api/types'
+import type { OptionInput, OptionKind, OptionStatus, Trip, TripOption } from '../api/types'
 
 export const kindLabels: Record<OptionKind, { singular: string; plural: string; short: string }> = {
   Flight: { singular: 'Flug', plural: 'Flüge', short: 'FLUG' },
@@ -61,4 +61,24 @@ export function checklistGroups(trip: Trip): ChecklistGroup[] {
 
 export function sumTotals(options: TripOption[]): number {
   return options.reduce((sum, o) => sum + (o.totalPrice ?? 0), 0)
+}
+
+/** Gespeicherte Option zurück in Formulardaten, um einzelne Felder zu ändern. */
+export function optionToInput(option: TripOption): OptionInput {
+  return {
+    kind: option.kind,
+    title: option.title,
+    status: option.status,
+    stageId: option.stageId,
+    url: option.url,
+    price: option.price,
+    pricePerPerson: option.pricePerPerson,
+    startDate: option.startDate,
+    endDate: option.endDate,
+    locationName: option.locationName,
+    latitude: option.latitude,
+    longitude: option.longitude,
+    notes: option.notes,
+    imageUrl: option.imageUrl,
+  }
 }

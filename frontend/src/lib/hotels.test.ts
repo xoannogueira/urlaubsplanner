@@ -1,6 +1,19 @@
 import { describe, expect, it } from 'vitest'
 import type { HotelOffer } from '../api/hotels'
-import { defaultRooms, filterAndSortHotels, hotelNotes, noFilters, ratingLabel } from './hotels'
+import type { HotelListing } from '../api/hotels'
+import type { TripOption } from '../api/types'
+import {
+  alternativesByHotel,
+  canRecheck,
+  defaultRooms,
+  filterAndSortHotels,
+  hotelNotes,
+  hotelOptionInput,
+  noFilters,
+  ratingLabel,
+  shiftLabel,
+  unavailableHotels,
+} from './hotels'
 
 const hotel = (patch: Partial<HotelOffer>): HotelOffer => ({
   hotelId: 'h',
@@ -18,6 +31,7 @@ const hotel = (patch: Partial<HotelOffer>): HotelOffer => ({
   boardName: null,
   refundable: false,
   bookingUrl: 'https://www.booking.com/',
+  googleUrl: 'https://www.google.com/travel/search',
   ...patch,
 })
 
@@ -72,5 +86,99 @@ describe('Hilfen', () => {
     expect(hotelNotes(hotel({ roomName: 'Doppelzimmer', boardName: 'Frühstück', refundable: true }))).toBe(
       'Doppelzimmer · Frühstück · kostenlos stornierbar',
     )
+  })
+})
+
+const listing = (patch: Partial<HotelListing>): HotelListing => ({
+  hotelId: 'h',
+  name: 'Hotel',
+  address: null,
+  latitude: 38.72,
+  longitude: -9.14,
+  rating: 8,
+  reviewCount: null,
+  stars: 3,
+  photoUrl: null,
+  bookingUrl: 'https://www.booking.com/',
+  googleUrl: 'https://www.google.com/travel/search',
+  ...patch,
+})
+
+describe('unavailableHotels', () => {
+  const listings = [
+    listing({ hotelId: 'teuer-nah' }), // hat ein Angebot → nicht ausgebucht
+    listing({ hotelId: 'voll-gut', rating: 9.4, stars: 5 }),
+    listing({ hotelId: 'voll-ok', rating: 7.2, stars: 2 }),
+  ]
+
+  it('zeigt nur Hotels ohne Angebot, beste Bewertung zuerst', () => {
+    expect(unavailableHotels(listings, hotels, noFilters, 'price', center).map((h) => h.hotelId)).toEqual(['voll-gut', 'voll-ok'])
+  })
+
+  it('wendet Bewertungs- und Sternefilter an, ignoriert Preisfilter', () => {
+    const result = unavailableHotels(listings, hotels, { ...noFilters, minStars: 4, maxPrice: 1 }, 'price', center)
+    expect(result.map((h) => h.hotelId)).toEqual(['voll-gut'])
+  })
+})
+
+describe('alternativesByHotel', () => {
+  it('gruppiert pro Hotel nach Datum und behält Hotels ohne Treffer', () => {
+    const windows = [
+      {
+        checkin: '2027-05-13',
+        checkout: '2027-05-17',
+        shiftDays: 1,
+        nights: 4,
+        failed: false,
+        hotels: [hotel({ hotelId: 'a', totalPrice: 650 })],
+      },
+      {
+        checkin: '2027-05-11',
+        checkout: '2027-05-15',
+        shiftDays: -1,
+        nights: 4,
+        failed: false,
+        hotels: [hotel({ hotelId: 'a', totalPrice: 589 })],
+      },
+    ]
+    const grouped = alternativesByHotel({ windows, requests: 2, sandbox: false }, ['a', 'b'])
+    expect(grouped.get('a')!.map((x) => [x.checkin, x.offer.totalPrice])).toEqual([
+      ['2027-05-11', 589],
+      ['2027-05-13', 650],
+    ])
+    expect(grouped.get('b')).toEqual([])
+  })
+
+  it('beschriftet Verschiebungen', () => {
+    expect(shiftLabel(-1)).toBe('1 Tag früher')
+    expect(shiftLabel(3)).toBe('3 Tage später')
+  })
+})
+
+describe('hotelOptionInput', () => {
+  it('übernimmt Zeitraum, Herkunft und Gesamtpreis', () => {
+    const input = hotelOptionInput(hotel({ hotelId: 'lp1', name: 'Miradouro', totalPrice: 589 }), 's1', '2027-05-11', '2027-05-15')
+    expect(input).toMatchObject({
+      title: 'Miradouro',
+      stageId: 's1',
+      startDate: '2027-05-11',
+      endDate: '2027-05-15',
+      price: 589,
+      pricePerPerson: false,
+      provider: 'liteapi',
+      externalId: 'lp1',
+      status: 'Favorite',
+    })
+  })
+})
+
+describe('canRecheck', () => {
+  const saved = { kind: 'Hotel', provider: 'liteapi', externalId: 'lp1', startDate: '2027-05-12', endDate: '2027-05-16' } as TripOption
+
+  it('prüft nur Hotels aus der Suche mit Zeitraum in der Zukunft', () => {
+    expect(canRecheck(saved, '2026-10-11')).toBe(true)
+    expect(canRecheck(saved, '2027-05-13')).toBe(false)
+    expect(canRecheck({ ...saved, provider: 'manual' }, '2026-10-11')).toBe(false)
+    expect(canRecheck({ ...saved, endDate: null }, '2026-10-11')).toBe(false)
   })
 })
