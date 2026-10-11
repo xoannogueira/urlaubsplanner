@@ -79,6 +79,8 @@ function OptionForm({ onClose, onSubmit, kind, stages, option, defaultStageId }:
         locationName: locationName || null,
         latitude: coordinates?.latitude ?? null,
         longitude: coordinates?.longitude ?? null,
+        // Bild aus der Hotelsuche beim Bearbeiten behalten
+        imageUrl: option?.imageUrl ?? null,
         notes: notes || null,
       })
       onClose()

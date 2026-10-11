@@ -4,7 +4,7 @@ Ein persönlicher Reiseplaner für mich und Freunde: mehrere Urlaube anlegen, pr
 Aktivitäten sammeln, Favoriten markieren, auswählen – und am Ende alles über eine Checkliste mit Buchungslinks
 einzeln buchen.
 
-## Stand: Phase 2 – Karte und Ortssuche
+## Stand: Phase 3 – Hotelsuche
 
 - Mehrere Reisen anlegen, bearbeiten, löschen
 - Etappen (Ort + Zeitraum) pro Reise, z. B. Lissabon → Porto → Algarve
@@ -18,7 +18,10 @@ einzeln buchen.
 - **Ortssuche** beim Tippen für Etappen, Hotels und Aktivitäten (Photon / OpenStreetMap), Treffer nahe der Etappe zuerst
 - **Karte** (MapLibre + OpenFreeMap) mit Preis-Pins wie bei Airbnb: Pin anklicken → Eintrag in der Liste, Eintrag anklicken → Pin
 - Übersicht mit **Route** zwischen den Etappen und Entfernungen („274 km bis Porto“)
-- Backend-Tests (xUnit): Domain, Speicher, Ortssuche und API
+- Backend-Tests (xUnit): Domain, Speicher, Ortssuche, Hotelsuche und API
+- **Hotelsuche** (LiteAPI) pro Etappe: Fotos, Sterne, Bewertung, Zimmer & Verpflegung, Gesamtpreis – als Liste und als Preis-Pins auf der Karte,
+  mit Filtern (stornierbar, Bewertung 8+, 4 Sterne+) und Sortierung (Preis, Bewertung, Entfernung). „Merken“ speichert das Hotel als Favorit
+  inklusive Foto und vorausgefülltem Buchungslink
 
 ## Roadmap
 
@@ -26,7 +29,7 @@ einzeln buchen.
 | ----- | ------ |
 | 1 ✅ | Grundgerüst: Reisen, Etappen, manuelle Optionen, Status, Checkliste |
 | 2 ✅ | Karte (MapLibre) mit Preis-Pins, Ortssuche, Route, Backend-Tests |
-| 3 | Hotelsuche (LiteAPI) mit Preis-Pins auf der Karte |
+| 3 ✅ | Hotelsuche (LiteAPI) mit Preis-Pins auf der Karte |
 | 4 | Flugsuche (Ignav) – exakte Flughäfen oder Umkreissuche, Fallback-Links zu Google Flights/Skyscanner |
 | 5 | Aktivitäten-Vorschläge (OpenTripMap, Wikivoyage) |
 | 6 | Dashboard mit Diagrammen und Zeitplan |
@@ -40,6 +43,7 @@ einzeln buchen.
 | Backend | ASP.NET Core (.NET 10), Minimal APIs |
 | Speicher | JSON-Datei, später PostgreSQL + PostGIS |
 | Karten & Orte | OpenFreeMap (Kartenkacheln), Photon (Ortssuche) – beide kostenlos, ohne API-Key |
+| Hotels | LiteAPI (Sandbox-Key kostenlos) |
 | Qualität | xUnit, Vitest, oxlint, Prettier, `dotnet format`, GitHub Actions |
 
 ### Warum es flüssig bleibt
@@ -118,6 +122,26 @@ cd ../backend/src/Urlaubsplanner.Api && dotnet run
 
 Dann <http://localhost:5080> öffnen.
 
+### Hotelsuche einrichten (LiteAPI)
+
+1. Kostenlosen Account auf <https://www.liteapi.travel> anlegen, im Dashboard unter *Developer → API Keys* den Sandbox-Key (`sand_…`) kopieren.
+2. Key im **Terminal auf dem MacBook** hinterlegen – er landet in den .NET User Secrets (`~/.microsoft/usersecrets/`), **nie im Repo**:
+
+   ```bash
+   cd urlaubsplanner/backend/src/Urlaubsplanner.Api
+   dotnet user-secrets set "LiteApi:ApiKey" "sand_…"
+   ```
+
+3. Backend neu starten. Unter *Hotels → Hotels suchen* ist die Suche jetzt aktiv.
+
+Hinweise:
+
+- Mit einem Sandbox-Key zeigt die App „Sandbox – Preise evtl. Testdaten“. Echte Preise gibt es mit dem Produktiv-Key (Kreditkarte im LiteAPI-Dashboard).
+- Gesucht wird pro Etappe rund um ihren Ort (Umkreis 1–10 km), mit deren Daten und der Personenzahl der Reise. Ergebnisse werden 15 Minuten gecacht.
+- Der Buchungslink ist eine vorausgefüllte Booking.com-Suche. Wer eine LiteAPI-White-Label-Seite einrichtet, trägt deren Domain in
+  `appsettings.json` unter `LiteApi:WhitelabelDomain` ein – dann führen die Links direkt zum Hotel auf dieser Seite.
+- Weitere Einstellungen unter `LiteApi` in `appsettings.json`: `Currency` (EUR), `GuestNationality` (DE), `MaxHotels` (50).
+
 ### Daten
 
 Die Reisen liegen in `backend/src/Urlaubsplanner.Api/data/trips.json` (nicht im Repo). Pfad änderbar in
@@ -151,6 +175,8 @@ Dieselben Checks laufen bei jedem Push in GitHub Actions.
 | PUT / DELETE | `/api/trips/{id}/options/{optionId}` | Option ändern, löschen |
 | PATCH | `/api/trips/{id}/options/{optionId}/status` | Status setzen |
 | GET | `/api/places?q=…&lat=…&lon=…` | Ortssuche (lat/lon optional: Treffer in der Nähe bevorzugen) |
+| GET | `/api/hotels/status` | Ist ein LiteAPI-Key hinterlegt? |
+| POST | `/api/hotels/search` | Hotelsuche: `latitude`, `longitude`, `checkin`, `checkout`, `adults`, optional `rooms`, `radiusMeters` |
 
 Fehler kommen als Problem Details (RFC 9457), Eingabefehler mit dem betroffenen Feld, z. B.
 `{"errors": {"url": ["Muss ein gültiger http- oder https-Link sein."]}}`.

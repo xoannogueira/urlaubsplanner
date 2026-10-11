@@ -1,5 +1,6 @@
 import clsx from 'clsx'
 import { CalendarDays, ExternalLink, Heart, MapPin, Pencil, Trash2 } from 'lucide-react'
+import { useState } from 'react'
 import type { OptionStatus, Stage, TripOption } from '../../api/types'
 import { StatusControl } from '../../components/StatusControl'
 import { IconButton } from '../../components/ui/Button'
@@ -41,6 +42,7 @@ export function OptionCard({ option, stage, travelers, onStatus, onEdit, onDelet
             : 'border-line hover:border-muted/50',
       )}
     >
+      {option.imageUrl && <CardImage src={option.imageUrl} />}
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 flex-col gap-1">
           <h3 className="text-base font-bold leading-snug">{option.title}</h3>
@@ -116,4 +118,23 @@ function displayLocation(title: string, location: string | null): string | null 
   const l = location.trim()
   if (l.toLowerCase() === t) return null
   return l.toLowerCase().startsWith(`${t}, `) ? l.slice(t.length + 2) : l
+}
+
+/** Foto aus der Hotelsuche; verschwindet still, wenn es nicht mehr geladen werden kann. */
+function CardImage({ src }: { src: string }) {
+  const [failed, setFailed] = useState(false)
+  if (failed) return null
+  return (
+    <div className="-mx-4 -mt-4 mb-1 h-36 overflow-hidden rounded-t-2xl bg-surface-3">
+      <img
+        src={src}
+        alt=""
+        loading="lazy"
+        decoding="async"
+        referrerPolicy="no-referrer"
+        onError={() => setFailed(true)}
+        className="size-full object-cover"
+      />
+    </div>
+  )
 }
