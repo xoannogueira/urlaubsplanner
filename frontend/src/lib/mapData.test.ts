@@ -19,6 +19,8 @@ const option = (patch: Partial<TripOption>): TripOption => ({
   longitude: -9.13,
   notes: null,
   provider: 'manual',
+  externalId: null,
+  imageUrl: null,
   priceCheckedAt: null,
   createdAt: '2026-10-11T00:00:00Z',
   updatedAt: '2026-10-11T00:00:00Z',

@@ -1,5 +1,6 @@
 import clsx from 'clsx'
-import { BedDouble, Compass, ExternalLink, List, Map as MapIcon, MapPinOff, Plane, Plus, X } from 'lucide-react'
+import { BedDouble, Compass, ExternalLink, List, Map as MapIcon, MapPinOff, Plane, Plus, Search, X } from 'lucide-react'
+import { useNavigate } from 'react-router'
 import { useCallback, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useTripActions } from '../../api/trips'
 import type { OptionKind, OptionStatus, TripOption } from '../../api/types'
@@ -13,6 +14,7 @@ import { formatDateRange, formatEuro, hostOf, nightsLabel } from '../../lib/form
 import { toLatLng } from '../../lib/geo'
 import { optionPins, stageMarkers } from '../../lib/mapData'
 import { kindLabels, sortOptions } from '../../lib/options'
+import { HotelSearchView } from '../hotels/HotelSearchView'
 import { OptionCard } from './OptionCard'
 import { OptionFormDialog } from './OptionFormDialog'
 
@@ -26,7 +28,6 @@ const icons: Record<OptionKind, ReactNode> = {
 
 const upcoming: Partial<Record<OptionKind, string>> = {
   Flight: 'Die automatische Flugsuche mit Umkreis-Flughäfen und Karte kommt in Phase 4.',
-  Hotel: 'Die automatische Hotelsuche mit Live-Preisen kommt in Phase 3.',
   Activity: 'Vorschläge für Sehenswürdigkeiten und Aktivitäten kommen in Phase 5.',
 }
 
@@ -43,6 +44,12 @@ export function OptionsPage({ kind }: { kind: OptionKind }) {
   const [toDelete, setToDelete] = useState<TripOption | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [view, setView] = useState<'list' | 'map'>('list')
+  // Nur bei Hotels: gespeicherte Hotels oder Live-Suche
+  const [mode, setMode] = useState<'saved' | 'search'>('saved')
+  const searching = kind === 'Hotel' && mode === 'search'
+  const navigate = useNavigate()
+  // Die Suche braucht eine konkrete Etappe: die gewählte, sonst die erste mit Ort.
+  const searchStage = trip.stages.find((s) => s.id === stageFilter) ?? trip.stages.find((s) => s.latitude != null) ?? trip.stages[0] ?? null
   const mapRef = useRef<HTMLElement>(null)
   const showMapView = () => {
     setView('map')
@@ -91,14 +98,26 @@ export function OptionsPage({ kind }: { kind: OptionKind }) {
 
   return (
     <div className="flex flex-col gap-5 px-4 md:px-8 pb-10 pt-5">
+      {kind === 'Hotel' && (
+        <div role="tablist" aria-label="Hotels" className="flex self-start rounded-xl bg-surface-2 p-1">
+          <ModeTab active={!searching} onClick={() => setMode('saved')} icon={<BedDouble size={16} />}>
+            Gespeichert · {ofKind.length}
+          </ModeTab>
+          <ModeTab active={searching} onClick={() => setMode('search')} icon={<Search size={16} />}>
+            Hotels suchen
+          </ModeTab>
+        </div>
+      )}
       <div role="tablist" aria-label="Etappen" className="-mx-1 flex gap-2.5 overflow-x-auto px-1 pb-1">
-        <StageTab active={stageFilter === ALL} onClick={() => setStageFilter(ALL)} title="Alle" sub={`${ofKind.length} gespeichert`} />
+        {!searching && (
+          <StageTab active={stageFilter === ALL} onClick={() => setStageFilter(ALL)} title="Alle" sub={`${ofKind.length} gespeichert`} />
+        )}
         {trip.stages.map((s) => {
           const chosen = count((o) => o.stageId === s.id && (o.status === 'Selected' || o.status === 'Booked'))
           return (
             <StageTab
               key={s.id}
-              active={stageFilter === s.id}
+              active={searching ? searchStage?.id === s.id : stageFilter === s.id}
               onClick={() => setStageFilter(s.id)}
               title={s.name}
               sub={`${formatDateRange(s.startDate, s.endDate)} · ${nightsLabel(s.nights)}`}
@@ -106,114 +125,127 @@ export function OptionsPage({ kind }: { kind: OptionKind }) {
             />
           )
         })}
-        <StageTab
-          active={stageFilter === GENERAL}
-          onClick={() => setStageFilter(GENERAL)}
-          title="Ganze Reise"
-          sub={`${count((o) => !o.stageId)} ohne Etappe`}
-        />
-      </div>
-
-      <div className="flex flex-wrap items-center gap-2.5">
-        <Chip active={statusFilter === 'all'} onClick={() => setStatusFilter('all')}>
-          Alle
-        </Chip>
-        <Chip active={statusFilter === 'Favorite'} onClick={() => setStatusFilter('Favorite')}>
-          Favoriten · {count((o) => o.status === 'Favorite')}
-        </Chip>
-        <Chip active={statusFilter === 'chosen'} onClick={() => setStatusFilter('chosen')}>
-          Ausgewählt & gebucht · {count((o) => o.status === 'Selected' || o.status === 'Booked')}
-        </Chip>
-        <div className="flex-1" />
-        {showMap && (
-          <div role="radiogroup" aria-label="Ansicht" className="flex rounded-xl bg-surface-2 p-1 xl:hidden">
-            <ViewButton active={view === 'list'} onClick={() => setView('list')} icon={<List size={16} />}>
-              Liste
-            </ViewButton>
-            <ViewButton active={view === 'map'} onClick={showMapView} icon={<MapIcon size={16} />}>
-              Karte
-            </ViewButton>
-          </div>
+        {!searching && (
+          <StageTab
+            active={stageFilter === GENERAL}
+            onClick={() => setStageFilter(GENERAL)}
+            title="Ganze Reise"
+            sub={`${count((o) => !o.stageId)} ohne Etappe`}
+          />
         )}
-        <Button variant="primary" icon={<Plus size={16} strokeWidth={2.5} />} onClick={() => setDialog({})}>
-          {labels.singular} speichern
-        </Button>
       </div>
 
-      <div className="flex flex-wrap items-start gap-6">
-        <section aria-label={labels.plural} className={clsx('min-w-0 flex-[1_1_520px]', showMap && view === 'map' && 'max-xl:hidden')}>
-          {visible.length === 0 ? (
-            <EmptyState
-              icon={icons[kind]}
-              title={ofKind.length === 0 ? `Noch keine ${labels.plural}` : 'Nichts passt zum Filter'}
-              text={
-                ofKind.length === 0
-                  ? `Speichere ${labels.plural} als Link mit Preis, markiere Favoriten und wähle am Ende aus, was gebucht wird.`
-                  : 'Ändere die Etappe oder den Statusfilter.'
-              }
-              action={
-                ofKind.length === 0 && (
-                  <Button variant="primary" onClick={() => setDialog({})}>
-                    {labels.singular} speichern
-                  </Button>
-                )
-              }
-            />
-          ) : (
-            <div className="grid grid-cols-[repeat(auto-fill,minmax(300px,1fr))] gap-4">
-              {visible.map((option) => (
-                <OptionCard
-                  key={option.id}
-                  option={option}
-                  stage={option.stageId ? stageById.get(option.stageId) : undefined}
-                  travelers={trip.travelers}
-                  onStatus={(status) => setStatus(option, status)}
-                  onEdit={() => setDialog({ option })}
-                  onDelete={() => setToDelete(option)}
-                  selected={showMap && option.id === selectedId}
-                  onSelect={showMap && toLatLng(option) ? () => setSelectedId(option.id) : undefined}
-                />
-              ))}
-            </div>
-          )}
-        </section>
-
-        {showMap && (
-          <aside
-            ref={mapRef}
-            aria-label="Karte"
-            className={clsx('sticky top-4 flex min-w-0 scroll-mt-4 flex-[1_1_420px] flex-col gap-2', view === 'list' && 'max-xl:hidden')}
-          >
-            <div className="relative">
-              <TripMap
-                label={`Karte: ${labels.plural}`}
-                pins={pins}
-                stages={mapStages}
-                selectedId={selectedId}
-                onSelect={selectFromMap}
-                fitTo="pins"
-                className="h-[calc(100dvh-140px)] max-h-[860px] min-h-[420px] max-xl:h-[calc(100dvh-90px)]"
-              />
-              {selected && <SelectedOverlay option={selected} onClose={() => setSelectedId(null)} />}
-              {pins.length === 0 && mapStages.length === 0 && (
-                <p className="pointer-events-none absolute inset-x-6 top-1/2 -translate-y-1/2 rounded-xl bg-surface px-4 py-3 text-center text-sm text-muted shadow">
-                  Wähle beim Speichern einen Ort aus der Liste – dann erscheint hier ein Pin mit Preis.
-                </p>
-              )}
-            </div>
-            {withoutLocation > 0 && (
-              <p className="flex items-center gap-1.5 text-xs text-muted">
-                <MapPinOff size={13} />
-                {withoutLocation === 1
-                  ? '1 Eintrag hat keinen Ort und fehlt auf der Karte.'
-                  : `${withoutLocation} Einträge haben keinen Ort und fehlen auf der Karte.`}
-              </p>
+      {searching ? (
+        <HotelSearchView trip={trip} stage={searchStage} onEditStage={() => void navigate(`/trips/${trip.id}`)} />
+      ) : (
+        <>
+          <div className="flex flex-wrap items-center gap-2.5">
+            <Chip active={statusFilter === 'all'} onClick={() => setStatusFilter('all')}>
+              Alle
+            </Chip>
+            <Chip active={statusFilter === 'Favorite'} onClick={() => setStatusFilter('Favorite')}>
+              Favoriten · {count((o) => o.status === 'Favorite')}
+            </Chip>
+            <Chip active={statusFilter === 'chosen'} onClick={() => setStatusFilter('chosen')}>
+              Ausgewählt & gebucht · {count((o) => o.status === 'Selected' || o.status === 'Booked')}
+            </Chip>
+            <div className="flex-1" />
+            {showMap && (
+              <div role="radiogroup" aria-label="Ansicht" className="flex rounded-xl bg-surface-2 p-1 xl:hidden">
+                <ViewButton active={view === 'list'} onClick={() => setView('list')} icon={<List size={16} />}>
+                  Liste
+                </ViewButton>
+                <ViewButton active={view === 'map'} onClick={showMapView} icon={<MapIcon size={16} />}>
+                  Karte
+                </ViewButton>
+              </div>
             )}
-          </aside>
-        )}
-      </div>
+            <Button variant="primary" icon={<Plus size={16} strokeWidth={2.5} />} onClick={() => setDialog({})}>
+              {labels.singular} speichern
+            </Button>
+          </div>
 
-      {upcoming[kind] && <p className="rounded-2xl border border-dashed border-line px-4 py-3 text-[13px] text-muted">{upcoming[kind]}</p>}
+          <div className="flex flex-wrap items-start gap-6">
+            <section aria-label={labels.plural} className={clsx('min-w-0 flex-[1_1_520px]', showMap && view === 'map' && 'max-xl:hidden')}>
+              {visible.length === 0 ? (
+                <EmptyState
+                  icon={icons[kind]}
+                  title={ofKind.length === 0 ? `Noch keine ${labels.plural}` : 'Nichts passt zum Filter'}
+                  text={
+                    ofKind.length === 0
+                      ? `Speichere ${labels.plural} als Link mit Preis, markiere Favoriten und wähle am Ende aus, was gebucht wird.`
+                      : 'Ändere die Etappe oder den Statusfilter.'
+                  }
+                  action={
+                    ofKind.length === 0 && (
+                      <Button variant="primary" onClick={() => setDialog({})}>
+                        {labels.singular} speichern
+                      </Button>
+                    )
+                  }
+                />
+              ) : (
+                <div className="grid grid-cols-[repeat(auto-fill,minmax(300px,1fr))] gap-4">
+                  {visible.map((option) => (
+                    <OptionCard
+                      key={option.id}
+                      option={option}
+                      stage={option.stageId ? stageById.get(option.stageId) : undefined}
+                      travelers={trip.travelers}
+                      onStatus={(status) => setStatus(option, status)}
+                      onEdit={() => setDialog({ option })}
+                      onDelete={() => setToDelete(option)}
+                      selected={showMap && option.id === selectedId}
+                      onSelect={showMap && toLatLng(option) ? () => setSelectedId(option.id) : undefined}
+                    />
+                  ))}
+                </div>
+              )}
+            </section>
+
+            {showMap && (
+              <aside
+                ref={mapRef}
+                aria-label="Karte"
+                className={clsx(
+                  'sticky top-4 flex min-w-0 scroll-mt-4 flex-[1_1_420px] flex-col gap-2',
+                  view === 'list' && 'max-xl:hidden',
+                )}
+              >
+                <div className="relative">
+                  <TripMap
+                    label={`Karte: ${labels.plural}`}
+                    pins={pins}
+                    stages={mapStages}
+                    selectedId={selectedId}
+                    onSelect={selectFromMap}
+                    fitTo="pins"
+                    className="h-[calc(100dvh-140px)] max-h-[860px] min-h-[420px] max-xl:h-[calc(100dvh-90px)]"
+                  />
+                  {selected && <SelectedOverlay option={selected} onClose={() => setSelectedId(null)} />}
+                  {pins.length === 0 && mapStages.length === 0 && (
+                    <p className="pointer-events-none absolute inset-x-6 top-1/2 -translate-y-1/2 rounded-xl bg-surface px-4 py-3 text-center text-sm text-muted shadow">
+                      Wähle beim Speichern einen Ort aus der Liste – dann erscheint hier ein Pin mit Preis.
+                    </p>
+                  )}
+                </div>
+                {withoutLocation > 0 && (
+                  <p className="flex items-center gap-1.5 text-xs text-muted">
+                    <MapPinOff size={13} />
+                    {withoutLocation === 1
+                      ? '1 Eintrag hat keinen Ort und fehlt auf der Karte.'
+                      : `${withoutLocation} Einträge haben keinen Ort und fehlen auf der Karte.`}
+                  </p>
+                )}
+              </aside>
+            )}
+          </div>
+
+          {upcoming[kind] && (
+            <p className="rounded-2xl border border-dashed border-line px-4 py-3 text-[13px] text-muted">{upcoming[kind]}</p>
+          )}
+        </>
+      )}
 
       <OptionFormDialog
         open={dialog !== null}
@@ -259,6 +291,24 @@ function SelectedOverlay({ option, onClose }: { option: TripOption; onClose: () 
         <X size={16} />
       </IconButton>
     </div>
+  )
+}
+
+function ModeTab({ active, onClick, icon, children }: { active: boolean; onClick: () => void; icon: ReactNode; children: ReactNode }) {
+  return (
+    <button
+      type="button"
+      role="tab"
+      aria-selected={active}
+      onClick={onClick}
+      className={clsx(
+        'flex h-10 cursor-pointer items-center gap-2 rounded-lg px-4 text-sm font-bold transition-colors duration-100',
+        active ? 'bg-accent text-accent-ink' : 'text-muted hover:text-text',
+      )}
+    >
+      {icon}
+      {children}
+    </button>
   )
 }
 

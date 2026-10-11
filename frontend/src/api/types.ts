@@ -32,6 +32,8 @@ export interface TripOption {
   longitude: number | null
   notes: string | null
   provider: string
+  externalId: string | null
+  imageUrl: string | null
   priceCheckedAt: string | null
   createdAt: string
   updatedAt: string
@@ -122,6 +124,10 @@ export interface OptionInput {
   latitude: number | null
   longitude: number | null
   notes: string | null
+  imageUrl?: string | null
+  /** Nur beim Anlegen: Herkunft, z. B. 'liteapi', und die ID beim Anbieter. */
+  provider?: string
+  externalId?: string | null
 }
 
 /** Ergebnis der Ortssuche (GET /api/places). */
