@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Diagnostics;
 using Urlaubsplanner.Domain;
+using Urlaubsplanner.Domain.Hotels;
 using Urlaubsplanner.Domain.Places;
 
 namespace Urlaubsplanner.Api;
@@ -23,6 +24,15 @@ internal sealed class DomainExceptionHandler : IExceptionHandler
             PlaceSearchUnavailableException e => TypedResults.Problem(
                 statusCode: StatusCodes.Status503ServiceUnavailable,
                 title: "Ortssuche nicht erreichbar",
+                detail: e.Message),
+            HotelSearchNotConfiguredException e => TypedResults.Problem(
+                statusCode: StatusCodes.Status503ServiceUnavailable,
+                title: "Hotelsuche nicht eingerichtet",
+                detail: e.Message,
+                type: "urn:urlaubsplanner:hotel-search-not-configured"),
+            HotelSearchUnavailableException e => TypedResults.Problem(
+                statusCode: StatusCodes.Status502BadGateway,
+                title: "Hotelsuche nicht erreichbar",
                 detail: e.Message),
             BadHttpRequestException e => TypedResults.Problem(
                 statusCode: e.StatusCode,

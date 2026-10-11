@@ -25,7 +25,10 @@ public sealed record OptionRequest(
     string? LocationName,
     double? Latitude,
     double? Longitude,
-    string? Notes)
+    string? Notes,
+    string? ImageUrl = null,
+    string? Provider = null,
+    string? ExternalId = null)
 {
     public OptionData ToData() => new(
         Kind,
@@ -40,7 +43,10 @@ public sealed record OptionRequest(
         LocationName,
         Latitude,
         Longitude,
-        Notes);
+        Notes,
+        ImageUrl,
+        Provider,
+        ExternalId);
 }
 
 public sealed record StatusRequest(OptionStatus Status);

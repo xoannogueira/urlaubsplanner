@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
+using Urlaubsplanner.Domain.Hotels;
 using Urlaubsplanner.Domain.Places;
 
 namespace Urlaubsplanner.Tests.Api;
@@ -13,7 +14,27 @@ namespace Urlaubsplanner.Tests.Api;
 public sealed class ApiTests : IDisposable
 {
     private readonly string _dataFile = Path.Combine(Path.GetTempPath(), "urlaubsplanner-tests", Guid.NewGuid().ToString("N"), "trips.json");
+    private sealed class FakeHotelSearch : IHotelSearch
+    {
+        public bool IsConfigured { get; set; } = true;
+
+        public HotelSearchRequest? Last { get; private set; }
+
+        public Task<HotelSearchResult> SearchAsync(HotelSearchRequest request, CancellationToken cancellationToken)
+        {
+            if (!IsConfigured)
+            {
+                throw new HotelSearchNotConfiguredException();
+            }
+
+            Last = request;
+            var offer = new HotelOffer("lp1", "Hotel Miradouro", "Rua A 1", 38.71, -9.13, 8.7, 1284, 4, null, 612m, "EUR", "Doppelzimmer", null, true, "https://www.booking.com/");
+            return Task.FromResult(new HotelSearchResult([offer], true, DateTimeOffset.UnixEpoch));
+        }
+    }
+
     private readonly FakePlaceSearch _places = new();
+    private readonly FakeHotelSearch _hotels = new();
     private readonly WebApplicationFactory<Program> _factory;
     private readonly HttpClient _client;
 
@@ -33,7 +54,7 @@ public sealed class ApiTests : IDisposable
         _factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
         {
             builder.UseSetting("Storage:FilePath", _dataFile);
-            builder.ConfigureTestServices(services => services.AddSingleton<IPlaceSearch>(_places));
+            builder.ConfigureTestServices(services => services.AddSingleton<IPlaceSearch>(_places).AddSingleton<IHotelSearch>(_hotels));
         });
         _client = _factory.CreateClient();
     }
@@ -170,6 +191,68 @@ public sealed class ApiTests : IDisposable
     {
         var response = await _client.GetAsync($"/api/places?q={query}");
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    private static object HotelSearch(string checkin = "2027-05-12", string checkout = "2027-05-16", int adults = 4) =>
+        new { latitude = 38.72, longitude = -9.14, checkin, checkout, adults };
+
+    [Fact]
+    public async Task Hotelsuche_liefert_Treffer_und_teilt_Zimmer_auf()
+    {
+        var response = await _client.PostAsJsonAsync("/api/hotels/search", HotelSearch(adults: 5));
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var body = await ReadJson(response);
+        Assert.Equal("Hotel Miradouro", body.GetProperty("hotels")[0].GetProperty("name").GetString());
+        Assert.True(body.GetProperty("sandbox").GetBoolean());
+        Assert.Equal(4, body.GetProperty("nights").GetInt32());
+        Assert.Equal(3, body.GetProperty("rooms").GetInt32()); // 5 Personen → standardmäßig 3 Zimmer
+        Assert.Equal(3000, _hotels.Last!.RadiusMeters);
+    }
+
+    [Fact]
+    public async Task Hotelsuche_mit_ungueltigen_Daten_liefert_Feldfehler()
+    {
+        var response = await _client.PostAsJsonAsync("/api/hotels/search", HotelSearch(checkin: "2027-05-16", checkout: "2027-05-12"));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.True((await ReadJson(response)).GetProperty("errors").TryGetProperty("checkout", out _));
+    }
+
+    [Fact]
+    public async Task Hotelsuche_ohne_Key_meldet_nicht_eingerichtet()
+    {
+        _hotels.IsConfigured = false;
+
+        var status = await ReadJson(await _client.GetAsync("/api/hotels/status"));
+        Assert.False(status.GetProperty("configured").GetBoolean());
+
+        var response = await _client.PostAsJsonAsync("/api/hotels/search", HotelSearch());
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
+        Assert.Equal("urn:urlaubsplanner:hotel-search-not-configured", (await ReadJson(response)).GetProperty("type").GetString());
+    }
+
+    [Fact]
+    public async Task Gemerktes_Hotel_behaelt_Herkunft_und_Bild()
+    {
+        var id = await CreateTrip();
+        var trip = await ReadJson(await _client.PostAsJsonAsync($"/api/trips/{id}/options", new
+        {
+            kind = "Hotel",
+            title = "Hotel Miradouro",
+            status = "Favorite",
+            price = 612,
+            provider = "liteapi",
+            externalId = "lp1",
+            imageUrl = "https://img.example/1.jpg",
+        }));
+        var option = trip.GetProperty("options")[0];
+        Assert.Equal("liteapi", option.GetProperty("provider").GetString());
+        Assert.Equal("lp1", option.GetProperty("externalId").GetString());
+        Assert.Equal("https://img.example/1.jpg", option.GetProperty("imageUrl").GetString());
+
+        var unknown = await _client.PostAsJsonAsync($"/api/trips/{id}/options", new { kind = "Hotel", title = "X", provider = "hacker" });
+        Assert.Equal(HttpStatusCode.BadRequest, unknown.StatusCode);
     }
 
     [Fact]

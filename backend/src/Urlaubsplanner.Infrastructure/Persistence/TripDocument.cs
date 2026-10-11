@@ -71,15 +71,17 @@ internal sealed record OptionDocument(
     string Provider,
     DateTimeOffset? PriceCheckedAt,
     DateTimeOffset CreatedAt,
-    DateTimeOffset UpdatedAt)
+    DateTimeOffset UpdatedAt,
+    string? ExternalId = null,
+    string? ImageUrl = null)
 {
     public static OptionDocument From(TripOption o) => new(
         o.Id, o.Kind, o.Status, o.StageId, o.Title, o.Url, o.Price, o.PricePerPerson, o.StartDate, o.EndDate,
-        o.LocationName, o.Latitude, o.Longitude, o.Notes, o.Provider, o.PriceCheckedAt, o.CreatedAt, o.UpdatedAt);
+        o.LocationName, o.Latitude, o.Longitude, o.Notes, o.Provider, o.PriceCheckedAt, o.CreatedAt, o.UpdatedAt, o.ExternalId, o.ImageUrl);
 
     public TripOption ToDomain() => TripOption.Restore(
         Id, Kind, Status, StageId, Title, Url, Price, PricePerPerson, StartDate, EndDate,
-        LocationName, Latitude, Longitude, Notes, Provider, PriceCheckedAt, CreatedAt, UpdatedAt);
+        LocationName, Latitude, Longitude, Notes, Provider, ExternalId, ImageUrl, PriceCheckedAt, CreatedAt, UpdatedAt);
 }
 
 internal sealed record TripStoreFile(int Version, List<TripDocument> Trips)

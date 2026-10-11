@@ -6,6 +6,9 @@ namespace Urlaubsplanner.Domain.Trips;
 /// </summary>
 public sealed class TripOption
 {
+    /// <summary>Erlaubte Herkunft einer Option. "manual" = selbst eingetragen.</summary>
+    public static readonly IReadOnlySet<string> KnownProviders = new HashSet<string>(StringComparer.Ordinal) { "manual", "liteapi" };
+
     private TripOption(Guid id, OptionKind kind, OptionStatus status, string provider, DateTimeOffset createdAt)
     {
         Id = id;
@@ -47,8 +50,14 @@ public sealed class TripOption
 
     public string? Notes { get; private set; }
 
-    /// <summary>Woher die Option stammt, z. B. "manual". Später "liteapi", "ignav" …</summary>
+    /// <summary>Woher die Option stammt: "manual" oder ein Suchanbieter wie "liteapi".</summary>
     public string Provider { get; }
+
+    /// <summary>ID beim Anbieter (z. B. LiteAPI-Hotel-ID). Damit erkennt die Suche bereits gemerkte Treffer.</summary>
+    public string? ExternalId { get; private set; }
+
+    /// <summary>Vorschaubild, z. B. das Hotelfoto aus der Suche.</summary>
+    public string? ImageUrl { get; private set; }
 
     /// <summary>Wann der Preis zuletzt geprüft wurde. Preise sind immer nur Momentaufnahmen.</summary>
     public DateTimeOffset? PriceCheckedAt { get; private set; }
@@ -62,7 +71,16 @@ public sealed class TripOption
 
     internal static TripOption Create(OptionData data, DateTimeOffset now)
     {
-        var option = new TripOption(Guid.NewGuid(), data.Kind, data.Status, "manual", now);
+        var provider = data.Provider ?? "manual";
+        if (!KnownProviders.Contains(provider))
+        {
+            throw new DomainException("provider", "Unbekannte Herkunft.");
+        }
+
+        var option = new TripOption(Guid.NewGuid(), data.Kind, data.Status, provider, now)
+        {
+            ExternalId = Guard.OptionalText(data.ExternalId, "externalId", 200),
+        };
         option.Apply(data, now);
         return option;
     }
@@ -83,6 +101,8 @@ public sealed class TripOption
         double? longitude,
         string? notes,
         string provider,
+        string? externalId,
+        string? imageUrl,
         DateTimeOffset? priceCheckedAt,
         DateTimeOffset createdAt,
         DateTimeOffset updatedAt) =>
@@ -99,6 +119,8 @@ public sealed class TripOption
             Latitude = latitude,
             Longitude = longitude,
             Notes = notes,
+            ExternalId = externalId,
+            ImageUrl = imageUrl,
             PriceCheckedAt = priceCheckedAt,
             UpdatedAt = updatedAt,
         };
@@ -154,6 +176,7 @@ public sealed class TripOption
         Latitude = lat;
         Longitude = lng;
         Notes = Guard.OptionalText(data.Notes, "notes", 4000);
+        ImageUrl = Guard.OptionalWebUrl(data.ImageUrl, "imageUrl");
         UpdatedAt = now;
     }
 }
@@ -171,4 +194,8 @@ public sealed record OptionData(
     string? LocationName = null,
     double? Latitude = null,
     double? Longitude = null,
-    string? Notes = null);
+    string? Notes = null,
+    string? ImageUrl = null,
+    /// <summary>Nur beim Anlegen relevant; danach bleibt die Herkunft unverändert.</summary>
+    string? Provider = null,
+    string? ExternalId = null);
