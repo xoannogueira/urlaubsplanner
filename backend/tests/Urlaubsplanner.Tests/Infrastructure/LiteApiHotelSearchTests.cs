@@ -126,7 +126,7 @@ public sealed class LiteApiHotelSearchTests
         using var body = JsonDocument.Parse(handler.LastBody!);
         var root = body.RootElement;
         Assert.False(root.TryGetProperty("latitude", out _));
-        Assert.Equal(["lp1", "lp2"], root.GetProperty("hotelIds").EnumerateArray().Select(e => e.GetString()).ToArray());
+        Assert.Equal(["lp1", "lp2"], root.GetProperty("hotelIds").EnumerateArray().Select(e => e.GetString()!).ToArray());
     }
 
     [Fact]
