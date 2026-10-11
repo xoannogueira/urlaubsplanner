@@ -1,10 +1,12 @@
 import { useState, type FormEvent } from 'react'
 import { ApiError } from '../../api/client'
-import type { OptionInput, OptionKind, OptionStatus, Stage, TripOption } from '../../api/types'
+import type { LatLng, OptionInput, OptionKind, OptionStatus, Stage, TripOption } from '../../api/types'
+import { MapHint, PlaceSearchField } from '../../components/PlaceSearchField'
 import { Button } from '../../components/ui/Button'
 import { Dialog } from '../../components/ui/Dialog'
 import { FormError, InputField, SelectField, TextAreaField } from '../../components/ui/Field'
 import { formatDateRange } from '../../lib/format'
+import { toLatLng } from '../../lib/geo'
 import { kindLabels, statusLabels, statusOrder } from '../../lib/options'
 
 interface OptionFormDialogProps {
@@ -18,9 +20,9 @@ interface OptionFormDialogProps {
 }
 
 const placeholders: Record<OptionKind, { title: string; location: string }> = {
-  Flight: { title: 'z. B. STR → LIS, TAP 10:40', location: 'z. B. Stuttgart → Lissabon' },
-  Hotel: { title: 'z. B. Hotel Miradouro', location: 'z. B. Graça, Lissabon' },
-  Activity: { title: 'z. B. Oceanário de Lisboa', location: 'z. B. Parque das Nações' },
+  Flight: { title: 'z. B. STR → LIS, TAP 10:40', location: 'z. B. Flughafen Lissabon' },
+  Hotel: { title: 'z. B. Hotel Miradouro', location: 'Hotelname oder Adresse suchen' },
+  Activity: { title: 'z. B. Oceanário de Lisboa', location: 'Sehenswürdigkeit oder Adresse suchen' },
   Transport: { title: 'z. B. Zug Lissabon → Porto', location: '' },
   Other: { title: 'z. B. Reiseversicherung', location: '' },
 }
@@ -50,11 +52,14 @@ function OptionForm({ onClose, onSubmit, kind, stages, option, defaultStageId }:
   const [startDate, setStartDate] = useState(option?.startDate ?? '')
   const [endDate, setEndDate] = useState(option?.endDate ?? '')
   const [locationName, setLocationName] = useState(option?.locationName ?? '')
+  const [coordinates, setCoordinates] = useState<LatLng | null>(toLatLng(option))
   const [notes, setNotes] = useState(option?.notes ?? '')
   const [error, setError] = useState<ApiError | null>(null)
   const [pending, setPending] = useState(false)
 
   const isHotel = kind === 'Hotel'
+  // Suche bevorzugt Orte rund um die gewählte Etappe – "Hotel Miradouro" findet dann das in Lissabon.
+  const near = toLatLng(stages.find((s) => s.id === stageId))
 
   const submit = async (e: FormEvent) => {
     e.preventDefault()
@@ -72,6 +77,8 @@ function OptionForm({ onClose, onSubmit, kind, stages, option, defaultStageId }:
         startDate: startDate || null,
         endDate: endDate || null,
         locationName: locationName || null,
+        latitude: coordinates?.latitude ?? null,
+        longitude: coordinates?.longitude ?? null,
         notes: notes || null,
       })
       onClose()
@@ -144,7 +151,29 @@ function OptionForm({ onClose, onSubmit, kind, stages, option, defaultStageId }:
         </fieldset>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+      <div className="flex flex-col gap-1.5">
+        <PlaceSearchField
+          label={kind === 'Flight' ? 'Ort (optional)' : 'Ort / Adresse'}
+          value={locationName}
+          coordinates={coordinates}
+          near={near}
+          onTextChange={(text) => {
+            setLocationName(text)
+            setCoordinates(null)
+          }}
+          fillWith="label"
+          onPick={(place) => {
+            setLocationName(place.label)
+            setCoordinates({ latitude: place.latitude, longitude: place.longitude })
+            if (!title.trim()) setTitle(place.name)
+          }}
+          placeholder={placeholders[kind].location}
+          error={fe.locationName ?? fe.latitude}
+        />
+        <MapHint coordinates={coordinates} />
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <InputField
           label={isHotel ? 'Check-in' : 'Datum'}
           type="date"
@@ -160,13 +189,6 @@ function OptionForm({ onClose, onSubmit, kind, stages, option, defaultStageId }:
           min={startDate || undefined}
           onChange={(e) => setEndDate(e.target.value)}
           error={fe.endDate}
-        />
-        <InputField
-          label="Ort"
-          value={locationName}
-          onChange={(e) => setLocationName(e.target.value)}
-          placeholder={placeholders[kind].location}
-          error={fe.locationName}
         />
       </div>
 

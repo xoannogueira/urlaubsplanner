@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Diagnostics;
 using Urlaubsplanner.Domain;
+using Urlaubsplanner.Domain.Places;
 
 namespace Urlaubsplanner.Api;
 
@@ -18,6 +19,10 @@ internal sealed class DomainExceptionHandler : IExceptionHandler
             NotFoundException e => TypedResults.Problem(
                 statusCode: StatusCodes.Status404NotFound,
                 title: $"{e.Entity} nicht gefunden",
+                detail: e.Message),
+            PlaceSearchUnavailableException e => TypedResults.Problem(
+                statusCode: StatusCodes.Status503ServiceUnavailable,
+                title: "Ortssuche nicht erreichbar",
                 detail: e.Message),
             BadHttpRequestException e => TypedResults.Problem(
                 statusCode: e.StatusCode,

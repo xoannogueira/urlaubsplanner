@@ -104,6 +104,8 @@ export interface StageInput {
   name: string
   startDate: string
   endDate: string
+  latitude: number | null
+  longitude: number | null
 }
 
 export interface OptionInput {
@@ -117,5 +119,21 @@ export interface OptionInput {
   startDate: string | null
   endDate: string | null
   locationName: string | null
+  latitude: number | null
+  longitude: number | null
   notes: string | null
+}
+
+/** Ergebnis der Ortssuche (GET /api/places). */
+export interface Place {
+  name: string
+  label: string
+  latitude: number
+  longitude: number
+  type: string | null
+}
+
+export interface LatLng {
+  latitude: number
+  longitude: number
 }

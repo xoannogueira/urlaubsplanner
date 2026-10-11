@@ -1,10 +1,8 @@
 import clsx from 'clsx'
+import { controlClass } from './fieldStyles'
 import { useId, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from 'react'
 
-const controlClass =
-  'h-11 w-full rounded-xl border border-line bg-surface-2 px-3.5 text-[15px] font-medium text-text placeholder:text-muted/70 transition-colors focus:border-accent focus:outline-none aria-invalid:border-danger'
-
-interface FieldShellProps {
+export interface FieldShellProps {
   label: string
   error?: string[]
   hint?: string
@@ -13,7 +11,7 @@ interface FieldShellProps {
 }
 
 /** Label über dem Feld, Fehler/Hinweis darunter – per id verknüpft, damit Screenreader alles vorlesen. */
-function FieldShell({ label, error, hint, className, children }: FieldShellProps) {
+export function FieldShell({ label, error, hint, className, children }: FieldShellProps) {
   const id = useId()
   const messageId = `${id}-msg`
   const hasMessage = Boolean(error?.length || hint)

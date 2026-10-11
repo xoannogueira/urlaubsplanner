@@ -13,18 +13,32 @@ interface OptionCardProps {
   onStatus: (status: OptionStatus) => void
   onEdit: () => void
   onDelete: () => void
+  /** Auf der Karte ausgewählt. */
+  selected?: boolean
+  /** Klick auf die Karte (nicht auf Buttons/Links) wählt den Pin auf der Karte aus. */
+  onSelect?: () => void
 }
 
-export function OptionCard({ option, stage, travelers, onStatus, onEdit, onDelete }: OptionCardProps) {
+export function OptionCard({ option, stage, travelers, onStatus, onEdit, onDelete, selected, onSelect }: OptionCardProps) {
   const favorite = option.status === 'Favorite'
   const chosen = option.status === 'Selected' || option.status === 'Booked'
   const hasDates = option.startDate || option.endDate
+  const location = displayLocation(option.title, option.locationName)
 
   return (
     <article
+      data-option-id={option.id}
+      onClick={(e) => {
+        if (onSelect && !(e.target as HTMLElement).closest('button, a, input, select, textarea')) onSelect()
+      }}
       className={clsx(
-        'flex flex-col gap-3 rounded-2xl border bg-surface p-4 transition-[border-color,box-shadow] duration-100',
-        chosen ? 'border-accent shadow-[0_0_0_3px_var(--accent-soft)]' : 'border-line',
+        'flex scroll-m-4 flex-col gap-3 rounded-2xl border bg-surface p-4 transition-[border-color,box-shadow] duration-100',
+        onSelect && 'cursor-pointer',
+        selected
+          ? 'border-accent shadow-[0_0_0_3px_var(--accent)]'
+          : chosen
+            ? 'border-accent shadow-[0_0_0_3px_var(--accent-soft)]'
+            : 'border-line hover:border-muted/50',
       )}
     >
       <div className="flex items-start justify-between gap-3">
@@ -32,10 +46,10 @@ export function OptionCard({ option, stage, travelers, onStatus, onEdit, onDelet
           <h3 className="text-base font-bold leading-snug">{option.title}</h3>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] text-muted">
             {stage && <span>{stage.name}</span>}
-            {option.locationName && (
+            {location && (
               <span className="flex items-center gap-1">
                 <MapPin size={13} />
-                {option.locationName}
+                {location}
               </span>
             )}
             {hasDates && (
@@ -93,4 +107,13 @@ export function OptionCard({ option, stage, travelers, onStatus, onEdit, onDelet
       <StatusControl value={option.status} onChange={onStatus} label={`Status von ${option.title}`} />
     </article>
   )
+}
+
+/** "Hotel Miradouro, Lissabon, Portugal" bei Titel "Hotel Miradouro" → "Lissabon, Portugal". */
+function displayLocation(title: string, location: string | null): string | null {
+  if (!location) return null
+  const t = title.trim().toLowerCase()
+  const l = location.trim()
+  if (l.toLowerCase() === t) return null
+  return l.toLowerCase().startsWith(`${t}, `) ? l.slice(t.length + 2) : l
 }

@@ -1,13 +1,16 @@
 import { CalendarRange, MapPin, Pencil, Plus, Trash2, TriangleAlert, Users } from 'lucide-react'
-import { useState, type ReactNode } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 import { useNavigate } from 'react-router'
 import { useDeleteTrip, useTripActions, useTripSummary } from '../../api/trips'
 import type { Stage, TripSummary } from '../../api/types'
 import { useTripContext } from '../../components/layout/tripContext'
+import { TripMap } from '../../components/map/TripMap'
 import { Button, IconButton } from '../../components/ui/Button'
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog'
 import { EmptyState, ProgressBar, Skeleton } from '../../components/ui/Feedback'
 import { formatDateRange, formatEuro, formatShortDate, nightsLabel } from '../../lib/format'
+import { distanceKm, formatDistance, toLatLng } from '../../lib/geo'
+import { stageMarkers } from '../../lib/mapData'
 import { kindLabels } from '../../lib/options'
 import { TripFormDialog } from '../trips/TripFormDialog'
 import { StageFormDialog } from './StageFormDialog'
@@ -25,6 +28,8 @@ export function OverviewPage() {
   const [confirmDeleteTrip, setConfirmDeleteTrip] = useState(false)
 
   const lastEnd = trip.stages.at(-1)?.endDate
+  const mapStages = useMemo(() => stageMarkers(trip.stages), [trip.stages])
+  const stagesWithoutPlace = trip.stages.length - mapStages.length
 
   return (
     <div className="flex flex-col gap-5 px-4 md:px-8 pb-10 pt-6">
@@ -56,6 +61,7 @@ export function OverviewPage() {
                     <span className="truncate font-bold">{stage.name}</span>
                     <span className="text-[13px] text-muted">
                       {formatDateRange(stage.startDate, stage.endDate)} · {nightsLabel(stage.nights)}
+                      {legLabel(stage, trip.stages[index + 1])}
                     </span>
                   </div>
                   <span className="hidden font-mono text-sm font-semibold sm:block">
@@ -98,6 +104,16 @@ export function OverviewPage() {
         </Card>
 
         <div className="flex flex-col gap-5">
+          {trip.stages.length > 0 && (
+            <Card title="Route">
+              <TripMap label="Karte der Reiseroute" stages={mapStages} pins={[]} showRoute className="h-80" />
+              <p className="text-[13px] leading-relaxed text-muted">
+                {stagesWithoutPlace > 0
+                  ? `${stagesWithoutPlace === 1 ? '1 Etappe hat' : `${stagesWithoutPlace} Etappen haben`} noch keinen Ort – beim Bearbeiten einen Vorschlag wählen.`
+                  : 'Die Nummern zeigen die Reihenfolge der Etappen.'}
+              </p>
+            </Card>
+          )}
           <Card title="Kosten nach Kategorie">
             {!summary ? (
               <Skeleton className="h-28" />
@@ -175,6 +191,13 @@ export function OverviewPage() {
       />
     </div>
   )
+}
+
+/** " · 275 km bis Porto" – nur wenn beide Etappen einen Ort haben. */
+function legLabel(stage: Stage, next: Stage | undefined): string {
+  const from = toLatLng(stage)
+  const to = toLatLng(next)
+  return next && from && to ? ` · ${formatDistance(distanceKm(from, to))} bis ${next.name}` : ''
 }
 
 function Kpis({ summary, travelers }: { summary?: TripSummary; travelers: number }) {
