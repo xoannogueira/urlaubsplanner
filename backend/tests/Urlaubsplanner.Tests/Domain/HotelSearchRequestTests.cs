@@ -90,4 +90,44 @@ public sealed class HotelSearchRequestTests
         var json = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(encoded));
         Assert.Equal("[{\"adults\":2,\"children\":[]},{\"adults\":2,\"children\":[]}]", json);
     }
+
+    [Fact]
+    public void Suche_nach_IDs_bereinigt_und_begrenzt_die_Liste()
+    {
+        var request = HotelSearchRequest.ForHotels([" lp1 ", "lp1", "", "lp2"], new DateOnly(2027, 5, 12), new DateOnly(2027, 5, 16), 2, 1, Today);
+        Assert.Equal(["lp1", "lp2"], request.HotelIds.ToArray());
+        Assert.Null(request.Center);
+
+        Assert.Equal("hotelIds", Assert.Throws<DomainException>(() =>
+            HotelSearchRequest.ForHotels([], new DateOnly(2027, 5, 12), new DateOnly(2027, 5, 16), 2, 1, Today)).Field);
+        var tooMany = Enumerable.Range(0, HotelSearchRequest.MaxHotelIds + 1).Select(i => $"lp{i}");
+        Assert.Equal("hotelIds", Assert.Throws<DomainException>(() =>
+            HotelSearchRequest.ForHotels(tooMany, new DateOnly(2027, 5, 12), new DateOnly(2027, 5, 16), 2, 1, Today)).Field);
+    }
+
+    [Fact]
+    public void Ausweichdaten_behalten_die_Naechte_und_starten_nah_am_Wunschtermin()
+    {
+        var windows = HotelDateAlternatives.Windows(new DateOnly(2027, 5, 12), new DateOnly(2027, 5, 16), Today);
+
+        Assert.Equal([-1, 1, -2, 2, -3, 3], windows.Select(w => w.ShiftDays).ToArray());
+        Assert.All(windows, w => Assert.Equal(4, w.Checkout.DayNumber - w.Checkin.DayNumber));
+        Assert.Equal(new DateOnly(2027, 5, 9), windows[4].Checkin);
+    }
+
+    [Fact]
+    public void Ausweichdaten_in_der_Vergangenheit_fallen_weg()
+    {
+        var windows = HotelDateAlternatives.Windows(Today.AddDays(1), Today.AddDays(3), Today);
+
+        Assert.Equal([-1, 1, 2, 3], windows.Select(w => w.ShiftDays).ToArray());
+    }
+
+    [Fact]
+    public void Google_Link_sucht_nach_Hotel_und_Stadt()
+    {
+        Assert.Equal(
+            "https://www.google.com/travel/search?q=Hotel%20A%20%26%20B%2C%20Lissabon&hl=de&gl=de",
+            HotelBookingLinks.Google("Hotel A & B", "Lissabon"));
+    }
 }

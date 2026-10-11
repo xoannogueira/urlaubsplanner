@@ -34,6 +34,8 @@ public static class TripEndpoints
             Change(repo, tripId, trip => trip.UpdateOption(optionId, request.ToData(), clock.GetUtcNow()), ct));
         trips.MapPatch("/{tripId:guid}/options/{optionId:guid}/status", (Guid tripId, Guid optionId, StatusRequest request, ITripRepository repo, TimeProvider clock, CancellationToken ct) =>
             Change(repo, tripId, trip => trip.ChangeOptionStatus(optionId, request.Status, clock.GetUtcNow()), ct));
+        trips.MapPatch("/{tripId:guid}/options/{optionId:guid}/price", (Guid tripId, Guid optionId, PriceRequest request, ITripRepository repo, TimeProvider clock, CancellationToken ct) =>
+            Change(repo, tripId, trip => trip.ConfirmOptionPrice(optionId, request.Price, clock.GetUtcNow()), ct));
         trips.MapDelete("/{tripId:guid}/options/{optionId:guid}", (Guid tripId, Guid optionId, ITripRepository repo, TimeProvider clock, CancellationToken ct) =>
             Change(repo, tripId, trip => trip.RemoveOption(optionId, clock.GetUtcNow()), ct));
 

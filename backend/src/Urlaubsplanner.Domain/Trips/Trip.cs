@@ -147,6 +147,14 @@ public sealed class Trip
         return option;
     }
 
+    public TripOption ConfirmOptionPrice(Guid optionId, decimal price, DateTimeOffset now)
+    {
+        var option = FindOption(optionId);
+        option.ConfirmPrice(price, now);
+        Touch(now);
+        return option;
+    }
+
     public void RemoveOption(Guid optionId, DateTimeOffset now)
     {
         _options.Remove(FindOption(optionId));

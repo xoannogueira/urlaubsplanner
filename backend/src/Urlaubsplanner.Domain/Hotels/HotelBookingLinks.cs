@@ -35,6 +35,16 @@ public static class HotelBookingLinks
         return "https://www.booking.com/searchresults.html?" + string.Join('&', parameters.Select(p => $"{p.Key}={Uri.EscapeDataString(p.Value)}"));
     }
 
+    /// <summary>
+    /// Google Hotels vergleicht viele Anbieter. Die Reisedaten lassen sich dort nicht verlässlich per URL vorbelegen
+    /// (Google kodiert sie intern), deshalb sucht der Link nach dem Hotel und die Daten werden dort gewählt.
+    /// </summary>
+    public static string Google(string hotelName, string? city)
+    {
+        var query = string.IsNullOrWhiteSpace(city) ? hotelName : $"{hotelName}, {city}";
+        return $"https://www.google.com/travel/search?q={Uri.EscapeDataString(query)}&hl=de&gl=de";
+    }
+
     /// <summary>Format laut LiteAPI-Doku: /hotels/{id}?checkin=…&amp;checkout=…&amp;occupancies=base64(JSON).</summary>
     public static string Whitelabel(string domain, string hotelId, HotelSearchRequest request)
     {

@@ -16,9 +16,16 @@ public sealed class ApiTests : IDisposable
     private readonly string _dataFile = Path.Combine(Path.GetTempPath(), "urlaubsplanner-tests", Guid.NewGuid().ToString("N"), "trips.json");
     private sealed class FakeHotelSearch : IHotelSearch
     {
+        private readonly System.Collections.Concurrent.ConcurrentQueue<HotelSearchRequest> _requests = new();
+
         public bool IsConfigured { get; set; } = true;
 
         public HotelSearchRequest? Last { get; private set; }
+
+        public IReadOnlyList<HotelSearchRequest> Requests => [.. _requests];
+
+        /// <summary>Für diese Anreise gibt es keine Zimmer.</summary>
+        public DateOnly? SoldOutCheckin { get; set; }
 
         public Task<HotelSearchResult> SearchAsync(HotelSearchRequest request, CancellationToken cancellationToken)
         {
@@ -28,8 +35,26 @@ public sealed class ApiTests : IDisposable
             }
 
             Last = request;
-            var offer = new HotelOffer("lp1", "Hotel Miradouro", "Rua A 1", 38.71, -9.13, 8.7, 1284, 4, null, 612m, "EUR", "Doppelzimmer", null, true, "https://www.booking.com/");
+            _requests.Enqueue(request);
+            if (request.Checkin == SoldOutCheckin)
+            {
+                return Task.FromResult(new HotelSearchResult([], true, DateTimeOffset.UnixEpoch));
+            }
+
+            var offer = new HotelOffer(
+                "lp1", "Hotel Miradouro", "Rua A 1", 38.71, -9.13, 8.7, 1284, 4, null, 612m, "EUR", "Doppelzimmer", null, true, "https://www.booking.com/", "https://www.google.com/travel/search");
             return Task.FromResult(new HotelSearchResult([offer], true, DateTimeOffset.UnixEpoch));
+        }
+
+        public Task<IReadOnlyList<HotelListing>> ListAsync(HotelSearchRequest request, CancellationToken cancellationToken)
+        {
+            Last = request;
+            IReadOnlyList<HotelListing> hotels =
+            [
+                new("lp1", "Hotel Miradouro", null, 38.71, -9.13, 8.7, 1284, 4, null, "https://www.booking.com/", "https://www.google.com/travel/search"),
+                new("lp9", "Ausgebucht Palace", null, 38.72, -9.12, 9.1, 50, 5, null, "https://www.booking.com/", "https://www.google.com/travel/search"),
+            ];
+            return Task.FromResult(hotels);
         }
     }
 
@@ -230,6 +255,83 @@ public sealed class ApiTests : IDisposable
         var response = await _client.PostAsJsonAsync("/api/hotels/search", HotelSearch());
         Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
         Assert.Equal("urn:urlaubsplanner:hotel-search-not-configured", (await ReadJson(response)).GetProperty("type").GetString());
+    }
+
+    [Fact]
+    public async Task Hotelsuche_nach_IDs_braucht_keinen_Ort()
+    {
+        var response = await _client.PostAsJsonAsync("/api/hotels/search", new { checkin = "2027-05-12", checkout = "2027-05-16", adults = 2, hotelIds = new[] { "lp1" } });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Null(_hotels.Last!.Center);
+        Assert.Equal(["lp1"], _hotels.Last.HotelIds.ToArray());
+    }
+
+    [Fact]
+    public async Task Hotelsuche_ohne_Ort_und_ohne_IDs_liefert_Feldfehler()
+    {
+        var response = await _client.PostAsJsonAsync("/api/hotels/search", new { checkin = "2027-05-12", checkout = "2027-05-16", adults = 2 });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Hotels_im_Umkreis_enthalten_auch_ausgebuchte()
+    {
+        var body = await ReadJson(await _client.PostAsJsonAsync("/api/hotels/nearby", HotelSearch()));
+
+        Assert.Equal(2, body.GetProperty("hotels").GetArrayLength());
+        Assert.Equal("lp9", body.GetProperty("hotels")[1].GetProperty("hotelId").GetString());
+    }
+
+    [Fact]
+    public async Task Ausweichdaten_pruefen_jeden_Zeitraum_mit_einer_Abfrage()
+    {
+        _hotels.SoldOutCheckin = new DateOnly(2027, 5, 11);
+
+        var body = await ReadJson(await _client.PostAsJsonAsync("/api/hotels/alternatives", new
+        {
+            hotelIds = new[] { "lp1", "lp9" },
+            checkin = "2027-05-12",
+            checkout = "2027-05-16",
+            adults = 4,
+        }));
+
+        Assert.Equal(6, body.GetProperty("requests").GetInt32());
+        Assert.Equal(6, _hotels.Requests.Count);
+        Assert.All(_hotels.Requests, r => Assert.Equal(["lp1", "lp9"], r.HotelIds.ToArray()));
+        Assert.All(_hotels.Requests, r => Assert.Equal(4, r.Nights));
+
+        var windows = body.GetProperty("windows");
+        Assert.Equal("2027-05-11", windows[0].GetProperty("checkin").GetString()); // erst 1 Tag früher …
+        Assert.Equal(0, windows[0].GetProperty("hotels").GetArrayLength()); // … da ausgebucht
+        Assert.Equal("2027-05-13", windows[1].GetProperty("checkin").GetString()); // … dann 1 Tag später
+        Assert.Equal(612, windows[1].GetProperty("hotels")[0].GetProperty("totalPrice").GetDecimal());
+    }
+
+    [Fact]
+    public async Task Ausweichdaten_ohne_Hotels_liefern_Feldfehler()
+    {
+        var response = await _client.PostAsJsonAsync("/api/hotels/alternatives", new { hotelIds = Array.Empty<string>(), checkin = "2027-05-12", checkout = "2027-05-16", adults = 4 });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.True((await ReadJson(response)).GetProperty("errors").TryGetProperty("hotelIds", out _));
+    }
+
+    [Fact]
+    public async Task Preis_bestaetigen_setzt_Pruefzeitpunkt_auch_bei_gleichem_Preis()
+    {
+        var id = await CreateTrip();
+        var created = await ReadJson(await _client.PostAsJsonAsync($"/api/trips/{id}/options", new { kind = "Hotel", title = "Hotel Miradouro" }));
+        var optionId = created.GetProperty("options")[0].GetProperty("id").GetString();
+
+        var trip = await ReadJson(await _client.PatchAsJsonAsync($"/api/trips/{id}/options/{optionId}/price", new { price = 612 }));
+        var option = trip.GetProperty("options")[0];
+        Assert.Equal(612, option.GetProperty("price").GetDecimal());
+        Assert.Equal(JsonValueKind.String, option.GetProperty("priceCheckedAt").ValueKind);
+
+        var negative = await _client.PatchAsJsonAsync($"/api/trips/{id}/options/{optionId}/price", new { price = -1 });
+        Assert.Equal(HttpStatusCode.BadRequest, negative.StatusCode);
     }
 
     [Fact]

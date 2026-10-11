@@ -111,6 +111,64 @@ public sealed class LiteApiHotelSearchTests
         Assert.Equal(4, miradouro.Stars);
         Assert.Contains("booking.com", miradouro.BookingUrl, StringComparison.Ordinal);
         Assert.Contains("Lissabon", Uri.UnescapeDataString(miradouro.BookingUrl), StringComparison.Ordinal);
+        Assert.StartsWith("https://www.google.com/travel/search?q=", miradouro.GoogleUrl, StringComparison.Ordinal);
+        Assert.Contains("Hotel Miradouro, Lissabon", Uri.UnescapeDataString(miradouro.GoogleUrl), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Suche_nach_IDs_schickt_hotelIds_statt_Ort()
+    {
+        var (search, handler) = Create(() => Json(RatesResponse));
+        var request = HotelSearchRequest.ForHotels(["lp1", "lp2"], new DateOnly(2027, 5, 12), new DateOnly(2027, 5, 16), 2, 1, new DateOnly(2026, 10, 11));
+
+        await search.SearchAsync(request, CancellationToken.None);
+
+        using var body = JsonDocument.Parse(handler.LastBody!);
+        var root = body.RootElement;
+        Assert.False(root.TryGetProperty("latitude", out _));
+        Assert.Equal(["lp1", "lp2"], root.GetProperty("hotelIds").EnumerateArray().Select(e => e.GetString()).ToArray());
+    }
+
+    [Fact]
+    public async Task Andere_Daten_werden_nicht_aus_dem_Cache_beantwortet()
+    {
+        var (search, handler) = Create(() => Json(RatesResponse));
+
+        await search.SearchAsync(Request, CancellationToken.None);
+        await search.SearchAsync(Request.WithDates(new DateOnly(2027, 5, 13), new DateOnly(2027, 5, 17)), CancellationToken.None);
+
+        Assert.Equal(2, handler.Calls);
+    }
+
+    private const string ListResponse = """
+        {
+          "data": [
+            { "id": "lp1", "name": "Hotel Miradouro", "main_photo": "https://img.example/1.jpg", "address": "Rua A 1", "city": "Lisbon",
+              "latitude": 38.7186, "longitude": -9.1317, "rating": 8.7, "stars": 4, "reviewCount": 1284 },
+            { "id": "lp9", "name": "  ", "latitude": 38.7, "longitude": -9.1 },
+            { "id": "lp1", "name": "Doppelt" }
+          ]
+        }
+        """;
+
+    [Fact]
+    public async Task Hotelliste_im_Umkreis_mit_Links_fuer_den_Zeitraum()
+    {
+        var (search, handler) = Create(() => Json(ListResponse));
+        var small = HotelSearchRequest.Create(38.72, -9.14, 500, new DateOnly(2027, 5, 12), new DateOnly(2027, 5, 16), 4, 2, new DateOnly(2026, 10, 11));
+
+        var hotels = await search.ListAsync(small, CancellationToken.None);
+
+        var uri = handler.Last!.RequestUri!.ToString();
+        Assert.StartsWith("https://liteapi.test/v3.0/data/hotels?latitude=38.72&longitude=-9.14&radius=1000", uri, StringComparison.Ordinal); // min. 1000 m
+        var hotel = Assert.Single(hotels); // ohne Namen und doppelt fallen weg
+        Assert.Equal("Hotel Miradouro", hotel.Name);
+        Assert.Equal(1284, hotel.ReviewCount);
+        Assert.Equal("https://img.example/1.jpg", hotel.PhotoUrl);
+        Assert.Contains("checkin=2027-05-12", hotel.BookingUrl, StringComparison.Ordinal);
+
+        await search.ListAsync(small, CancellationToken.None);
+        Assert.Equal(1, handler.Calls); // Stammdaten kommen aus dem Cache
     }
 
     [Fact]
