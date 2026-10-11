@@ -58,6 +58,8 @@ public sealed partial class LiteApiHotelSearch(
 
     private readonly LiteApiOptions _options = options.Value;
 
+    public string Provider => "liteapi";
+
     public bool IsConfigured => !string.IsNullOrWhiteSpace(_options.ApiKey);
 
     public async Task<HotelSearchResult> SearchAsync(HotelSearchRequest request, CancellationToken cancellationToken)

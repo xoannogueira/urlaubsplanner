@@ -162,7 +162,13 @@ export function shiftLabel(shiftDays: number): string {
 }
 
 /** Daten fürs Merken eines gefundenen Hotels als Favorit. */
-export function hotelOptionInput(hotel: HotelOffer, stageId: string | null, checkin: string, checkout: string): OptionInput {
+export function hotelOptionInput(
+  hotel: HotelOffer,
+  stageId: string | null,
+  checkin: string,
+  checkout: string,
+  provider: 'liteapi' | 'serpapi' = 'liteapi',
+): OptionInput {
   return {
     kind: 'Hotel',
     title: hotel.name,
@@ -178,16 +184,21 @@ export function hotelOptionInput(hotel: HotelOffer, stageId: string | null, chec
     longitude: hotel.longitude,
     notes: hotelNotes(hotel),
     imageUrl: hotel.photoUrl,
-    provider: 'liteapi',
+    provider,
     externalId: hotel.hotelId,
   }
 }
 
-/** Ob ein gemerktes Hotel erneut bei LiteAPI geprüft werden kann. */
-export function canRecheck(option: TripOption, today: string = todayIso()): boolean {
+/** Ob ein gemerktes Hotel erneut geprüft werden kann (LiteAPI oder Google Hotels). */
+/**
+ * activeProvider: die Quelle, die das Backend gerade nutzt. Hotel-IDs gelten nur bei ihrer eigenen Quelle
+ * (LiteAPI-ID ≠ Google-Token) – mit der anderen Quelle lässt sich ein Hotel nicht neu prüfen.
+ */
+export function canRecheck(option: TripOption, today: string = todayIso(), activeProvider?: string): boolean {
   return (
     option.kind === 'Hotel' &&
-    option.provider === 'liteapi' &&
+    (option.provider === 'liteapi' || option.provider === 'serpapi') &&
+    (activeProvider === undefined || option.provider === activeProvider) &&
     !!option.externalId &&
     !!option.startDate &&
     !!option.endDate &&

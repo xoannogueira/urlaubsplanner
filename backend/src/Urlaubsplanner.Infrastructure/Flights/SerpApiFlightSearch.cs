@@ -4,31 +4,11 @@ using System.Text.Json;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Urlaubsplanner.Domain;
 using Urlaubsplanner.Domain.Flights;
+using Urlaubsplanner.Infrastructure.SerpApi;
 
 namespace Urlaubsplanner.Infrastructure.Flights;
-
-public sealed class SerpApiOptions
-{
-    public const string Section = "SerpApi";
-
-    /// <summary>Kommt aus den User Secrets (<c>SerpApi:ApiKey</c>), nie aus dem Repo.</summary>
-    public string? ApiKey { get; set; }
-
-    public string BaseUrl { get; set; } = "https://serpapi.com/";
-
-    public string Currency { get; set; } = "EUR";
-
-    public string Language { get; set; } = "de";
-
-    public string Country { get; set; } = "de";
-
-    /// <summary>Auch Flüge hinter „Weitere Flüge anzeigen“ – deutlich mehr Ergebnisse, gleiche Anzahl Suchen.</summary>
-    public bool ShowHidden { get; set; } = true;
-
-    /// <summary>Gleiche Ergebnisse wie Google Flights im Browser, dafür langsamer (einige Sekunden mehr).</summary>
-    public bool DeepSearch { get; set; } = true;
-}
 
 /// <summary>
 /// Flugpreise von Google Flights über SerpApi (kostenlos: 250 Suchen pro Monat).
@@ -112,43 +92,11 @@ public sealed partial class SerpApiFlightSearch(
         return (null, first);
     }
 
-    public async Task<FlightQuota?> GetQuotaAsync(CancellationToken cancellationToken)
-    {
-        if (!IsConfigured)
-        {
-            return null;
-        }
-
-        if (cache.TryGetValue("serpapi:quota", out FlightQuota? cached))
-        {
-            return cached;
-        }
-
-        try
-        {
-            // Die Konto-Abfrage ist kostenlos und zählt nicht als Suche.
-            using var response = await http.GetAsync($"account.json?api_key={Uri.EscapeDataString(_options.ApiKey!)}", cancellationToken).ConfigureAwait(false);
-            if (!response.IsSuccessStatusCode)
-            {
-                return null;
-            }
-
-            await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
-            var account = await JsonSerializer.DeserializeAsync<AccountResponse>(stream, Json, cancellationToken).ConfigureAwait(false);
-            var left = account?.TotalSearchesLeft ?? account?.PlanSearchesLeft;
-            var quota = left is null ? null : new FlightQuota(left.Value, account?.SearchesPerMonth ?? 0);
-            cache.Set("serpapi:quota", quota, TimeSpan.FromSeconds(15));
-            return quota;
-        }
-        catch (Exception e) when (e is HttpRequestException or JsonException or TaskCanceledException && !cancellationToken.IsCancellationRequested)
-        {
-            LogFailed(e);
-            return null;
-        }
-    }
+    public Task<SearchQuota?> GetQuotaAsync(CancellationToken cancellationToken) =>
+        IsConfigured ? SerpApiAccount.GetQuotaAsync(http, cache, _options.ApiKey!, LogFailed, cancellationToken) : Task.FromResult<SearchQuota?>(null);
 
     /// <summary>Kontingent neu laden lassen (nach einer Suche, die nicht aus dem Cache kam).</summary>
-    private void ForgetQuota() => cache.Remove("serpapi:quota");
+    private void ForgetQuota() => SerpApiAccount.ForgetQuota(cache);
 
     private async Task<FlightSearchResult> RunAsync(
         SearchContext context,
@@ -448,5 +396,3 @@ internal sealed record FlightData(
     string? FlightNumber);
 
 internal sealed record AirportData(string? Name, string? Id, string? Time);
-
-internal sealed record AccountResponse(int? PlanSearchesLeft, int? TotalSearchesLeft, int? SearchesPerMonth);

@@ -12,6 +12,7 @@ public sealed record HotelSearchRequest
     public const int MinRadiusMeters = 500;
     public const int MaxRadiusMeters = 30_000;
     public const int MaxHotelIds = 20;
+    public const int MaxHotelIdLength = 200;
 
     private HotelSearchRequest(
         Coordinates? center,
@@ -20,8 +21,10 @@ public sealed record HotelSearchRequest
         DateOnly checkin,
         DateOnly checkout,
         int adults,
-        int rooms)
+        int rooms,
+        string? place)
     {
+        Place = place;
         Center = center;
         RadiusMeters = radiusMeters;
         HotelIds = hotelIds;
@@ -47,6 +50,11 @@ public sealed record HotelSearchRequest
 
     public int Rooms { get; }
 
+    /// <summary>
+    /// Ortsname (z. B. „Lissabon“) für Anbieter, die per Text suchen (Google Hotels); bei einer Suche nach Hotels deren Name.
+    /// </summary>
+    public string? Place { get; }
+
     public int Nights => Checkout.DayNumber - Checkin.DayNumber;
 
     /// <summary>Umkreissuche. Prüft alle Eingaben; der Radius wird in einen sinnvollen Bereich geklemmt.</summary>
@@ -58,7 +66,8 @@ public sealed record HotelSearchRequest
         DateOnly checkout,
         int adults,
         int rooms,
-        DateOnly today)
+        DateOnly today,
+        string? place = null)
     {
         var center = Coordinates.TryCreate(latitude, longitude)
             ?? throw new DomainException("latitude", "Ungültige Koordinaten.");
@@ -71,7 +80,8 @@ public sealed record HotelSearchRequest
             checkin,
             checkout,
             adults,
-            rooms);
+            rooms,
+            CleanPlace(place));
     }
 
     /// <summary>Suche nach bestimmten Hotels (höchstens <see cref="MaxHotelIds"/>).</summary>
@@ -81,7 +91,8 @@ public sealed record HotelSearchRequest
         DateOnly checkout,
         int adults,
         int rooms,
-        DateOnly today)
+        DateOnly today,
+        string? place = null)
     {
         var ids = (hotelIds ?? []).Select(id => id?.Trim()).Where(id => !string.IsNullOrEmpty(id)).Distinct(StringComparer.Ordinal).ToList();
         if (ids.Count == 0)
@@ -94,24 +105,30 @@ public sealed record HotelSearchRequest
             throw new DomainException("hotelIds", $"Höchstens {MaxHotelIds} Hotels auf einmal.");
         }
 
-        if (ids.Any(id => id!.Length > 50))
+        if (ids.Any(id => id!.Length > MaxHotelIdLength))
         {
             throw new DomainException("hotelIds", "Ungültige Hotel-ID.");
         }
 
         ValidateStay(checkin, checkout, adults, rooms, today);
-        return new HotelSearchRequest(null, 0, ids!, checkin, checkout, adults, rooms);
+        return new HotelSearchRequest(null, 0, ids!, checkin, checkout, adults, rooms, CleanPlace(place));
     }
 
     /// <summary>Gleiche Suche, anderer Zeitraum (für Ausweichdaten).</summary>
     public HotelSearchRequest WithDates(DateOnly checkin, DateOnly checkout) =>
-        new(Center, RadiusMeters, HotelIds, checkin, checkout, Adults, Rooms);
+        new(Center, RadiusMeters, HotelIds, checkin, checkout, Adults, Rooms, Place);
 
     /// <summary>
     /// Verteilt die Personen möglichst gleichmäßig auf die Zimmer: 5 Personen, 2 Zimmer → [3, 2].
     /// </summary>
     public IReadOnlyList<int> AdultsPerRoom() =>
         Enumerable.Range(0, Rooms).Select(i => (Adults / Rooms) + (i < Adults % Rooms ? 1 : 0)).ToList();
+
+    private static string? CleanPlace(string? place)
+    {
+        var text = place?.Trim();
+        return string.IsNullOrEmpty(text) ? null : text.Length > 200 ? text[..200] : text;
+    }
 
     private static void ValidateStay(DateOnly checkin, DateOnly checkout, int adults, int rooms, DateOnly today)
     {
@@ -180,7 +197,8 @@ public sealed record HotelOffer(
     IReadOnlyList<RoomOffer> Rooms);
 
 /// <param name="Sandbox">True, wenn mit einem Sandbox-Key gesucht wurde (Preise sind dann ggf. Testdaten).</param>
-public sealed record HotelSearchResult(IReadOnlyList<HotelOffer> Hotels, bool Sandbox, DateTimeOffset FetchedAt);
+/// <param name="NextPage">Kennung für weitere Ergebnisse (Google Hotels: 20 pro Seite); null, wenn es keine gibt.</param>
+public sealed record HotelSearchResult(IReadOnlyList<HotelOffer> Hotels, bool Sandbox, DateTimeOffset FetchedAt, string? NextPage = null);
 
 /// <summary>Ein Hotel im Umkreis – unabhängig davon, ob es für den Zeitraum frei ist.</summary>
 public sealed record HotelListing(
@@ -198,6 +216,9 @@ public sealed record HotelListing(
 
 public interface IHotelSearch
 {
+    /// <summary>"liteapi" oder "serpapi" – das Frontend passt Texte und Schalter daran an.</summary>
+    string Provider { get; }
+
     /// <summary>Ob ein API-Key hinterlegt ist. Ohne Key bietet die App nur das manuelle Speichern an.</summary>
     bool IsConfigured { get; }
 
@@ -208,9 +229,25 @@ public interface IHotelSearch
     Task<IReadOnlyList<HotelListing>> ListAsync(HotelSearchRequest request, CancellationToken cancellationToken);
 }
 
+/// <summary>Anbieter mit Ergebnisseiten: weitere Hotels zu einer Suche laden.</summary>
+public interface IPagedHotelSearch
+{
+    Task<HotelSearchResult> NextPageAsync(string nextPage, CancellationToken cancellationToken);
+}
+
+public interface IHotelSearchQuota
+{
+    Task<SearchQuota?> GetQuotaAsync(CancellationToken cancellationToken);
+}
+
 /// <summary>Kein API-Key hinterlegt.</summary>
-public sealed class HotelSearchNotConfiguredException()
-    : Exception("Für die Hotelsuche fehlt der LiteAPI-Key (siehe README, Abschnitt Hotelsuche).");
+public sealed class HotelSearchNotConfiguredException(string message) : Exception(message)
+{
+    public HotelSearchNotConfiguredException()
+        : this("Für die Hotelsuche fehlt der LiteAPI-Key (siehe README, Abschnitt Hotelsuche).")
+    {
+    }
+}
 
 /// <summary>Der Anbieter hat nicht oder mit einem Fehler geantwortet.</summary>
 public sealed class HotelSearchUnavailableException(string message, Exception? inner = null) : Exception(message, inner);

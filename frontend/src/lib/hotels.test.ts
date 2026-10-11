@@ -187,6 +187,8 @@ describe('canRecheck', () => {
     expect(canRecheck(saved, '2026-10-11')).toBe(true)
     expect(canRecheck(saved, '2027-05-13')).toBe(false)
     expect(canRecheck({ ...saved, provider: 'manual' }, '2026-10-11')).toBe(false)
+    expect(canRecheck(saved, '2026-10-11', 'serpapi')).toBe(saved.provider === 'serpapi')
+    expect(canRecheck({ ...saved, provider: 'serpapi' }, '2026-10-11', 'serpapi')).toBe(true)
     expect(canRecheck({ ...saved, endDate: null }, '2026-10-11')).toBe(false)
   })
 })

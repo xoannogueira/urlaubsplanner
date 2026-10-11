@@ -10,6 +10,7 @@ using Urlaubsplanner.Infrastructure.Flights;
 using Urlaubsplanner.Infrastructure.Hotels;
 using Urlaubsplanner.Infrastructure.Persistence;
 using Urlaubsplanner.Infrastructure.Places;
+using Urlaubsplanner.Infrastructure.SerpApi;
 
 namespace Urlaubsplanner.Infrastructure;
 
@@ -29,18 +30,33 @@ public static class DependencyInjection
             http.DefaultRequestHeaders.UserAgent.ParseAdd("Urlaubsplanner/1.0 (privates Hobbyprojekt)");
         });
 
+        // Hotels: Google Hotels über SerpApi, sobald ein SerpApi-Key hinterlegt ist – sonst LiteAPI.
+        // Mit "Hotels:Provider" = "liteapi" bzw. "serpapi" lässt sich die Quelle fest wählen.
         services.Configure<LiteApiOptions>(configuration.GetSection(LiteApiOptions.Section));
-        services.AddHttpClient<IHotelSearch, LiteApiHotelSearch>(http =>
+        services.Configure<SerpApiOptions>(configuration.GetSection(SerpApiOptions.Section));
+        if (UseSerpApi(configuration, "Hotels:Provider"))
         {
-            http.BaseAddress = new Uri(configuration[$"{LiteApiOptions.Section}:BaseUrl"] ?? "https://api.liteapi.travel/v3.0/");
-            // LiteAPI selbst bricht nach 8 s ab (timeout im Request) – etwas Puffer für die Antwort.
-            http.Timeout = TimeSpan.FromSeconds(20);
-        });
+            services.AddHttpClient<IHotelSearch, SerpApiHotelSearch>(http =>
+            {
+                http.BaseAddress = new Uri(configuration[$"{SerpApiOptions.Section}:BaseUrl"] ?? "https://serpapi.com/");
+                http.Timeout = TimeSpan.FromSeconds(60);
+            })
+            // Der Key steht in der URL – deshalb keine automatischen Request-Logs für diesen Client.
+            .RemoveAllLoggers();
+        }
+        else
+        {
+            services.AddHttpClient<IHotelSearch, LiteApiHotelSearch>(http =>
+            {
+                http.BaseAddress = new Uri(configuration[$"{LiteApiOptions.Section}:BaseUrl"] ?? "https://api.liteapi.travel/v3.0/");
+                // LiteAPI selbst bricht nach 8 s ab (timeout im Request) – etwas Puffer für die Antwort.
+                http.Timeout = TimeSpan.FromSeconds(20);
+            });
+        }
 
         // Flüge: Google Flights über SerpApi, sobald ein SerpApi-Key hinterlegt ist – sonst LiteAPI (gleicher Key wie Hotels).
         // Mit "Flights:Provider" = "liteapi" bzw. "serpapi" lässt sich die Quelle fest wählen.
-        services.Configure<SerpApiOptions>(configuration.GetSection(SerpApiOptions.Section));
-        if (UseSerpApi(configuration))
+        if (UseSerpApi(configuration, "Flights:Provider"))
         {
             services.AddHttpClient<IFlightSearch, SerpApiFlightSearch>(http =>
             {
@@ -72,9 +88,9 @@ public static class DependencyInjection
         return services;
     }
 
-    private static bool UseSerpApi(IConfiguration configuration)
+    private static bool UseSerpApi(IConfiguration configuration, string providerKey)
     {
-        var provider = configuration["Flights:Provider"];
+        var provider = configuration[providerKey];
         return string.IsNullOrWhiteSpace(provider)
             ? !string.IsNullOrWhiteSpace(configuration[$"{SerpApiOptions.Section}:ApiKey"])
             : provider.Trim().Equals("serpapi", StringComparison.OrdinalIgnoreCase);

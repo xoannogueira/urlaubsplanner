@@ -75,7 +75,7 @@ einzeln buchen.
 | Backend | ASP.NET Core (.NET 10), Minimal APIs |
 | Speicher | JSON-Datei, später PostgreSQL + PostGIS |
 | Karten & Orte | OpenFreeMap (Kartenkacheln), Photon (Ortssuche) – beide kostenlos, ohne API-Key |
-| Hotels | LiteAPI (Sandbox-Key kostenlos) |
+| Hotels | Google Hotels über SerpApi (gleiches Kontingent wie Flüge), alternativ LiteAPI |
 | Flüge | Google Flights über SerpApi (250 Suchen/Monat kostenlos), alternativ LiteAPI |
 | Qualität | xUnit, Vitest, oxlint, Prettier, `dotnet format`, GitHub Actions |
 
@@ -203,8 +203,18 @@ So läuft es und so viel kostet es:
   Abschalten geht unter `SerpApi:ShowHidden` / `SerpApi:DeepSearch` in `appsettings.json`.
 - **Was Google nicht liefert:** Gepäck und Tarifbedingungen. Die prüfst du beim Buchen über den Google- oder Kayak-Link.
 
-**Zurück zu LiteAPI:** In `appsettings.json` `Flights:Provider` auf `"liteapi"` setzen, oder den SerpApi-Key entfernen
-(`dotnet user-secrets remove "SerpApi:ApiKey"`). Danach das Backend neu starten.
+**Hotels laufen mit demselben Key über Google Hotels:**
+
+- **Suchen:** Eine Suche nach „Hotels {Etappe}“ liefert ca. 20 Hotels mit Preisen mehrerer Anbieter (Booking.com, Expedia, Hotelseite …). Hotels außerhalb des Umkreises fallen weg.
+- **Weitere Hotels laden:** kostet je eine Suche.
+- **Ausgebuchte zeigen:** Die Hotels kommen aus derselben Suche und kosten nichts extra.
+- **Neu prüfen:** eine Suche pro Hotel.
+- **Andere Daten prüfen:** eine Suche pro Hotel und Zeitraum. Deshalb höchstens 2 Hotels, also bis zu 12 Suchen.
+- **Was Google nicht kann:** Es gibt keine Zimmeraufteilung. Der Preis gilt für alle Personen laut Google.
+- **Neu prüfen nur mit derselben Quelle:** Gemerkte Hotels lassen sich nur mit der Quelle neu prüfen, aus der sie stammen, weil die Hotel-IDs sich unterscheiden.
+
+**Zurück zu LiteAPI:** In `appsettings.json` `Flights:Provider` bzw. `Hotels:Provider` auf `"liteapi"` setzen, oder den
+SerpApi-Key entfernen (`dotnet user-secrets remove "SerpApi:ApiKey"`). Danach das Backend neu starten.
 
 ### Aktivitäten-Vorschläge
 
@@ -252,8 +262,7 @@ Dieselben Checks laufen bei jedem Push in GitHub Actions.
 | PATCH | `/api/trips/{id}/options/{optionId}/status` | Status setzen |
 | PATCH | `/api/trips/{id}/options/{optionId}/price` | Neu geprüften Preis bestätigen (setzt „geprüft am“) |
 | GET | `/api/places?q=…&lat=…&lon=…` | Ortssuche (lat/lon optional: Treffer in der Nähe bevorzugen) |
-| GET | `/api/hotels/status` | Ist ein LiteAPI-Key hinterlegt? |
-| POST | `/api/hotels/search` | Hotelsuche: `latitude`, `longitude`, `checkin`, `checkout`, `adults`, optional `rooms`, `radiusMeters` – oder statt Ort `hotelIds` |
+| POST | `/api/hotels/search` | Hotelsuche: `latitude`, `longitude`, `checkin`, `checkout`, `adults`, optional `rooms`, `radiusMeters` – oder statt Ort `hotelIds`; optional `place` (Ortsname, für Google Hotels) |
 | POST | `/api/hotels/nearby` | Alle Hotels im Umkreis, auch ausgebuchte (ohne Preis) |
 | GET | `/api/activities?lat=…&lon=…&radiusMeters=…&offset=0&limit=10` | Aktivitäten-Vorschläge seitenweise (500 m – 50 km), optional `category`, `q`, `sort=Distance` |
 | GET | `/api/airports?q=…` | Flughafensuche (Code, Stadt, Name; sonst über die Ortssuche in der Nähe) |
@@ -264,6 +273,8 @@ Dieselben Checks laufen bei jedem Push in GitHub Actions.
 | POST | `/api/flights/continue` | Nächste Strecke (z. B. Rückflüge) zu einem Hinflug: `continuation` aus dem Suchergebnis |
 | POST | `/api/flights/alternatives` | Günstigster Preis für ±1–3 Tage verschobene Daten: `legs` [{`origin`, `destination`, `date`}], `adults` |
 | POST | `/api/flights/recheck` | Gemerkten Flug neu prüfen: `signature` (ExternalId der Option), `adults` |
+| GET | `/api/hotels/status` | Key hinterlegt? Anbieter (`serpapi`/`liteapi`), seitenweise Ergebnisse, restliche Suchen |
+| POST | `/api/hotels/more` | Weitere Hotels zu einer Suche: `nextPage` aus dem Suchergebnis (Google Hotels) |
 | POST | `/api/hotels/alternatives` | Ausweichdaten: `hotelIds`, `checkin`, `checkout`, `adults`, optional `rooms`, `shiftDays` (Standard 3) |
 
 Fehler kommen als Problem Details (RFC 9457), Eingabefehler mit dem betroffenen Feld, z. B.

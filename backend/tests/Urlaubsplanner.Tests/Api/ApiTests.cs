@@ -18,6 +18,8 @@ public sealed class ApiTests : IDisposable
     {
         private readonly System.Collections.Concurrent.ConcurrentQueue<HotelSearchRequest> _requests = new();
 
+        public string Provider => "liteapi";
+
         public bool IsConfigured { get; set; } = true;
 
         public HotelSearchRequest? Last { get; private set; }
@@ -252,6 +254,8 @@ public sealed class ApiTests : IDisposable
 
         var status = await ReadJson(await _client.GetAsync("/api/hotels/status"));
         Assert.False(status.GetProperty("configured").GetBoolean());
+        Assert.Equal("liteapi", status.GetProperty("provider").GetString());
+        Assert.False(status.GetProperty("paged").GetBoolean());
 
         var response = await _client.PostAsJsonAsync("/api/hotels/search", HotelSearch());
         Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);

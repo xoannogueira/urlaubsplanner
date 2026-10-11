@@ -316,12 +316,9 @@ public interface IStepwiseFlightSearch
     Task<(FlightJourney? Journey, FlightSearchResult First)> FindAsync(FlightSearchRequest request, string signature, CancellationToken cancellationToken);
 }
 
-/// <summary>Restliche Suchen beim Anbieter (z. B. 250 kostenlose Google-Suchen pro Monat bei SerpApi).</summary>
-public sealed record FlightQuota(int Left, int PerMonth);
-
 public interface IFlightSearchQuota
 {
-    Task<FlightQuota?> GetQuotaAsync(CancellationToken cancellationToken);
+    Task<SearchQuota?> GetQuotaAsync(CancellationToken cancellationToken);
 }
 
 public sealed class FlightSearchNotConfiguredException(string message)

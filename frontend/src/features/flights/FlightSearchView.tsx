@@ -1,5 +1,5 @@
 import clsx from 'clsx'
-import { ArrowRight, CalendarSearch, Gauge, KeyRound, Search, SearchX, TriangleAlert } from 'lucide-react'
+import { ArrowRight, CalendarSearch, KeyRound, Search, SearchX, TriangleAlert } from 'lucide-react'
 import { useCallback, useMemo, useState, type ReactNode } from 'react'
 import { useAirportLookup, useNearbyAirports, type Airport } from '../../api/airports'
 import { ApiError } from '../../api/client'
@@ -18,6 +18,7 @@ import { TripMap } from '../../components/map/TripMap'
 import type { MapAirport, MapArc } from '../../components/map/types'
 import { Button } from '../../components/ui/Button'
 import { EmptyState, ErrorState, Skeleton } from '../../components/ui/Feedback'
+import { QuotaBadge } from '../../components/ui/QuotaBadge'
 import { controlClass } from '../../components/ui/fieldStyles'
 import { addDays } from '../../lib/dates'
 import { formatShortDate, peopleLabel, todayIso } from '../../lib/format'
@@ -582,24 +583,6 @@ function DateAndRadius({
         </label>
       )}
     </div>
-  )
-}
-
-/** Restliche kostenlose Google-Suchen; wird knapp → gelb. */
-function QuotaBadge({ quota }: { quota: { left: number; perMonth: number } }) {
-  const low = quota.left <= Math.max(10, quota.perMonth * 0.1)
-  return (
-    <span
-      className={clsx(
-        'flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold',
-        low ? 'border-star/50 text-star' : 'border-line text-muted',
-      )}
-      title="Kostenlose Suchen bei SerpApi (Google Flights) – gleiche Suchen kommen eine Stunde aus dem Speicher und kosten nichts"
-    >
-      <Gauge size={13} />
-      Noch {quota.left}
-      {quota.perMonth > 0 ? ` von ${quota.perMonth}` : ''} Google-Suchen
-    </span>
   )
 }
 
