@@ -82,12 +82,14 @@ public sealed record OptionResponse(
     double? Longitude,
     string? Notes,
     string Provider,
+    string? ExternalId,
+    string? ImageUrl,
     DateTimeOffset? PriceCheckedAt,
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt)
 {
     public static OptionResponse From(TripOption o, int travelers) => new(
         o.Id, o.Kind, o.Status, o.StageId, o.Title, o.Url, o.Price, o.PricePerPerson, o.TotalPrice(travelers),
-        o.StartDate, o.EndDate, o.LocationName, o.Latitude, o.Longitude, o.Notes, o.Provider, o.PriceCheckedAt,
+        o.StartDate, o.EndDate, o.LocationName, o.Latitude, o.Longitude, o.Notes, o.Provider, o.ExternalId, o.ImageUrl, o.PriceCheckedAt,
         o.CreatedAt, o.UpdatedAt);
 }

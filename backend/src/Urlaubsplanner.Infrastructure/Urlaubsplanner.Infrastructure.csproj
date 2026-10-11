@@ -5,6 +5,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="Urlaubsplanner.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\Urlaubsplanner.Domain\Urlaubsplanner.Domain.csproj" />
   </ItemGroup>
 
