@@ -32,7 +32,7 @@ einzeln buchen.
 - Links zu **Booking.com** (Daten, Personen und Zimmer vorausgefüllt) und **Google Hotels** (vergleicht viele Anbieter; Reisedaten
   vorausgefüllt über Googles inoffiziellen `ts`-Parameter, Personen bitte dort prüfen).
   Hinweis: LiteAPI und Booking.com haben getrennte Kontingente – „frei“ in der App heißt nicht immer „frei auf Booking.com“
-- **Flugsuche** (LiteAPI, gleicher Key wie Hotels) für die ganze Reise: **Hin & zurück**, **Gabelflug** (zurück von der letzten Etappe)
+- **Flugsuche** (Google Flights über SerpApi, sonst LiteAPI) für die ganze Reise: **Hin & zurück**, **Gabelflug** (zurück von der letzten Etappe)
   oder **Nur Hinflug**. Ziel- und Rückflughäfen werden aus den Etappen vorgeschlagen (nächster großer Flughafen), der Heimatflughafen
   wird im Browser gemerkt
 - **Flughäfen im Umkreis** (100–250 km) zum Antippen und mehrere Flughäfen pro Seite – jede Kombination ist eine Suche (max. 8)
@@ -76,6 +76,7 @@ einzeln buchen.
 | Speicher | JSON-Datei, später PostgreSQL + PostGIS |
 | Karten & Orte | OpenFreeMap (Kartenkacheln), Photon (Ortssuche) – beide kostenlos, ohne API-Key |
 | Hotels | LiteAPI (Sandbox-Key kostenlos) |
+| Flüge | Google Flights über SerpApi (250 Suchen/Monat kostenlos), alternativ LiteAPI |
 | Qualität | xUnit, Vitest, oxlint, Prettier, `dotnet format`, GitHub Actions |
 
 ### Warum es flüssig bleibt
@@ -173,8 +174,35 @@ Hinweise:
 - Der Buchungslink ist eine vorausgefüllte Booking.com-Suche. Wer eine LiteAPI-White-Label-Seite einrichtet, trägt deren Domain in
   `appsettings.json` unter `LiteApi:WhitelabelDomain` ein – dann führen die Links direkt zum Hotel auf dieser Seite.
 - Weitere Einstellungen unter `LiteApi` in `appsettings.json`: `Currency` (EUR), `GuestNationality` (DE), `MaxHotels` (50), `MaxRatesPerHotel` (10).
-- **Flüge** laufen über denselben Key. Die Sandbox liefert Testdaten; für echte Flugpreise muss LiteAPI Flüge für das Konto
-  freischalten (Anfrage im Dashboard über *Request Assistance*).
+- **Flüge** können ebenfalls über diesen Key laufen (siehe unten). Die Sandbox liefert dafür Testdaten; für echte Flugpreise muss
+  LiteAPI Flüge für das Konto freischalten (Anfrage im Dashboard über *Request Assistance*).
+
+### Flugsuche einrichten (Google Flights über SerpApi)
+
+Echte Preise von Google Flights, kostenlos bis 250 Suchen pro Monat.
+
+1. Kostenlosen Account auf <https://serpapi.com> anlegen und unter *Your Account → API Key* den Key kopieren.
+2. Key im **Terminal auf dem MacBook** hinterlegen (landet in den User Secrets, **nie im Repo**):
+
+   ```bash
+   cd urlaubsplanner/backend/src/Urlaubsplanner.Api
+   dotnet user-secrets set "SerpApi:ApiKey" "DEIN_KEY"
+   ```
+
+3. Backend neu starten. Sobald ein SerpApi-Key da ist, nutzt die Flugsuche Google Flights.
+
+So läuft es und so viel kostet es:
+
+- **Suchen:** Eine Suche liefert die Hinflüge mit dem günstigsten Gesamtpreis. Mehrere Flughäfen pro Seite (Umkreis) sind in derselben Suche enthalten.
+- **Rückflug wählen:** Das Aufklappen kostet eine weitere Suche. Bei mehr als zwei Strecken kostet jede weitere Strecke eine Suche.
+- **Andere Daten prüfen:** eine Suche pro Zeitraum, also bis zu 6.
+- **Neu prüfen:** zwei Suchen bei Hin & zurück.
+- **Cache:** Gleiche Suchen kommen eine Stunde lang aus dem Speicher und kosten nichts.
+- **Restliche Suchen:** Die Flugsuche zeigt an, wie viele kostenlose Suchen noch übrig sind.
+- **Was Google nicht liefert:** Gepäck und Tarifbedingungen. Die prüfst du beim Buchen über den Google- oder Kayak-Link.
+
+**Zurück zu LiteAPI:** In `appsettings.json` `Flights:Provider` auf `"liteapi"` setzen, oder den SerpApi-Key entfernen
+(`dotnet user-secrets remove "SerpApi:ApiKey"`). Danach das Backend neu starten.
 
 ### Aktivitäten-Vorschläge
 
@@ -229,8 +257,9 @@ Dieselben Checks laufen bei jedem Push in GitHub Actions.
 | GET | `/api/airports?q=…` | Flughafensuche (Code, Stadt, Name; sonst über die Ortssuche in der Nähe) |
 | GET | `/api/airports/near?lat=…&lon=…&radiusKm=…` | Flughäfen im Umkreis |
 | GET | `/api/airports/lookup?codes=STR,LIS` | Flughäfen nach Code |
-| GET | `/api/flights/status` | Ist ein LiteAPI-Key hinterlegt? |
+| GET | `/api/flights/status` | Key hinterlegt? Anbieter (`serpapi`/`liteapi`), schrittweise Suche, restliche Suchen |
 | POST | `/api/flights/search` | Flugsuche: `legs` [{`origins`, `destinations`, `date`}], `adults`, optional `cabin` |
+| POST | `/api/flights/continue` | Nächste Strecke (z. B. Rückflüge) zu einem Hinflug: `continuation` aus dem Suchergebnis |
 | POST | `/api/flights/alternatives` | Günstigster Preis für ±1–3 Tage verschobene Daten: `legs` [{`origin`, `destination`, `date`}], `adults` |
 | POST | `/api/flights/recheck` | Gemerkten Flug neu prüfen: `signature` (ExternalId der Option), `adults` |
 | POST | `/api/hotels/alternatives` | Ausweichdaten: `hotelIds`, `checkin`, `checkout`, `adults`, optional `rooms`, `shiftDays` (Standard 3) |

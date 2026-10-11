@@ -73,6 +73,9 @@ public sealed partial record FlightSearchRequest
         return new FlightSearchRequest(list, adults, cabin);
     }
 
+    /// <summary>Ohne Prüfung – nur für Links aus Flügen, die ein Anbieter schon geliefert hat.</summary>
+    public static FlightSearchRequest ForLinks(IReadOnlyList<FlightLeg> legs, int adults, CabinClass cabin) => new(legs, adults, cabin);
+
     /// <summary>Gleiche Strecken, alle Termine um <paramref name="days"/> verschoben (für Ausweichdaten).</summary>
     public FlightSearchRequest ShiftedBy(int days) =>
         new([.. Legs.Select(l => l with { Date = l.Date.AddDays(days) })], Adults, Cabin);
@@ -157,6 +160,35 @@ public static class FlightQuery
         return [.. combinations.Select(c => FlightSearchRequest.Create(c, adults, cabin, today))];
     }
 
+    /// <summary>
+    /// Für Anbieter, die mehrere Flughäfen pro Seite in einer Anfrage suchen (SerpApi/Google Flights):
+    /// gleiche Prüfungen, aber keine Obergrenze für Kombinationen.
+    /// </summary>
+    public static FlightMultiRequest Combine(IReadOnlyList<FlightLegOptions>? legs, int adults, CabinClass cabin, DateOnly today)
+    {
+        if (legs is null || legs.Count == 0)
+        {
+            throw new DomainException("legs", "Mindestens eine Strecke angeben.");
+        }
+
+        var perLeg = legs.Select((leg, i) => Choices(leg, i)).ToList();
+        for (var i = 0; i < perLeg.Count; i++)
+        {
+            if (perLeg[i].Count == 0)
+            {
+                throw new DomainException($"legs[{i}].destinations", "Start und Ziel sind gleich.");
+            }
+        }
+
+        // Datum, Reihenfolge, Personen und Klasse wie bei einer Einzelsuche prüfen.
+        FlightSearchRequest.Create(perLeg.Select(c => c[0]), adults, cabin, today);
+        var normalized = legs.Select((leg, i) => new FlightLegOptions(
+            [.. perLeg[i].Select(l => l.Origin).Distinct()],
+            [.. perLeg[i].Select(l => l.Destination).Distinct()],
+            leg.Date)).ToList();
+        return new FlightMultiRequest(normalized, adults, cabin);
+    }
+
     private static List<FlightLeg> Choices(FlightLegOptions? leg, int index)
     {
         if (leg is null)
@@ -185,6 +217,9 @@ public static class FlightQuery
         return list;
     }
 }
+
+/// <summary>Geprüfte Suche mit mehreren Flughäfen pro Strecke (siehe <see cref="FlightQuery.Combine"/>).</summary>
+public sealed record FlightMultiRequest(IReadOnlyList<FlightLegOptions> Legs, int Adults, CabinClass Cabin);
 
 /// <summary>Ein einzelner Flug (ohne Umstieg).</summary>
 public sealed record FlightSegment(
@@ -217,7 +252,7 @@ public sealed record FlightJourneyLeg(
 
 /// <summary>Ein Tarif einer Verbindung (Light, Standard, Flex …).</summary>
 /// <param name="TotalPrice">Für alle Reisenden zusammen.</param>
-/// <param name="CheckedBags">Anzahl Aufgabegepäckstücke pro Person (0 = nur Handgepäck).</param>
+/// <param name="CheckedBags">Anzahl Aufgabegepäckstücke pro Person (0 = nur Handgepäck, null = unbekannt).</param>
 public sealed record FlightFare(
     string Family,
     string? Cabin,
@@ -225,7 +260,7 @@ public sealed record FlightFare(
     decimal PricePerAdult,
     string Currency,
     int? CabinBagKg,
-    int CheckedBags,
+    int? CheckedBags,
     int? CheckedBagKg,
     bool Refundable,
     bool Changeable,
@@ -234,13 +269,18 @@ public sealed record FlightFare(
 
 /// <summary>Eine buchbare Verbindung über alle Strecken; Tarife günstigster zuerst.</summary>
 /// <param name="Signature">Eindeutige Kennung aus Strecken, Daten und Flugnummern (siehe <see cref="FlightSignature"/>).</param>
+/// <param name="Continuation">
+/// Gesetzt, wenn erst ein Teil der Strecken feststeht (Google Flights liefert erst den Hinflug, der Rückflug wird danach
+/// gewählt). Der Preis ist dann der günstigste Gesamtpreis mit diesem Hinflug.
+/// </param>
 public sealed record FlightJourney(
     string Signature,
     IReadOnlyList<FlightJourneyLeg> Legs,
     int TotalMinutes,
     IReadOnlyList<FlightFare> Fares,
     string BookingUrl,
-    string GoogleUrl)
+    string GoogleUrl,
+    string? Continuation = null)
 {
     public decimal TotalPrice => Fares[0].TotalPrice;
 }
@@ -249,13 +289,49 @@ public sealed record FlightSearchResult(IReadOnlyList<FlightJourney> Journeys, b
 
 public interface IFlightSearch
 {
+    /// <summary>"liteapi" oder "serpapi" – das Frontend passt Texte und Filter daran an.</summary>
+    string Provider { get; }
+
     bool IsConfigured { get; }
 
     Task<FlightSearchResult> SearchAsync(FlightSearchRequest request, CancellationToken cancellationToken);
 }
 
-public sealed class FlightSearchNotConfiguredException()
-    : Exception("Für die Flugsuche fehlt der LiteAPI-Key (siehe README, Abschnitt Hotelsuche – der Key gilt auch für Flüge).");
+/// <summary>Anbieter, die mehrere Flughäfen pro Seite in einer Anfrage suchen – spart Abfragen.</summary>
+public interface IMultiAirportFlightSearch
+{
+    Task<FlightSearchResult> SearchAsync(FlightMultiRequest request, CancellationToken cancellationToken);
+}
+
+/// <summary>Anbieter, die Verbindungen schrittweise liefern: erst Hinflug, nach der Wahl die Rückflüge.</summary>
+public interface IStepwiseFlightSearch
+{
+    /// <summary>Nächste Strecke zu einer Teil-Verbindung (<see cref="FlightJourney.Continuation"/>).</summary>
+    Task<FlightSearchResult> ContinueAsync(string continuation, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Sucht genau die Verbindung zu einer Kennung (Schritt für Schritt). Gibt die gefundene Verbindung zurück
+    /// und das Ergebnis des ersten Schritts (für „andere Verbindungen ab …“).
+    /// </summary>
+    Task<(FlightJourney? Journey, FlightSearchResult First)> FindAsync(FlightSearchRequest request, string signature, CancellationToken cancellationToken);
+}
+
+/// <summary>Restliche Suchen beim Anbieter (z. B. 250 kostenlose Google-Suchen pro Monat bei SerpApi).</summary>
+public sealed record FlightQuota(int Left, int PerMonth);
+
+public interface IFlightSearchQuota
+{
+    Task<FlightQuota?> GetQuotaAsync(CancellationToken cancellationToken);
+}
+
+public sealed class FlightSearchNotConfiguredException(string message)
+    : Exception(message)
+{
+    public FlightSearchNotConfiguredException()
+        : this("Für die Flugsuche fehlt der LiteAPI-Key (siehe README, Abschnitt Hotelsuche – der Key gilt auch für Flüge).")
+    {
+    }
+}
 
 public sealed class FlightSearchUnavailableException(string message, Exception? inner = null) : Exception(message, inner);
 

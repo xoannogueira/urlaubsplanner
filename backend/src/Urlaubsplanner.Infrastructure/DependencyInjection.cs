@@ -37,12 +37,28 @@ public static class DependencyInjection
             http.Timeout = TimeSpan.FromSeconds(20);
         });
 
-        // Flüge laufen über denselben LiteAPI-Key. Flugsuchen dauern länger als Hotelsuchen.
-        services.AddHttpClient<IFlightSearch, LiteApiFlightSearch>(http =>
+        // Flüge: Google Flights über SerpApi, sobald ein SerpApi-Key hinterlegt ist – sonst LiteAPI (gleicher Key wie Hotels).
+        // Mit "Flights:Provider" = "liteapi" bzw. "serpapi" lässt sich die Quelle fest wählen.
+        services.Configure<SerpApiOptions>(configuration.GetSection(SerpApiOptions.Section));
+        if (UseSerpApi(configuration))
         {
-            http.BaseAddress = new Uri(configuration[$"{LiteApiOptions.Section}:BaseUrl"] ?? "https://api.liteapi.travel/v3.0/");
-            http.Timeout = TimeSpan.FromSeconds(45);
-        });
+            services.AddHttpClient<IFlightSearch, SerpApiFlightSearch>(http =>
+            {
+                http.BaseAddress = new Uri(configuration[$"{SerpApiOptions.Section}:BaseUrl"] ?? "https://serpapi.com/");
+                http.Timeout = TimeSpan.FromSeconds(60);
+            })
+            // Der Key steht in der URL – deshalb keine automatischen Request-Logs für diesen Client.
+            .RemoveAllLoggers();
+        }
+        else
+        {
+            services.AddHttpClient<IFlightSearch, LiteApiFlightSearch>(http =>
+            {
+                http.BaseAddress = new Uri(configuration[$"{LiteApiOptions.Section}:BaseUrl"] ?? "https://api.liteapi.travel/v3.0/");
+                http.Timeout = TimeSpan.FromSeconds(45);
+            });
+        }
+
         services.AddSingleton<IAirportDirectory, AirportDirectory>();
 
         // Aktivitäten aus OpenStreetMap + Wikidata (frei, ohne Key). Beide bitten um einen erkennbaren User-Agent.
@@ -54,5 +70,13 @@ public static class DependencyInjection
         });
 
         return services;
+    }
+
+    private static bool UseSerpApi(IConfiguration configuration)
+    {
+        var provider = configuration["Flights:Provider"];
+        return string.IsNullOrWhiteSpace(provider)
+            ? !string.IsNullOrWhiteSpace(configuration[$"{SerpApiOptions.Section}:ApiKey"])
+            : provider.Trim().Equals("serpapi", StringComparison.OrdinalIgnoreCase);
     }
 }

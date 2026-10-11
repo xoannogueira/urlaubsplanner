@@ -25,6 +25,8 @@ public sealed class FlightApiTests : IDisposable
     {
         private readonly ConcurrentQueue<FlightSearchRequest> _requests = new();
 
+        public string Provider => "liteapi";
+
         public bool IsConfigured { get; set; } = true;
 
         public IReadOnlyList<FlightSearchRequest> Requests => [.. _requests];
@@ -187,7 +189,10 @@ public sealed class FlightApiTests : IDisposable
     {
         _flights.IsConfigured = false;
 
-        Assert.False((await ReadJson(await _client.GetAsync("/api/flights/status"))).GetProperty("configured").GetBoolean());
+        var status = await ReadJson(await _client.GetAsync("/api/flights/status"));
+        Assert.False(status.GetProperty("configured").GetBoolean());
+        Assert.Equal("liteapi", status.GetProperty("provider").GetString());
+        Assert.False(status.GetProperty("stepwise").GetBoolean());
         var response = await _client.PostAsJsonAsync("/api/flights/search", new
         {
             legs = new[] { new { origins = new[] { "STR" }, destinations = new[] { "LIS" }, date = "2027-05-12" } },

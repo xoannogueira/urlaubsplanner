@@ -1,36 +1,49 @@
 import clsx from 'clsx'
-import { Backpack, Briefcase, Check, ExternalLink, Heart, Plane, RefreshCcw } from 'lucide-react'
+import { Backpack, Briefcase, Check, ChevronDown, ChevronUp, ExternalLink, Heart, Plane, RefreshCcw } from 'lucide-react'
 import { useState } from 'react'
-import type { FlightFare, FlightJourney, FlightJourneyLeg } from '../../api/flights'
+import { ApiError } from '../../api/client'
+import { useFlightContinue, type FlightFare, type FlightJourney, type FlightJourneyLeg } from '../../api/flights'
 import { buttonClass } from '../../components/ui/buttonStyles'
+import { ErrorState, Skeleton } from '../../components/ui/Feedback'
 import { formatEuro, formatShortDate } from '../../lib/format'
 import { fareSummary, formatClock, formatDuration, stopsLabel } from '../../lib/flights'
 
-interface FlightResultCardProps {
+interface SaveProps {
+  adults: number
+  legNames: string[]
+  /** Kennungen gemerkter Flüge (ohne Tarif) */
+  savedSignatures: Set<string>
+  savingId: string | null
+  onSave: (journey: FlightJourney, fare: FlightFare) => void
+}
+
+interface FlightResultCardProps extends SaveProps {
   journey: FlightJourney
   /** Vorausgewählter Tarif (z. B. günstigster mit Koffer, wenn der Filter an ist). */
   initialFare: FlightFare
-  adults: number
-  legNames: string[]
-  saved: boolean
-  saving: boolean
   selected: boolean
   onSelect: () => void
-  onSave: (fare: FlightFare) => void
 }
 
-export function FlightResultCard({
+export function FlightResultCard(props: FlightResultCardProps) {
+  return props.journey.continuation ? <PartialCard {...props} continuation={props.journey.continuation} /> : <FullCard {...props} />
+}
+
+function FullCard({
   journey,
   initialFare,
   adults,
   legNames,
-  saved,
-  saving,
+  savedSignatures,
+  savingId,
   selected,
   onSelect,
   onSave,
 }: FlightResultCardProps) {
   const [fare, setFare] = useState(initialFare)
+  const saved = savedSignatures.has(journey.signature)
+  const saving = savingId === journey.signature
+  const fareChoice = journey.fares.length > 1 || fare.checkedBags != null
 
   return (
     <article
@@ -49,28 +62,30 @@ export function FlightResultCard({
         ))}
       </div>
 
-      <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Tarif">
-        {journey.fares.map((f) => {
-          const active = f.family === fare.family
-          return (
-            <button
-              key={f.family}
-              type="button"
-              role="radio"
-              aria-checked={active}
-              onClick={() => setFare(f)}
-              className={clsx(
-                'flex h-9 cursor-pointer items-center gap-1.5 rounded-lg border px-2.5 text-[13px] font-semibold',
-                active ? 'border-accent bg-accent-soft text-accent' : 'border-line hover:bg-surface-2',
-              )}
-            >
-              {f.checkedBags > 0 ? <Briefcase size={14} /> : <Backpack size={14} />}
-              {f.family}
-              <span className="font-mono">{formatEuro(Math.round(f.totalPrice))}</span>
-            </button>
-          )
-        })}
-      </div>
+      {fareChoice && (
+        <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Tarif">
+          {journey.fares.map((f) => {
+            const active = f.family === fare.family
+            return (
+              <button
+                key={f.family}
+                type="button"
+                role="radio"
+                aria-checked={active}
+                onClick={() => setFare(f)}
+                className={clsx(
+                  'flex h-9 cursor-pointer items-center gap-1.5 rounded-lg border px-2.5 text-[13px] font-semibold',
+                  active ? 'border-accent bg-accent-soft text-accent' : 'border-line hover:bg-surface-2',
+                )}
+              >
+                {(f.checkedBags ?? 0) > 0 ? <Briefcase size={14} /> : <Backpack size={14} />}
+                {f.family}
+                <span className="font-mono">{formatEuro(Math.round(f.totalPrice))}</span>
+              </button>
+            )
+          })}
+        </div>
+      )}
 
       <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
         <span>{fareSummary(fare)}</span>
@@ -92,42 +107,210 @@ export function FlightResultCard({
       </p>
 
       <div className="flex flex-wrap items-end justify-between gap-3 border-t border-line pt-3">
+        <PriceBlock price={fare.totalPrice} perAdult={fare.pricePerAdult} adults={adults} minutes={journey.totalMinutes} />
+        <div className="flex flex-wrap items-center gap-2">
+          <BookingLinks journey={journey} />
+          <SaveButton saved={saved} saving={saving} onSave={() => onSave(journey, fare)} />
+        </div>
+      </div>
+    </article>
+  )
+}
+
+/**
+ * Hinflug von Google Flights: Preis = günstigster Gesamtpreis mit diesem Hinflug. Die Rückflüge kosten eine weitere
+ * Google-Suche und werden deshalb erst auf Klick geladen.
+ */
+function PartialCard({
+  journey,
+  continuation,
+  adults,
+  legNames,
+  savedSignatures,
+  savingId,
+  selected,
+  onSelect,
+  onSave,
+}: FlightResultCardProps & { continuation: string }) {
+  const [open, setOpen] = useState(false)
+  const nextName = legNames[journey.legs.length] ?? `Strecke ${journey.legs.length + 1}`
+  const savedHere = [...savedSignatures].some((s) => s.startsWith(`${journey.signature}|`))
+
+  return (
+    <article
+      data-flight-id={journey.signature}
+      onClick={(e) => {
+        if (!(e.target as HTMLElement).closest('button, a, [data-next-legs]')) onSelect()
+      }}
+      className={clsx(
+        'flex scroll-m-4 cursor-pointer flex-col gap-3 rounded-2xl border bg-surface p-4 transition-[border-color,box-shadow] duration-100',
+        selected ? 'border-accent shadow-[0_0_0_3px_var(--accent)]' : 'border-line hover:border-muted/50',
+      )}
+    >
+      <div className="flex flex-col gap-3">
+        {journey.legs.map((leg, i) => (
+          <LegRow key={i} leg={leg} name={legNames[i] ?? `Strecke ${i + 1}`} />
+        ))}
+      </div>
+
+      <div className="flex flex-wrap items-end justify-between gap-3 border-t border-line pt-3">
         <div className="flex flex-col gap-0.5">
-          <span className="font-mono text-lg font-semibold">{formatEuro(fare.totalPrice)}</span>
+          <span className="text-xs font-semibold text-muted">Gesamt mit {nextName} ab</span>
+          <span className="font-mono text-lg font-semibold">{formatEuro(journey.totalPrice)}</span>
           <span className="text-xs text-muted">
-            {adults === 1 ? 'für 1 Person' : `${formatEuro(fare.pricePerAdult)} p. P. × ${adults}`} · {formatDuration(journey.totalMinutes)}{' '}
-            Flugzeit
+            {adults === 1 ? 'für 1 Person' : `${formatEuro(journey.fares[0].pricePerAdult)} p. P. × ${adults}`}
+            {savedHere && <span className="ml-2 font-semibold text-accent">· mit einem {nextName} gemerkt</span>}
           </span>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <a
-            href={journey.bookingUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            title="Kayak vergleicht Airlines und Portale – Strecken, Daten und Personen sind übernommen"
-            className={buttonClass('secondary', 'sm')}
-          >
-            Kayak
-            <ExternalLink size={14} />
-          </a>
           <a href={journey.googleUrl} target="_blank" rel="noopener noreferrer" className={buttonClass('secondary', 'sm')}>
             Google
             <ExternalLink size={14} />
           </a>
-          {saved ? (
-            <span className={buttonClass('secondary', 'sm', 'cursor-default border-accent text-accent')}>
-              <Check size={15} strokeWidth={3} />
-              Gemerkt
-            </span>
-          ) : (
-            <button type="button" onClick={() => onSave(fare)} disabled={saving} className={buttonClass('primary', 'sm')}>
-              <Heart size={15} />
-              Merken
-            </button>
-          )}
+          <button
+            type="button"
+            aria-expanded={open}
+            onClick={() => setOpen((o) => !o)}
+            className={buttonClass(open ? 'secondary' : 'primary', 'sm')}
+            title="Lädt die passenden Flüge – kostet eine Google-Suche (danach eine Stunde gespeichert)"
+          >
+            {open ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
+            {nextName} wählen
+          </button>
         </div>
       </div>
+
+      {open && (
+        <NextLegs
+          continuation={continuation}
+          known={journey.legs.length}
+          adults={adults}
+          legNames={legNames}
+          savedSignatures={savedSignatures}
+          savingId={savingId}
+          onSave={onSave}
+        />
+      )}
     </article>
+  )
+}
+
+/** Passende Flüge für die nächste Strecke; jeder ergibt mit den gewählten eine vollständige Verbindung. */
+function NextLegs({ continuation, known, ...save }: SaveProps & { continuation: string; known: number }) {
+  const next = useFlightContinue(continuation)
+  const name = save.legNames[known] ?? `Strecke ${known + 1}`
+  const plural = name.endsWith('flug') ? `${name.slice(0, -4)}flüge` : name
+
+  if (next.isPending) {
+    return (
+      <div data-next-legs className="flex flex-col gap-2" aria-busy="true">
+        <p className="text-sm text-muted">{plural} werden geladen …</p>
+        <Skeleton className="h-24" />
+        <Skeleton className="h-24" />
+      </div>
+    )
+  }
+  if (next.error) {
+    return (
+      <div data-next-legs>
+        <ErrorState
+          message={next.error instanceof ApiError ? next.error.message : 'Fehler beim Laden.'}
+          onRetry={() => void next.refetch()}
+        />
+      </div>
+    )
+  }
+  const journeys = next.data.journeys
+  if (journeys.length === 0) {
+    return (
+      <p data-next-legs className="rounded-xl bg-surface-2 px-3 py-2.5 text-sm text-muted">
+        Keine passenden {plural} gefunden – probier einen anderen Hinflug.
+      </p>
+    )
+  }
+
+  return (
+    <ul data-next-legs className="flex flex-col gap-2" aria-label={plural}>
+      {journeys.map((j) => (
+        <li key={j.signature} className="flex flex-col gap-3 rounded-xl bg-surface-2 p-3.5">
+          <LegRow leg={j.legs[known]} name={name} />
+          {j.continuation ? (
+            <NextStep journey={j} known={known + 1} {...save} />
+          ) : (
+            <div className="flex flex-wrap items-end justify-between gap-3">
+              <PriceBlock price={j.fares[0].totalPrice} perAdult={j.fares[0].pricePerAdult} adults={save.adults} minutes={j.totalMinutes} />
+              <div className="flex flex-wrap items-center gap-2">
+                <BookingLinks journey={j} />
+                <SaveButton
+                  saved={save.savedSignatures.has(j.signature)}
+                  saving={save.savingId === j.signature}
+                  onSave={() => save.onSave(j, j.fares[0])}
+                />
+              </div>
+            </div>
+          )}
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+/** Mehr als zwei Strecken: weiter zur nächsten. */
+function NextStep({ journey, known, ...save }: SaveProps & { journey: FlightJourney; known: number }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <>
+      <button type="button" onClick={() => setOpen((o) => !o)} className={buttonClass('secondary', 'sm', 'self-start')}>
+        Weiter ab {formatEuro(journey.totalPrice)}
+      </button>
+      {open && <NextLegs continuation={journey.continuation!} known={known} {...save} />}
+    </>
+  )
+}
+
+function PriceBlock({ price, perAdult, adults, minutes }: { price: number; perAdult: number; adults: number; minutes: number }) {
+  return (
+    <div className="flex flex-col gap-0.5">
+      <span className="font-mono text-lg font-semibold">{formatEuro(price)}</span>
+      <span className="text-xs text-muted">
+        {adults === 1 ? 'für 1 Person' : `${formatEuro(perAdult)} p. P. × ${adults}`} · {formatDuration(minutes)} Flugzeit
+      </span>
+    </div>
+  )
+}
+
+function BookingLinks({ journey }: { journey: FlightJourney }) {
+  return (
+    <>
+      <a
+        href={journey.bookingUrl}
+        target="_blank"
+        rel="noopener noreferrer"
+        title="Kayak vergleicht Airlines und Portale – Strecken, Daten und Personen sind übernommen"
+        className={buttonClass('secondary', 'sm')}
+      >
+        Kayak
+        <ExternalLink size={14} />
+      </a>
+      <a href={journey.googleUrl} target="_blank" rel="noopener noreferrer" className={buttonClass('secondary', 'sm')}>
+        Google
+        <ExternalLink size={14} />
+      </a>
+    </>
+  )
+}
+
+function SaveButton({ saved, saving, onSave }: { saved: boolean; saving: boolean; onSave: () => void }) {
+  return saved ? (
+    <span className={buttonClass('secondary', 'sm', 'cursor-default border-accent text-accent')}>
+      <Check size={15} strokeWidth={3} />
+      Gemerkt
+    </span>
+  ) : (
+    <button type="button" onClick={onSave} disabled={saving} className={buttonClass('primary', 'sm')}>
+      <Heart size={15} />
+      Merken
+    </button>
   )
 }
 

@@ -1,5 +1,5 @@
 import clsx from 'clsx'
-import { ArrowRight, CalendarSearch, KeyRound, Search, SearchX, TriangleAlert } from 'lucide-react'
+import { ArrowRight, CalendarSearch, Gauge, KeyRound, Search, SearchX, TriangleAlert } from 'lucide-react'
 import { useCallback, useMemo, useState, type ReactNode } from 'react'
 import { useAirportLookup, useNearbyAirports, type Airport } from '../../api/airports'
 import { ApiError } from '../../api/client'
@@ -10,6 +10,7 @@ import {
   type FlightFare,
   type FlightJourney,
   type FlightSearchParams,
+  type FlightSearchStatus,
 } from '../../api/flights'
 import { useTripActions } from '../../api/trips'
 import type { Trip } from '../../api/types'
@@ -82,11 +83,13 @@ const defaultPick = (nearby: Airport[] | undefined) => {
 /** Flugsuche für die ganze Reise: Hinflug zur ersten Etappe, Rückflug von der letzten. */
 export function FlightSearchView({ trip }: { trip: Trip }) {
   const status = useFlightSearchStatus()
-  if (status.data && !status.data.configured) return <SetupHint />
-  return <SearchArea trip={trip} />
+  if (status.data && !status.data.configured) return <SetupHint provider={status.data.provider} />
+  return <SearchArea trip={trip} status={status.data ?? null} />
 }
 
-function SearchArea({ trip }: { trip: Trip }) {
+function SearchArea({ trip, status }: { trip: Trip; status: FlightSearchStatus | null }) {
+  // Google Flights (SerpApi): alle Flughäfen in einer Suche, Rückflug wird nach dem Hinflug gewählt.
+  const google = status?.provider === 'serpapi'
   const actions = useTripActions(trip.id)
   const firstStage = trip.stages[0] ?? null
   const lastStage = trip.stages[trip.stages.length - 1] ?? null
@@ -132,8 +135,8 @@ function SearchArea({ trip }: { trip: Trip }) {
     inbound: { origins: returnFrom.map((a) => a.code), destinations: returnTo.map((a) => a.code), date: inDate },
   }
   const legs = planLegs(plan)
-  const problem = planProblem(plan)
-  const requests = problem ? 0 : combinationCount(legs)
+  const problem = planProblem(plan, today, google)
+  const requests = problem ? 0 : google ? 1 : combinationCount(legs)
 
   const search = useFlightSearch(params)
   const result = search.data
@@ -170,7 +173,7 @@ function SearchArea({ trip }: { trip: Trip }) {
     const searchPlan = dates
       ? { ...plan, outbound: { ...plan.outbound, date: dates.out }, inbound: { ...plan.inbound, date: dates.in } }
       : plan
-    if (planProblem(searchPlan)) return
+    if (planProblem(searchPlan, today, google)) return
     setSelectedId(null)
     setParams({ legs: planLegs(searchPlan), adults, cabin })
   }
@@ -190,6 +193,7 @@ function SearchArea({ trip }: { trip: Trip }) {
         fare,
         destination ? { latitude: destination.latitude, longitude: destination.longitude } : null,
         destination ? `${destination.city || destination.name} (${destination.code})` : journey.legs[0].destination,
+        google ? 'serpapi' : 'liteapi',
       ),
       { onSettled: () => setSavingId(null) },
     )
@@ -210,7 +214,14 @@ function SearchArea({ trip }: { trip: Trip }) {
   const datesParams =
     cheapest && params
       ? {
-          legs: cheapest.legs.map((l, i) => ({ origin: l.origin, destination: l.destination, date: params.legs[i]?.date ?? outDate })),
+          legs: params.legs.map((q, i) => {
+            const known = cheapest.legs[i]
+            if (known) return { origin: known.origin, destination: known.destination, date: q.date }
+            // Rückflug noch nicht gewählt (Google): möglichst dieselben Flughäfen wie beim Hinflug, umgedreht.
+            const first = cheapest.legs[0]
+            const pick = (codes: string[], prefer: string) => (codes.includes(prefer) ? prefer : codes[0])
+            return { origin: pick(q.origins, first.destination), destination: pick(q.destinations, first.origin), date: q.date }
+          }),
           adults: params.adults,
           cabin: params.cabin,
         }
@@ -327,15 +338,23 @@ function SearchArea({ trip }: { trip: Trip }) {
             {search.isFetching ? 'Suche läuft …' : 'Flüge suchen'}
           </Button>
           <span className={clsx('text-sm', problem ? 'text-star' : 'text-muted')}>
-            {problem ?? (requests === 1 ? '1 Abfrage' : `${requests} Abfragen (eine pro Flughafen-Kombination)`)}
+            {problem ??
+              (google
+                ? '1 Google-Suche – Rückflüge kosten beim Aufklappen je eine weitere'
+                : requests === 1
+                  ? '1 Abfrage'
+                  : `${requests} Abfragen (eine pro Flughafen-Kombination)`)}
           </span>
+          {status?.quota && <QuotaBadge quota={status.quota} />}
         </div>
       </section>
 
       {!params ? (
         <p className="rounded-2xl border border-dashed border-line px-4 py-3 text-sm text-muted">
-          Daten und Zielflughäfen kommen aus den Etappen. Mehrere Flughäfen pro Seite sind möglich (z. B. alle im Umkreis) – jede
-          Kombination ist eine eigene Suche. Gefundene Flüge kannst du mit „Merken“ als Favorit speichern.
+          {google
+            ? 'Daten und Zielflughäfen kommen aus den Etappen. Preise kommen von Google Flights: Erst siehst du die Hinflüge mit dem günstigsten Gesamtpreis, dann wählst du den Rückflug. Mehrere Flughäfen pro Seite kosten keine Extra-Suche.'
+            : 'Daten und Zielflughäfen kommen aus den Etappen. Mehrere Flughäfen pro Seite sind möglich (z. B. alle im Umkreis) – jede Kombination ist eine eigene Suche.'}{' '}
+          Gefundene Flüge kannst du mit „Merken“ als Favorit speichern.
         </p>
       ) : error ? (
         <ErrorState message={error.message} onRetry={() => void search.refetch()} />
@@ -371,9 +390,11 @@ function SearchArea({ trip }: { trip: Trip }) {
             <Chip active={filters.nonstop} onClick={() => setFilters((f) => ({ ...f, nonstop: !f.nonstop }))}>
               Nur Direktflüge
             </Chip>
-            <Chip active={filters.withBag} onClick={() => setFilters((f) => ({ ...f, withBag: !f.withBag }))}>
-              Mit Koffer
-            </Chip>
+            {!google && (
+              <Chip active={filters.withBag} onClick={() => setFilters((f) => ({ ...f, withBag: !f.withBag }))}>
+                Mit Koffer
+              </Chip>
+            )}
             <Button
               variant="secondary"
               size="sm"
@@ -430,11 +451,11 @@ function SearchArea({ trip }: { trip: Trip }) {
                       initialFare={fare}
                       adults={params.adults}
                       legNames={legNames}
-                      saved={savedSignatures.has(journey.signature)}
-                      saving={savingId === journey.signature}
+                      savedSignatures={savedSignatures}
+                      savingId={savingId}
                       selected={selectedId === journey.signature}
                       onSelect={() => setSelectedId(journey.signature)}
-                      onSave={(f) => save(journey, f)}
+                      onSave={save}
                     />
                   ))}
                   {flights.length > shown.length && (
@@ -564,7 +585,43 @@ function DateAndRadius({
   )
 }
 
-function SetupHint() {
+/** Restliche kostenlose Google-Suchen; wird knapp → gelb. */
+function QuotaBadge({ quota }: { quota: { left: number; perMonth: number } }) {
+  const low = quota.left <= Math.max(10, quota.perMonth * 0.1)
+  return (
+    <span
+      className={clsx(
+        'flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold',
+        low ? 'border-star/50 text-star' : 'border-line text-muted',
+      )}
+      title="Kostenlose Suchen bei SerpApi (Google Flights) – gleiche Suchen kommen eine Stunde aus dem Speicher und kosten nichts"
+    >
+      <Gauge size={13} />
+      Noch {quota.left}
+      {quota.perMonth > 0 ? ` von ${quota.perMonth}` : ''} Google-Suchen
+    </span>
+  )
+}
+
+function SetupHint({ provider }: { provider: FlightSearchStatus['provider'] }) {
+  if (provider === 'serpapi') {
+    return (
+      <section className="flex flex-col gap-3 rounded-[20px] border border-dashed border-line p-6">
+        <span className="flex size-12 items-center justify-center rounded-2xl bg-accent-soft text-accent">
+          <KeyRound size={22} />
+        </span>
+        <h3 className="text-lg font-extrabold">Flugsuche einrichten</h3>
+        <p className="max-w-2xl text-[15px] leading-relaxed text-muted">
+          Die Flugsuche nutzt Google Flights über SerpApi. Hinterlege den Key einmal im Terminal (im Ordner
+          <code className="mx-1 rounded bg-surface-2 px-1.5 py-0.5 font-mono text-[13px]">backend/src/Urlaubsplanner.Api</code>) und starte
+          das Backend neu:
+        </p>
+        <pre className="overflow-x-auto rounded-xl bg-surface-2 p-4 font-mono text-[13px]">
+          dotnet user-secrets set "SerpApi:ApiKey" "…"
+        </pre>
+      </section>
+    )
+  }
   return (
     <section className="flex flex-col gap-3 rounded-[20px] border border-dashed border-line p-6">
       <span className="flex size-12 items-center justify-center rounded-2xl bg-accent-soft text-accent">

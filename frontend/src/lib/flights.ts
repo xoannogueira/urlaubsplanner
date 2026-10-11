@@ -36,8 +36,11 @@ export function combinationCount(legs: FlightLegQuery[]): number {
   return legs.reduce((n, leg) => n * leg.origins.reduce((m, o) => m + leg.destinations.filter((d) => d !== o).length, 0), 1)
 }
 
-/** Was im Formular noch fehlt; null = bereit zum Suchen. */
-export function planProblem(plan: FlightPlan, today = todayIso()): string | null {
+/**
+ * Was im Formular noch fehlt; null = bereit zum Suchen.
+ * multiAirport: der Anbieter sucht alle Flughäfen in einer Anfrage (Google Flights) – dann gibt es keine Obergrenze für Kombinationen.
+ */
+export function planProblem(plan: FlightPlan, today = todayIso(), multiAirport = false): string | null {
   const legs = planLegs(plan)
   if (legs.some((l) => l.origins.length === 0)) return 'Wähle einen Abflughafen.'
   if (legs.some((l) => l.destinations.length === 0)) return 'Wähle einen Zielflughafen.'
@@ -45,7 +48,8 @@ export function planProblem(plan: FlightPlan, today = todayIso()): string | null
   if (legs[0].date < today) return 'Das Datum liegt in der Vergangenheit.'
   if (legs.length === 2 && legs[1].date < legs[0].date) return 'Der Rückflug liegt vor dem Hinflug.'
   if (combinationCount(legs) === 0) return 'Start und Ziel sind gleich.'
-  if (combinationCount(legs) > 8) return `Das wären ${combinationCount(legs)} Suchen – höchstens 8. Wähle weniger Flughäfen.`
+  if (!multiAirport && combinationCount(legs) > 8)
+    return `Das wären ${combinationCount(legs)} Suchen – höchstens 8. Wähle weniger Flughäfen.`
   return null
 }
 
@@ -77,7 +81,7 @@ export type FlightSort = 'price' | 'duration' | 'departure'
 
 /** Tarif, der zu den Filtern passt: günstigster, bzw. günstigster mit Koffer. */
 export function fareFor(journey: FlightJourney, filters: FlightFilters): FlightFare | null {
-  return filters.withBag ? (journey.fares.find((f) => f.checkedBags > 0) ?? null) : journey.fares[0]
+  return filters.withBag ? (journey.fares.find((f) => (f.checkedBags ?? 0) > 0) ?? null) : journey.fares[0]
 }
 
 export function filterAndSortFlights(
@@ -122,6 +126,8 @@ export function stopsLabel(leg: FlightJourneyLeg): string {
 export const flightTitle = (journey: FlightJourney) => journey.legs.map((l) => `${l.origin} → ${l.destination}`).join(' · ')
 
 export function fareSummary(fare: FlightFare): string {
+  // Google Flights nennt nur den Preis – Gepäck und Bedingungen stehen beim Anbieter.
+  if (fare.checkedBags == null) return 'Preis laut Google Flights · Gepäck und Bedingungen beim Buchen prüfen'
   return [
     `Tarif ${fare.family}`,
     fare.checkedBags > 0
@@ -152,6 +158,7 @@ export function flightOptionInput(
   fare: FlightFare,
   destination: LatLng | null,
   destinationName: string | null,
+  provider: 'liteapi' | 'serpapi' = 'liteapi',
 ): OptionInput {
   const first = journey.legs[0]
   const last = journey.legs[journey.legs.length - 1]
@@ -170,7 +177,7 @@ export function flightOptionInput(
     longitude: destination?.longitude ?? null,
     notes: flightNotes(journey, fare),
     imageUrl: null,
-    provider: 'liteapi',
+    provider,
     externalId: `${journey.signature}#${fare.family}`,
   }
 }
@@ -197,7 +204,7 @@ export function parseSignature(value: string | null | undefined): { legs: Signat
 
 /** Gemerkter Flug aus der Suche, dessen Abflug noch in der Zukunft liegt. */
 export function canRecheckFlight(option: TripOption, today: string = todayIso()): boolean {
-  if (option.kind !== 'Flight' || option.provider !== 'liteapi') return false
+  if (option.kind !== 'Flight' || (option.provider !== 'liteapi' && option.provider !== 'serpapi')) return false
   const parsed = parseSignature(option.externalId)
   return parsed !== null && parsed.legs[0].date >= today
 }

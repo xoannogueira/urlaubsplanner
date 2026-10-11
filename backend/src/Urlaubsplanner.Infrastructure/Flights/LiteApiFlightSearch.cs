@@ -25,6 +25,8 @@ public sealed partial class LiteApiFlightSearch(
 
     private readonly LiteApiOptions _options = options.Value;
 
+    public string Provider => "liteapi";
+
     public bool IsConfigured => !string.IsNullOrWhiteSpace(_options.ApiKey);
 
     public async Task<FlightSearchResult> SearchAsync(FlightSearchRequest request, CancellationToken cancellationToken)
