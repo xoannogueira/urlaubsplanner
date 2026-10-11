@@ -30,7 +30,6 @@ export function OverviewPage() {
   const [editTrip, setEditTrip] = useState(false)
   const [confirmDeleteTrip, setConfirmDeleteTrip] = useState(false)
 
-  const lastEnd = trip.stages.at(-1)?.endDate
   const mapStages = useMemo(() => stageMarkers(trip.stages), [trip.stages])
   const stagesWithoutPlace = trip.stages.length - mapStages.length
 
@@ -144,7 +143,7 @@ export function OverviewPage() {
       <StageFormDialog
         open={stageDialog !== null}
         stage={stageDialog?.stage}
-        suggestedStart={lastEnd}
+        trip={trip}
         onClose={() => setStageDialog(null)}
         onSubmit={(input) =>
           stageDialog?.stage ? actions.updateStage.mutateAsync({ id: stageDialog.stage.id, input }) : actions.addStage.mutateAsync(input)

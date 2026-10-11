@@ -18,7 +18,8 @@ import type { MapAirport, MapArc } from '../../components/map/types'
 import { Button } from '../../components/ui/Button'
 import { EmptyState, ErrorState, Skeleton } from '../../components/ui/Feedback'
 import { controlClass } from '../../components/ui/fieldStyles'
-import { formatShortDate, peopleLabel } from '../../lib/format'
+import { addDays } from '../../lib/dates'
+import { formatShortDate, peopleLabel, todayIso } from '../../lib/format'
 import {
   combinationCount,
   filterAndSortFlights,
@@ -121,6 +122,9 @@ function SearchArea({ trip }: { trip: Trip }) {
   const returnFrom = inFrom ?? defaultPick(nearIn.data)
   const returnTo = inTo ?? home
   const adults = Math.min(trip.travelers, MAX_ADULTS)
+  // Airlines verkaufen ab heute bis ca. 11 Monate im Voraus.
+  const today = todayIso()
+  const latest = addDays(today, 330)
 
   const plan: FlightPlan = {
     type,
@@ -267,6 +271,8 @@ function SearchArea({ trip }: { trip: Trip }) {
             label="Abflug"
             date={outDate}
             onDate={setOutDate}
+            min={today}
+            max={latest}
             radius={firstCenter ? radiusOut : null}
             onRadius={setRadiusOut}
           />
@@ -277,7 +283,15 @@ function SearchArea({ trip }: { trip: Trip }) {
             <p className="flex items-center gap-2 self-end pb-3 text-sm text-muted">
               {destinations.map((a) => a.code).join('/') || '…'} <ArrowRight size={14} /> {origins.map((a) => a.code).join('/') || '…'}
             </p>
-            <DateAndRadius label="Rückflug am" date={inDate} onDate={setInDate} radius={null} onRadius={() => undefined} />
+            <DateAndRadius
+              label="Rückflug am"
+              date={inDate}
+              onDate={setInDate}
+              min={outDate || today}
+              max={latest}
+              radius={null}
+              onRadius={() => undefined}
+            />
           </LegForm>
         )}
         {type === 'openjaw' && (
@@ -294,6 +308,8 @@ function SearchArea({ trip }: { trip: Trip }) {
               label="Rückflug am"
               date={inDate}
               onDate={setInDate}
+              min={outDate || today}
+              max={latest}
               radius={lastCenter ? radiusIn : null}
               onRadius={setRadiusIn}
             />
@@ -500,12 +516,16 @@ function DateAndRadius({
   label,
   date,
   onDate,
+  min,
+  max,
   radius,
   onRadius,
 }: {
   label: string
   date: string
   onDate: (date: string) => void
+  min?: string
+  max?: string
   /** null = kein Umkreis (Etappe ohne Ort) */
   radius: number | null
   onRadius: (radius: number) => void
@@ -514,7 +534,14 @@ function DateAndRadius({
     <div className="flex items-start gap-3">
       <label className="flex flex-col gap-1.5">
         <span className="text-[13px] font-bold text-muted">{label}</span>
-        <input type="date" value={date} onChange={(e) => onDate(e.target.value)} className={clsx(controlClass, 'w-40')} />
+        <input
+          type="date"
+          value={date}
+          min={min}
+          max={max}
+          onChange={(e) => onDate(e.target.value)}
+          className={clsx(controlClass, 'w-40')}
+        />
         {date && <span className="text-xs text-muted">{formatShortDate(date)}</span>}
       </label>
       {radius != null && (

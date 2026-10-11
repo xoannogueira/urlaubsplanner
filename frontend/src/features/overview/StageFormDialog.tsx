@@ -1,10 +1,12 @@
 import { useState, type FormEvent } from 'react'
 import { ApiError } from '../../api/client'
-import type { LatLng, Stage, StageInput } from '../../api/types'
+import type { LatLng, Stage, StageInput, Trip } from '../../api/types'
 import { MapHint, PlaceSearchField } from '../../components/PlaceSearchField'
 import { Button } from '../../components/ui/Button'
 import { Dialog } from '../../components/ui/Dialog'
-import { FormError, InputField } from '../../components/ui/Field'
+import { DateField } from '../../components/ui/DateField'
+import { FormError } from '../../components/ui/Field'
+import { newStageDefaults, rangeHint, tripRange } from '../../lib/dates'
 import { toLatLng } from '../../lib/geo'
 
 interface StageFormDialogProps {
@@ -12,11 +14,11 @@ interface StageFormDialogProps {
   onClose: () => void
   onSubmit: (input: StageInput) => Promise<unknown>
   stage?: Stage
-  /** Vorschlag fürs Startdatum, z. B. das Ende der letzten Etappe. */
-  suggestedStart?: string
+  /** Für Vorschläge und Grenzen: Reisezeitraum und vorhandene Etappen. */
+  trip: Pick<Trip, 'startDate' | 'endDate' | 'stages'>
 }
 
-export function StageFormDialog({ open, onClose, onSubmit, stage, suggestedStart }: StageFormDialogProps) {
+export function StageFormDialog({ open, onClose, onSubmit, stage, trip }: StageFormDialogProps) {
   return (
     <Dialog
       open={open}
@@ -25,16 +27,21 @@ export function StageFormDialog({ open, onClose, onSubmit, stage, suggestedStart
       description="Ein Ort mit Zeitraum, z. B. Lissabon vom 12. bis 16. Mai."
       width="sm"
     >
-      {open && <StageForm key={stage?.id ?? 'new'} stage={stage} suggestedStart={suggestedStart} onSubmit={onSubmit} onClose={onClose} />}
+      {open && <StageForm key={stage?.id ?? 'new'} stage={stage} trip={trip} onSubmit={onSubmit} onClose={onClose} />}
     </Dialog>
   )
 }
 
-function StageForm({ stage, suggestedStart, onSubmit, onClose }: Omit<StageFormDialogProps, 'open'>) {
+function StageForm({ stage, trip, onSubmit, onClose }: Omit<StageFormDialogProps, 'open'>) {
+  // Neue Etappe: schließt an die letzte an und reicht bis zum Reiseende.
+  const [defaults] = useState(() => newStageDefaults(trip))
+  const range = tripRange(trip)
+  // Feste Grenzen nur, wenn die Reise selbst Daten hat – sonst könnte man die Reise nicht um Etappen verlängern.
+  const limits = trip.startDate && trip.endDate ? { min: trip.startDate, max: trip.endDate } : { min: null, max: null }
   const [name, setName] = useState(stage?.name ?? '')
   const [coordinates, setCoordinates] = useState<LatLng | null>(toLatLng(stage))
-  const [startDate, setStartDate] = useState(stage?.startDate ?? suggestedStart ?? '')
-  const [endDate, setEndDate] = useState(stage?.endDate ?? '')
+  const [startDate, setStartDate] = useState(stage?.startDate ?? defaults.start)
+  const [endDate, setEndDate] = useState(stage?.endDate ?? defaults.end)
   const [error, setError] = useState<ApiError | null>(null)
   const [pending, setPending] = useState(false)
 
@@ -77,20 +84,24 @@ function StageForm({ stage, suggestedStart, onSubmit, onClose }: Omit<StageFormD
         <MapHint coordinates={coordinates} />
       </div>
       <div className="grid grid-cols-2 gap-4">
-        <InputField
+        <DateField
           label="Anreise"
-          type="date"
           value={startDate}
-          onChange={(e) => setStartDate(e.target.value)}
+          onValue={setStartDate}
+          min={limits.min}
+          max={limits.max}
+          openAt={range.start}
           required
           error={fe.startDate}
+          hint={rangeHint(range)}
         />
-        <InputField
+        <DateField
           label="Abreise"
-          type="date"
           value={endDate}
-          min={startDate || undefined}
-          onChange={(e) => setEndDate(e.target.value)}
+          onValue={setEndDate}
+          min={startDate || limits.min}
+          max={limits.max}
+          openAt={range.end && range.end > startDate ? range.end : startDate || range.start}
           required
           error={fe.endDate}
         />

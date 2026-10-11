@@ -1,10 +1,12 @@
 import { useState, type FormEvent } from 'react'
 import { ApiError } from '../../api/client'
-import type { LatLng, OptionInput, OptionKind, OptionStatus, Stage, TripOption } from '../../api/types'
+import type { LatLng, OptionInput, OptionKind, OptionStatus, Stage, Trip, TripOption } from '../../api/types'
 import { MapHint, PlaceSearchField } from '../../components/PlaceSearchField'
 import { Button } from '../../components/ui/Button'
 import { Dialog } from '../../components/ui/Dialog'
+import { DateField } from '../../components/ui/DateField'
 import { FormError, InputField, SelectField, TextAreaField } from '../../components/ui/Field'
+import { rangeFor, rangeHint } from '../../lib/dates'
 import { formatDateRange } from '../../lib/format'
 import { toLatLng } from '../../lib/geo'
 import { kindLabels, statusLabels, statusOrder } from '../../lib/options'
@@ -15,6 +17,8 @@ interface OptionFormDialogProps {
   onSubmit: (input: OptionInput) => Promise<unknown>
   kind: OptionKind
   stages: Stage[]
+  /** Reisezeitraum – die Datumsfelder orientieren sich an Etappe bzw. Reise. */
+  trip: Pick<Trip, 'startDate' | 'endDate' | 'stages'>
   option?: TripOption
   defaultStageId?: string | null
 }
@@ -42,7 +46,7 @@ export function OptionFormDialog(props: OptionFormDialogProps) {
   )
 }
 
-function OptionForm({ onClose, onSubmit, kind, stages, option, defaultStageId }: OptionFormDialogProps) {
+function OptionForm({ onClose, onSubmit, kind, stages, trip, option, defaultStageId }: OptionFormDialogProps) {
   const [title, setTitle] = useState(option?.title ?? '')
   const [url, setUrl] = useState(option?.url ?? '')
   const [stageId, setStageId] = useState(option ? (option.stageId ?? '') : (defaultStageId ?? ''))
@@ -58,6 +62,9 @@ function OptionForm({ onClose, onSubmit, kind, stages, option, defaultStageId }:
   const [pending, setPending] = useState(false)
 
   const isHotel = kind === 'Hotel'
+  const selectedStage = stages.find((st) => st.id === stageId) ?? null
+  // Datumsfelder: innerhalb der gewählten Etappe, sonst innerhalb der Reise.
+  const range = rangeFor(trip, selectedStage)
   // Suche bevorzugt Orte rund um die gewählte Etappe – "Hotel Miradouro" findet dann das in Lissabon.
   const near = toLatLng(stages.find((s) => s.id === stageId))
 
@@ -176,20 +183,27 @@ function OptionForm({ onClose, onSubmit, kind, stages, option, defaultStageId }:
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <InputField
+        <DateField
           label={isHotel ? 'Check-in' : 'Datum'}
-          type="date"
           value={startDate}
-          onChange={(e) => setStartDate(e.target.value)}
+          onValue={setStartDate}
+          min={range.start}
+          max={range.end}
+          openAt={range.start}
           error={fe.startDate}
-          hint={isHotel ? 'leer = ganze Etappe' : undefined}
+          hint={
+            [isHotel ? 'leer = ganze Etappe' : null, rangeHint(range, selectedStage ? selectedStage.name : 'Reise')]
+              .filter(Boolean)
+              .join(' · ') || undefined
+          }
         />
-        <InputField
+        <DateField
           label={isHotel ? 'Check-out' : 'Bis (optional)'}
-          type="date"
           value={endDate}
-          min={startDate || undefined}
-          onChange={(e) => setEndDate(e.target.value)}
+          onValue={setEndDate}
+          min={startDate || range.start}
+          max={range.end}
+          openAt={isHotel ? range.end : startDate || range.start}
           error={fe.endDate}
         />
       </div>
