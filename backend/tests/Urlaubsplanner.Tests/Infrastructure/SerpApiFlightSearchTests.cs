@@ -131,6 +131,8 @@ public sealed class SerpApiFlightSearchTests
         Assert.Equal("2027-05-19", Query(uri, "return_date"));
         Assert.Equal("2", Query(uri, "adults"));
         Assert.Equal("EUR", Query(uri, "currency"));
+        Assert.Equal("true", Query(uri, "show_hidden"));
+        Assert.Equal("true", Query(uri, "deep_search"));
     }
 
     [Fact]

@@ -199,6 +199,8 @@ So läuft es und so viel kostet es:
 - **Neu prüfen:** zwei Suchen bei Hin & zurück.
 - **Cache:** Gleiche Suchen kommen eine Stunde lang aus dem Speicher und kosten nichts.
 - **Restliche Suchen:** Die Flugsuche zeigt an, wie viele kostenlose Suchen noch übrig sind.
+- **Mehr Ergebnisse:** `show_hidden` (auch „Weitere Flüge“) und `deep_search` (wie im Browser) sind an. Das kostet keine zusätzlichen Suchen, dauert aber ein paar Sekunden länger.
+  Abschalten geht unter `SerpApi:ShowHidden` / `SerpApi:DeepSearch` in `appsettings.json`.
 - **Was Google nicht liefert:** Gepäck und Tarifbedingungen. Die prüfst du beim Buchen über den Google- oder Kayak-Link.
 
 **Zurück zu LiteAPI:** In `appsettings.json` `Flights:Provider` auf `"liteapi"` setzen, oder den SerpApi-Key entfernen

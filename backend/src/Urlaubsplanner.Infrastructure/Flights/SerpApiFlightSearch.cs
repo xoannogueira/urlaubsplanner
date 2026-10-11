@@ -22,6 +22,12 @@ public sealed class SerpApiOptions
     public string Language { get; set; } = "de";
 
     public string Country { get; set; } = "de";
+
+    /// <summary>Auch Flüge hinter „Weitere Flüge anzeigen“ – deutlich mehr Ergebnisse, gleiche Anzahl Suchen.</summary>
+    public bool ShowHidden { get; set; } = true;
+
+    /// <summary>Gleiche Ergebnisse wie Google Flights im Browser, dafür langsamer (einige Sekunden mehr).</summary>
+    public bool DeepSearch { get; set; } = true;
 }
 
 /// <summary>
@@ -266,6 +272,15 @@ public sealed partial class SerpApiFlightSearch(
         query.Add(new("currency", _options.Currency));
         query.Add(new("hl", _options.Language));
         query.Add(new("gl", _options.Country));
+        if (_options.ShowHidden)
+        {
+            query.Add(new("show_hidden", "true"));
+        }
+
+        if (_options.DeepSearch)
+        {
+            query.Add(new("deep_search", "true"));
+        }
         if (departureToken is not null)
         {
             query.Add(new("departure_token", departureToken));
