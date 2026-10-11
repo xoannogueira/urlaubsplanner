@@ -1,8 +1,10 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Urlaubsplanner.Domain.Flights;
 using Urlaubsplanner.Domain.Hotels;
 using Urlaubsplanner.Domain.Places;
 using Urlaubsplanner.Domain.Trips;
+using Urlaubsplanner.Infrastructure.Flights;
 using Urlaubsplanner.Infrastructure.Hotels;
 using Urlaubsplanner.Infrastructure.Persistence;
 using Urlaubsplanner.Infrastructure.Places;
@@ -32,6 +34,14 @@ public static class DependencyInjection
             // LiteAPI selbst bricht nach 8 s ab (timeout im Request) – etwas Puffer für die Antwort.
             http.Timeout = TimeSpan.FromSeconds(20);
         });
+
+        // Flüge laufen über denselben LiteAPI-Key. Flugsuchen dauern länger als Hotelsuchen.
+        services.AddHttpClient<IFlightSearch, LiteApiFlightSearch>(http =>
+        {
+            http.BaseAddress = new Uri(configuration[$"{LiteApiOptions.Section}:BaseUrl"] ?? "https://api.liteapi.travel/v3.0/");
+            http.Timeout = TimeSpan.FromSeconds(45);
+        });
+        services.AddSingleton<IAirportDirectory, AirportDirectory>();
 
         return services;
     }
