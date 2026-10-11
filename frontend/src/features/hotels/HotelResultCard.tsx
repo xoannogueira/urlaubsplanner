@@ -1,7 +1,7 @@
 import clsx from 'clsx'
-import { BedDouble, Check, ExternalLink, Heart, MapPin, Star } from 'lucide-react'
-import { useState } from 'react'
-import type { HotelOffer } from '../../api/hotels'
+import { BedDouble, CalendarSearch, Check, ExternalLink, Heart, MapPin, Star } from 'lucide-react'
+import { useState, type ReactNode } from 'react'
+import type { HotelListing, HotelOffer } from '../../api/hotels'
 import { buttonClass } from '../../components/ui/buttonStyles'
 import { formatEuro } from '../../lib/format'
 import { formatDistance } from '../../lib/geo'
@@ -19,72 +19,11 @@ interface HotelResultCardProps {
 }
 
 export function HotelResultCard({ hotel, nights, distanceKm, saved, saving, selected, onSave, onSelect }: HotelResultCardProps) {
-  const [imageFailed, setImageFailed] = useState(false)
-  const showImage = hotel.photoUrl && !imageFailed
-
   return (
-    <article
-      data-hotel-id={hotel.hotelId}
-      onClick={(e) => {
-        if (!(e.target as HTMLElement).closest('button, a')) onSelect()
-      }}
-      className={clsx(
-        'flex scroll-m-4 cursor-pointer overflow-hidden rounded-2xl border bg-surface transition-[border-color,box-shadow] duration-100 max-sm:flex-col',
-        selected ? 'border-accent shadow-[0_0_0_3px_var(--accent)]' : 'border-line hover:border-muted/50',
-      )}
-    >
-      <div className="relative h-40 shrink-0 bg-surface-3 sm:h-auto sm:w-44">
-        {showImage ? (
-          <img
-            src={hotel.photoUrl!}
-            alt=""
-            loading="lazy"
-            decoding="async"
-            referrerPolicy="no-referrer"
-            onError={() => setImageFailed(true)}
-            className="absolute inset-0 size-full object-cover"
-          />
-        ) : (
-          <span className="absolute inset-0 flex items-center justify-center text-muted">
-            <BedDouble size={28} strokeWidth={1.6} />
-          </span>
-        )}
-      </div>
-
+    <CardFrame hotel={hotel} selected={selected} onSelect={onSelect}>
+      <HotelPhoto url={hotel.photoUrl} />
       <div className="flex min-w-0 flex-1 flex-col gap-2 p-4">
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex min-w-0 flex-col gap-1">
-            <h3 className="text-base font-bold leading-snug">{hotel.name}</h3>
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] text-muted">
-              {hotel.stars != null && (
-                <span className="flex items-center gap-0.5 text-star" aria-label={`${hotel.stars} Sterne`}>
-                  {Array.from({ length: Math.round(hotel.stars) }, (_, i) => (
-                    <Star key={i} size={12} fill="currentColor" strokeWidth={0} />
-                  ))}
-                </span>
-              )}
-              {distanceKm != null && (
-                <span className="flex items-center gap-1">
-                  <MapPin size={13} />
-                  {formatDistance(distanceKm)} vom Zentrum
-                </span>
-              )}
-            </div>
-          </div>
-          {hotel.rating != null && (
-            <div className="flex shrink-0 items-center gap-2 text-right">
-              <span className="flex flex-col">
-                <span className="text-[13px] font-bold">{ratingLabel(hotel.rating)}</span>
-                {hotel.reviewCount != null && (
-                  <span className="text-xs text-muted">{hotel.reviewCount.toLocaleString('de-DE')} Bewertungen</span>
-                )}
-              </span>
-              <span className="flex size-10 items-center justify-center rounded-xl bg-accent font-mono text-sm font-semibold text-accent-ink">
-                {hotel.rating.toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
-              </span>
-            </div>
-          )}
-        </div>
+        <HotelHeading hotel={hotel} distanceKm={distanceKm} />
 
         <div className="flex flex-wrap gap-1.5 text-xs font-semibold">
           {hotel.roomName && <span className="rounded-md bg-surface-2 px-2 py-1 text-muted">{hotel.roomName}</span>}
@@ -104,11 +43,8 @@ export function HotelResultCard({ hotel, nights, distanceKm, saved, saving, sele
               {nights === 1 ? '1 Nacht' : `${nights} Nächte`} · {formatEuro(Math.round(hotel.totalPrice / Math.max(1, nights)))} / Nacht
             </span>
           </div>
-          <div className="flex items-center gap-2">
-            <a href={hotel.bookingUrl} target="_blank" rel="noopener noreferrer" className={buttonClass('secondary', 'sm')}>
-              Ansehen
-              <ExternalLink size={14} />
-            </a>
+          <div className="flex flex-wrap items-center gap-2">
+            <ExternalLinks bookingUrl={hotel.bookingUrl} googleUrl={hotel.googleUrl} />
             {saved ? (
               <span className={buttonClass('secondary', 'sm', 'cursor-default border-accent text-accent')}>
                 <Check size={15} strokeWidth={3} />
@@ -123,6 +59,156 @@ export function HotelResultCard({ hotel, nights, distanceKm, saved, saving, sele
           </div>
         </div>
       </div>
+    </CardFrame>
+  )
+}
+
+interface UnavailableHotelCardProps {
+  hotel: HotelListing
+  distanceKm: number | null
+  selected: boolean
+  onSelect: () => void
+  onCheckDates: () => void
+}
+
+/** Hotel ohne Angebot für den Zeitraum: rot umrandet und ausgegraut, mit „Andere Daten prüfen“. */
+export function UnavailableHotelCard({ hotel, distanceKm, selected, onSelect, onCheckDates }: UnavailableHotelCardProps) {
+  return (
+    <CardFrame hotel={hotel} selected={selected} onSelect={onSelect} unavailable>
+      <HotelPhoto url={hotel.photoUrl} muted />
+      <div className="flex min-w-0 flex-1 flex-col gap-2 p-4">
+        <HotelHeading hotel={hotel} distanceKm={distanceKm} muted />
+        <span className="w-fit rounded-md bg-danger/12 px-2 py-1 text-xs font-bold text-danger">Für deine Daten ausgebucht</span>
+        <div className="mt-auto flex flex-wrap items-center justify-end gap-2 pt-1">
+          <ExternalLinks bookingUrl={hotel.bookingUrl} googleUrl={hotel.googleUrl} />
+          <button type="button" onClick={onCheckDates} className={buttonClass('primary', 'sm')}>
+            <CalendarSearch size={15} />
+            Andere Daten prüfen
+          </button>
+        </div>
+      </div>
+    </CardFrame>
+  )
+}
+
+function CardFrame({
+  hotel,
+  selected,
+  unavailable,
+  onSelect,
+  children,
+}: {
+  hotel: { hotelId: string }
+  selected: boolean
+  unavailable?: boolean
+  onSelect: () => void
+  children: ReactNode
+}) {
+  return (
+    <article
+      data-hotel-id={hotel.hotelId}
+      data-unavailable={unavailable || undefined}
+      onClick={(e) => {
+        if (!(e.target as HTMLElement).closest('button, a')) onSelect()
+      }}
+      className={clsx(
+        'flex scroll-m-4 cursor-pointer overflow-hidden rounded-2xl border bg-surface transition-[border-color,box-shadow] duration-100 max-sm:flex-col',
+        selected
+          ? 'border-accent shadow-[0_0_0_3px_var(--accent)]'
+          : unavailable
+            ? 'border-danger/70 bg-surface-2/60 hover:border-danger'
+            : 'border-line hover:border-muted/50',
+      )}
+    >
+      {children}
     </article>
+  )
+}
+
+function HotelPhoto({ url, muted }: { url: string | null; muted?: boolean }) {
+  const [failed, setFailed] = useState(false)
+  return (
+    <div className="relative h-40 shrink-0 bg-surface-3 sm:h-auto sm:w-44">
+      {url && !failed ? (
+        <img
+          src={url}
+          alt=""
+          loading="lazy"
+          decoding="async"
+          referrerPolicy="no-referrer"
+          onError={() => setFailed(true)}
+          className={clsx('absolute inset-0 size-full object-cover', muted && 'opacity-60 grayscale')}
+        />
+      ) : (
+        <span className="absolute inset-0 flex items-center justify-center text-muted">
+          <BedDouble size={28} strokeWidth={1.6} />
+        </span>
+      )}
+    </div>
+  )
+}
+
+function HotelHeading({ hotel, distanceKm, muted }: { hotel: HotelListing | HotelOffer; distanceKm: number | null; muted?: boolean }) {
+  return (
+    <div className="flex items-start justify-between gap-3">
+      <div className="flex min-w-0 flex-col gap-1">
+        <h3 className={clsx('text-base font-bold leading-snug', muted && 'text-muted')}>{hotel.name}</h3>
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] text-muted">
+          {hotel.stars != null && (
+            <span className={clsx('flex items-center gap-0.5', muted ? 'text-muted' : 'text-star')} aria-label={`${hotel.stars} Sterne`}>
+              {Array.from({ length: Math.round(hotel.stars) }, (_, i) => (
+                <Star key={i} size={12} fill="currentColor" strokeWidth={0} />
+              ))}
+            </span>
+          )}
+          {distanceKm != null && (
+            <span className="flex items-center gap-1">
+              <MapPin size={13} />
+              {formatDistance(distanceKm)} vom Zentrum
+            </span>
+          )}
+        </div>
+      </div>
+      {hotel.rating != null && (
+        <div className="flex shrink-0 items-center gap-2 text-right">
+          <span className="flex flex-col">
+            <span className="text-[13px] font-bold">{ratingLabel(hotel.rating)}</span>
+            {hotel.reviewCount != null && (
+              <span className="text-xs text-muted">{hotel.reviewCount.toLocaleString('de-DE')} Bewertungen</span>
+            )}
+          </span>
+          <span
+            className={clsx(
+              'flex size-10 items-center justify-center rounded-xl font-mono text-sm font-semibold',
+              muted ? 'bg-surface-3 text-muted' : 'bg-accent text-accent-ink',
+            )}
+          >
+            {hotel.rating.toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
+          </span>
+        </div>
+      )}
+    </div>
+  )
+}
+
+/** Booking.com (vorausgefüllt) und Google Hotels (vergleicht viele Anbieter). */
+export function ExternalLinks({ bookingUrl, googleUrl }: { bookingUrl: string; googleUrl: string }) {
+  return (
+    <>
+      <a href={bookingUrl} target="_blank" rel="noopener noreferrer" className={buttonClass('secondary', 'sm')}>
+        Booking
+        <ExternalLink size={14} />
+      </a>
+      <a
+        href={googleUrl}
+        target="_blank"
+        rel="noopener noreferrer"
+        title="Google Hotels vergleicht viele Anbieter – Reisedaten dort auswählen"
+        className={buttonClass('secondary', 'sm')}
+      >
+        Google
+        <ExternalLink size={14} />
+      </a>
+    </>
   )
 }

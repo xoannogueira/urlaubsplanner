@@ -1,6 +1,6 @@
 import clsx from 'clsx'
 import { CalendarDays, ExternalLink, Heart, MapPin, Pencil, Trash2 } from 'lucide-react'
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import type { OptionStatus, Stage, TripOption } from '../../api/types'
 import { StatusControl } from '../../components/StatusControl'
 import { IconButton } from '../../components/ui/Button'
@@ -18,9 +18,11 @@ interface OptionCardProps {
   selected?: boolean
   /** Klick auf die Karte (nicht auf Buttons/Links) wählt den Pin auf der Karte aus. */
   onSelect?: () => void
+  /** Zusatzbereich über dem Status, z. B. „Verfügbarkeit prüfen“ bei Hotels aus der Suche. */
+  extra?: ReactNode
 }
 
-export function OptionCard({ option, stage, travelers, onStatus, onEdit, onDelete, selected, onSelect }: OptionCardProps) {
+export function OptionCard({ option, stage, travelers, onStatus, onEdit, onDelete, selected, onSelect, extra }: OptionCardProps) {
   const favorite = option.status === 'Favorite'
   const chosen = option.status === 'Selected' || option.status === 'Booked'
   const hasDates = option.startDate || option.endDate
@@ -105,6 +107,8 @@ export function OptionCard({ option, stage, travelers, onStatus, onEdit, onDelet
           <span className="text-xs text-muted">kein Link</span>
         )}
       </div>
+
+      {extra}
 
       <StatusControl value={option.status} onChange={onStatus} label={`Status von ${option.title}`} />
     </article>

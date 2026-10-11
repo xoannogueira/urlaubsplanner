@@ -100,6 +100,13 @@ export function useTripActions(tripId: string) {
     })),
   })
 
+  /** Neu geprüfter Preis – setzt „geprüft vor …“ auch bei gleichem Preis. */
+  const confirmPrice = useMutation({
+    mutationFn: ({ id, price }: { id: string; price: number }) =>
+      api<Trip>(`${base}/options/${id}/price`, { method: 'PATCH', ...json({ price }) }),
+    onSuccess,
+  })
+
   const removeOption = useMutation({
     mutationFn: (id: string) => api<Trip>(`${base}/options/${id}`, { method: 'DELETE' }),
     onSuccess,
@@ -109,7 +116,7 @@ export function useTripActions(tripId: string) {
     })),
   })
 
-  return { updateTrip, addStage, updateStage, removeStage, addOption, updateOption, setStatus, removeOption }
+  return { updateTrip, addStage, updateStage, removeStage, addOption, updateOption, setStatus, confirmPrice, removeOption }
 }
 
 /** Zeigt eine Änderung sofort an und rollt sie zurück, falls der Server ablehnt. */

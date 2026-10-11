@@ -1,19 +1,29 @@
 import clsx from 'clsx'
-import { KeyRound, Minus, Plus, Search, SearchX, TriangleAlert } from 'lucide-react'
+import { CalendarSearch, KeyRound, Minus, Plus, Search, SearchX, TriangleAlert } from 'lucide-react'
 import { useCallback, useMemo, useState, type ReactNode } from 'react'
 import { ApiError } from '../../api/client'
-import { useHotelSearch, useHotelSearchStatus, type HotelOffer, type HotelSearchParams } from '../../api/hotels'
+import { useHotelSearch, useHotelSearchStatus, useNearbyHotels, type HotelOffer, type HotelSearchParams } from '../../api/hotels'
 import { useTripActions } from '../../api/trips'
 import type { Stage, Trip } from '../../api/types'
 import { TripMap } from '../../components/map/TripMap'
-import type { MapPin } from '../../components/map/types'
+import type { MapPin, PinTone } from '../../components/map/types'
 import { Button } from '../../components/ui/Button'
 import { EmptyState, ErrorState, Skeleton } from '../../components/ui/Feedback'
 import { formatDateRange, formatEuro, nightsLabel, peopleLabel } from '../../lib/format'
 import { distanceKm, toLatLng } from '../../lib/geo'
-import { defaultRooms, filterAndSortHotels, hotelNotes, noFilters, type HotelFilters, type HotelSort } from '../../lib/hotels'
+import {
+  defaultRooms,
+  filterAndSortHotels,
+  hotelOptionInput,
+  noFilters,
+  unavailableHotels,
+  type AlternativeOffer,
+  type HotelFilters,
+  type HotelSort,
+} from '../../lib/hotels'
 import { stageMarkers } from '../../lib/mapData'
-import { HotelResultCard } from './HotelResultCard'
+import { AlternativesDialog, type AlternativeCandidate } from './AlternativesDialog'
+import { HotelResultCard, UnavailableHotelCard } from './HotelResultCard'
 
 const radiusOptions = [1000, 3000, 5000, 10_000]
 
@@ -68,10 +78,13 @@ function SearchArea({ trip, stage, center }: { trip: Trip; stage: Stage; center:
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [savingId, setSavingId] = useState<string | null>(null)
   const [view, setView] = useState<'list' | 'map'>('list')
+  const [showUnavailable, setShowUnavailable] = useState(false)
+  const [alternativesFor, setAlternativesFor] = useState<string[] | null>(null)
 
   const search = useHotelSearch(params)
   const result = search.data
   const nights = result?.nights ?? stage.nights
+  const nearby = useNearbyHotels(params, showUnavailable)
 
   const savedIds = useMemo(
     () => new Set(trip.options.filter((o) => o.provider === 'liteapi' && o.stageId === stage.id).map((o) => o.externalId)),
@@ -79,23 +92,24 @@ function SearchArea({ trip, stage, center }: { trip: Trip; stage: Stage; center:
   )
 
   const hotels = useMemo(() => filterAndSortHotels(result?.hotels ?? [], filters, sort, center), [result, filters, sort, center])
+  const soldOut = useMemo(
+    () => (showUnavailable ? unavailableHotels(nearby.data?.hotels ?? [], result?.hotels ?? [], filters, sort, center) : []),
+    [showUnavailable, nearby.data, result, filters, sort, center],
+  )
+  const candidates = useMemo<AlternativeCandidate[]>(
+    () => [
+      ...soldOut.map((h) => ({ hotelId: h.hotelId, name: h.name, unavailable: true })),
+      ...hotels.map((h) => ({ hotelId: h.hotelId, name: h.name, unavailable: false })),
+    ],
+    [soldOut, hotels],
+  )
 
   const pins = useMemo<MapPin[]>(
-    () =>
-      hotels.flatMap((h) =>
-        h.latitude != null && h.longitude != null
-          ? [
-              {
-                id: h.hotelId,
-                position: { latitude: h.latitude, longitude: h.longitude },
-                label: formatEuro(h.totalPrice),
-                title: h.name,
-                tone: savedIds.has(h.hotelId) ? ('favorite' as const) : ('idea' as const),
-              },
-            ]
-          : [],
-      ),
-    [hotels, savedIds],
+    () => [
+      ...hotels.flatMap((h) => pinFor(h, formatEuro(h.totalPrice), h.name, savedIds.has(h.hotelId) ? 'favorite' : 'idea')),
+      ...soldOut.flatMap((h) => pinFor(h, 'ausgebucht', `${h.name} (ausgebucht)`, 'unavailable')),
+    ],
+    [hotels, soldOut, savedIds],
   )
   const stageMarker = useMemo(() => stageMarkers(trip.stages).filter((s) => s.id === stage.id), [trip.stages, stage.id])
 
@@ -114,28 +128,14 @@ function SearchArea({ trip, stage, center }: { trip: Trip; stage: Stage; center:
 
   const save = (hotel: HotelOffer) => {
     setSavingId(hotel.hotelId)
-    actions.addOption.mutate(
-      {
-        kind: 'Hotel',
-        title: hotel.name,
-        status: 'Favorite',
-        stageId: stage.id,
-        url: hotel.bookingUrl,
-        price: hotel.totalPrice,
-        pricePerPerson: false,
-        startDate: stage.startDate,
-        endDate: stage.endDate,
-        locationName: hotel.address,
-        latitude: hotel.latitude,
-        longitude: hotel.longitude,
-        notes: hotelNotes(hotel),
-        imageUrl: hotel.photoUrl,
-        provider: 'liteapi',
-        externalId: hotel.hotelId,
-      },
-      { onSettled: () => setSavingId(null) },
-    )
+    actions.addOption.mutate(hotelOptionInput(hotel, stage.id, stage.startDate, stage.endDate), { onSettled: () => setSavingId(null) })
   }
+
+  /** Ausweichtermin aus dem Dialog als eigenen Favoriten merken. */
+  const saveAlternative = (alt: AlternativeOffer) =>
+    actions.addOption.mutateAsync(hotelOptionInput(alt.offer, stage.id, alt.checkin, alt.checkout))
+  const isAlternativeSaved = (alt: AlternativeOffer) =>
+    trip.options.some((o) => o.provider === 'liteapi' && o.externalId === alt.offer.hotelId && o.startDate === alt.checkin)
 
   const selectFromMap = useCallback((id: string | null) => {
     setSelectedId(id)
@@ -146,7 +146,7 @@ function SearchArea({ trip, stage, center }: { trip: Trip; stage: Stage; center:
     }
   }, [])
 
-  const distanceOf = (h: HotelOffer) =>
+  const distanceOf = (h: { latitude: number | null; longitude: number | null }) =>
     h.latitude != null && h.longitude != null ? distanceKm(center, { latitude: h.latitude, longitude: h.longitude }) : null
 
   const error = search.error instanceof ApiError ? search.error : null
@@ -233,7 +233,8 @@ function SearchArea({ trip, stage, center }: { trip: Trip; stage: Stage; center:
         <>
           <div className="flex flex-wrap items-center gap-2.5">
             <span className="mr-2 text-lg font-extrabold">
-              {hotels.length === result!.hotels.length ? `${hotels.length} Hotels` : `${hotels.length} von ${result!.hotels.length} Hotels`}
+              {hotels.length === result!.hotels.length ? `${hotels.length} frei` : `${hotels.length} von ${result!.hotels.length} frei`}
+              {showUnavailable && nearby.data && <span className="text-danger"> · {soldOut.length} ausgebucht</span>}
             </span>
             {result!.sandbox && (
               <span
@@ -253,6 +254,21 @@ function SearchArea({ trip, stage, center }: { trip: Trip; stage: Stage; center:
             <Chip active={filters.minStars === 4} onClick={() => toggle({ minStars: 4 }, filters.minStars === 4)}>
               4 Sterne+
             </Chip>
+            <Chip active={showUnavailable} danger onClick={() => setShowUnavailable(!showUnavailable)}>
+              Ausgebuchte zeigen
+            </Chip>
+            <Button
+              variant="secondary"
+              size="sm"
+              icon={<CalendarSearch size={15} />}
+              onClick={() => {
+                // Ausgebuchte gehören in die Auswahl – dafür die Liste laden.
+                setShowUnavailable(true)
+                setAlternativesFor([])
+              }}
+            >
+              Andere Daten prüfen
+            </Button>
             <div className="flex-1" />
             <div role="radiogroup" aria-label="Ansicht" className="flex rounded-xl bg-surface-2 p-1 xl:hidden">
               <ViewButton active={view === 'list'} onClick={() => setView('list')}>
@@ -281,13 +297,13 @@ function SearchArea({ trip, stage, center }: { trip: Trip; stage: Stage; center:
               aria-label="Suchergebnisse"
               className={clsx('flex min-w-0 flex-[1_1_520px] flex-col gap-3', view === 'map' && 'max-xl:hidden')}
             >
-              {hotels.length === 0 ? (
+              {hotels.length === 0 && !(showUnavailable && soldOut.length > 0) ? (
                 <EmptyState
                   icon={<SearchX size={22} />}
                   title={result!.hotels.length === 0 ? 'Keine freien Hotels gefunden' : 'Nichts passt zu den Filtern'}
                   text={
                     result!.hotels.length === 0
-                      ? 'Versuch einen größeren Umkreis oder andere Daten.'
+                      ? 'Versuch einen größeren Umkreis – oder schalte „Ausgebuchte zeigen“ ein und prüfe andere Daten.'
                       : 'Entferne einen Filter, um mehr Hotels zu sehen.'
                   }
                 />
@@ -306,6 +322,36 @@ function SearchArea({ trip, stage, center }: { trip: Trip; stage: Stage; center:
                   />
                 ))
               )}
+              {showUnavailable && (
+                <div className="mt-3 flex flex-col gap-3" aria-label="Ausgebuchte Hotels" role="group">
+                  <h3 className="flex items-center gap-2 text-sm font-bold text-danger">
+                    <span className="h-px flex-1 bg-danger/40" />
+                    Für deine Daten ausgebucht
+                    <span className="h-px flex-1 bg-danger/40" />
+                  </h3>
+                  {nearby.isPending ? (
+                    [0, 1].map((i) => <Skeleton key={i} className="h-32" />)
+                  ) : nearby.error ? (
+                    <ErrorState
+                      message={nearby.error instanceof ApiError ? nearby.error.message : 'Ausgebuchte Hotels konnten nicht geladen werden.'}
+                      onRetry={() => void nearby.refetch()}
+                    />
+                  ) : soldOut.length === 0 ? (
+                    <p className="text-center text-sm text-muted">Keine ausgebuchten Hotels im Umkreis gefunden.</p>
+                  ) : (
+                    soldOut.map((hotel) => (
+                      <UnavailableHotelCard
+                        key={hotel.hotelId}
+                        hotel={hotel}
+                        distanceKm={distanceOf(hotel)}
+                        selected={selectedId === hotel.hotelId}
+                        onSelect={() => setSelectedId(hotel.hotelId)}
+                        onCheckDates={() => setAlternativesFor([hotel.hotelId])}
+                      />
+                    ))
+                  )}
+                </div>
+              )}
             </section>
             <aside aria-label="Karte" className={clsx('sticky top-4 min-w-0 flex-[1_1_420px]', view === 'list' && 'max-xl:hidden')}>
               <TripMap
@@ -321,8 +367,29 @@ function SearchArea({ trip, stage, center }: { trip: Trip; stage: Stage; center:
           </div>
         </>
       )}
+
+      <AlternativesDialog
+        open={alternativesFor !== null}
+        onClose={() => setAlternativesFor(null)}
+        candidates={candidates}
+        initialSelected={alternativesFor ?? []}
+        stay={{ checkin: stage.startDate, checkout: stage.endDate, adults: trip.travelers, rooms: params?.rooms ?? rooms }}
+        pickLabel="Merken"
+        isPicked={isAlternativeSaved}
+        onPick={saveAlternative}
+      />
     </div>
   )
+}
+
+function pinFor(
+  hotel: { hotelId: string; latitude: number | null; longitude: number | null },
+  label: string,
+  title: string,
+  tone: PinTone,
+): MapPin[] {
+  if (hotel.latitude == null || hotel.longitude == null) return []
+  return [{ id: hotel.hotelId, position: { latitude: hotel.latitude, longitude: hotel.longitude }, label, title, tone }]
 }
 
 function SetupHint() {
@@ -345,7 +412,7 @@ function SetupHint() {
   )
 }
 
-function Chip({ active, onClick, children }: { active: boolean; onClick: () => void; children: ReactNode }) {
+function Chip({ active, danger, onClick, children }: { active: boolean; danger?: boolean; onClick: () => void; children: ReactNode }) {
   return (
     <button
       type="button"
@@ -353,7 +420,11 @@ function Chip({ active, onClick, children }: { active: boolean; onClick: () => v
       onClick={onClick}
       className={clsx(
         'h-[38px] cursor-pointer rounded-full border px-3.5 text-sm font-semibold transition-colors duration-100',
-        active ? 'border-accent bg-accent text-accent-ink' : 'border-line bg-surface hover:bg-surface-3',
+        active
+          ? danger
+            ? 'border-danger bg-danger text-danger-ink'
+            : 'border-accent bg-accent text-accent-ink'
+          : 'border-line bg-surface hover:bg-surface-3',
       )}
     >
       {children}

@@ -70,3 +70,9 @@ export function formatRelative(iso: string, now: Date = new Date()): string {
   if (days === 1) return 'gestern'
   return `vor ${days} Tagen`
 }
+
+/** Heutiges Datum (lokale Zeit) als "2026-10-11". */
+export function todayIso(now: Date = new Date()): string {
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`
+}

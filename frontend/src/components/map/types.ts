@@ -1,6 +1,7 @@
 import type { LatLng } from '../../api/types'
 
-export type PinTone = 'idea' | 'favorite' | 'chosen' | 'booked'
+/** 'unavailable' = für den Zeitraum ausgebucht (rot gestrichelt). */
+export type PinTone = 'idea' | 'favorite' | 'chosen' | 'booked' | 'unavailable'
 
 /** Ein Preis-Pin, z. B. ein Hotel. */
 export interface MapPin {

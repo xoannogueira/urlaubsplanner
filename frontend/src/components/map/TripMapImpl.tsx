@@ -18,6 +18,7 @@ const toneClass: Record<PinTone, string> = {
   favorite: 'border-star bg-surface text-star',
   chosen: 'border-accent bg-surface text-accent',
   booked: 'border-accent bg-accent-soft text-accent',
+  unavailable: 'border-dashed border-danger bg-surface-2 text-muted',
 }
 
 const selectedClass = 'border-accent bg-accent text-accent-ink scale-110'
@@ -156,7 +157,9 @@ export default function TripMapImpl({ pins, stages = [], showRoute, selectedId, 
       const selected = id === selectedId
       entry.button.setAttribute('class', pinClass(entry.pin.tone, selected))
       entry.button.setAttribute('aria-pressed', String(selected))
-      entry.marker.getElement().style.setProperty('z-index', selected ? '10' : entry.pin.tone === 'idea' ? '1' : '2')
+      entry.marker
+        .getElement()
+        .style.setProperty('z-index', selected ? '10' : entry.pin.tone === 'unavailable' ? '0' : entry.pin.tone === 'idea' ? '1' : '2')
       if (selected && map && !map.getBounds().contains(entry.marker.getLngLat())) {
         map.easeTo({ center: entry.marker.getLngLat(), duration: 400 })
       }
