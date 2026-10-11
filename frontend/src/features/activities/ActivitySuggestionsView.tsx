@@ -73,6 +73,10 @@ function Suggestions({ trip, stage, center }: { trip: Trip; stage: Stage; center
   const total = pages?.[0]?.total ?? 0
   const counts = pages?.[0]?.categories ?? []
   const allCount = counts.reduce((n, c) => n + c.count, 0)
+  // Während neue Daten laden (z. B. anderer Umkreis), bleibt die alte Liste stehen – sichtbar als „wird aktualisiert“.
+  const refreshing = suggestions.isPlaceholderData
+  const shownRadius = pages?.[0]?.radiusMeters
+  const radiusChanging = refreshing && shownRadius !== undefined && shownRadius !== radius
 
   // Am Ende der Liste automatisch die nächsten 10 laden.
   const sentinel = useRef<HTMLDivElement>(null)
@@ -144,7 +148,10 @@ function Suggestions({ trip, stage, center }: { trip: Trip; stage: Stage; center
           />
         </label>
         <label className="flex flex-col gap-1.5">
-          <span className="text-[13px] font-bold text-muted">Umkreis</span>
+          <span className="flex items-center gap-1.5 text-[13px] font-bold text-muted">
+            Umkreis
+            {radiusChanging && <LoaderCircle size={13} className="animate-spin text-accent" aria-label="lädt" />}
+          </span>
           <select
             value={radius}
             onChange={(e) => setRadius(Number(e.target.value))}
@@ -170,6 +177,19 @@ function Suggestions({ trip, stage, center }: { trip: Trip; stage: Stage; center
         </div>
       ) : (
         <>
+          {refreshing && (
+            <div
+              role="status"
+              className="sticky top-3 z-20 flex items-center gap-3 rounded-2xl border border-accent/40 bg-surface px-4 py-3 text-sm font-semibold text-accent shadow-[0_8px_24px_rgb(0_0_0/0.25)]"
+            >
+              <LoaderCircle size={18} className="shrink-0 animate-spin" />
+              <span>
+                {radiusChanging
+                  ? `Hole neue Vorschläge für ${radius / 1000} km … das kann bei großem Umkreis bis zu 20 Sekunden dauern.`
+                  : 'Aktualisiere Vorschläge …'}
+              </span>
+            </div>
+          )}
           <div className="flex flex-wrap items-center gap-2.5">
             <span className="mr-2 text-lg font-extrabold">{total === allCount ? `${total} Vorschläge` : `${total} von ${allCount}`}</span>
             <Chip active={category === null} onClick={() => setCategory(null)}>
@@ -206,7 +226,12 @@ function Suggestions({ trip, stage, center }: { trip: Trip; stage: Stage; center
           <div className="flex flex-wrap items-start gap-6">
             <section
               aria-label="Vorschlagsliste"
-              className={clsx('flex min-w-0 flex-[1_1_520px] flex-col gap-3', view === 'map' && 'max-xl:hidden')}
+              aria-busy={refreshing}
+              className={clsx(
+                'flex min-w-0 flex-[1_1_520px] flex-col gap-3 transition-opacity duration-150',
+                view === 'map' && 'max-xl:hidden',
+                refreshing && 'pointer-events-none opacity-50',
+              )}
             >
               {shown.length === 0 ? (
                 <EmptyState
