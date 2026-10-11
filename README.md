@@ -45,7 +45,7 @@ einzeln buchen.
 - **Aktivitäten-Vorschläge** pro Etappe – kostenlos, ohne API-Key: Sehenswürdigkeiten, Museen, Aussichtspunkte, Burgen & Schlösser,
   Kirchen & Klöster, Natur & Parks, Strände, Zoos und Freizeitparks aus **OpenStreetMap**, ergänzt um deutsche Beschreibung, Foto und
   Wikipedia-Link aus **Wikidata**. Bekannteste zuerst (Anzahl Wikipedia-Sprachversionen), Öffnungszeiten auf Deutsch, „Eintritt frei“,
-  Filter nach Kategorie, Suche, Umkreis 2–20 km, Karte mit Pins. Links zu Wikipedia, Google Maps und Tickets/Führungen (GetYourGuide);
+  Filter nach Kategorie, Suche, Umkreis 2–50 km, Karte mit Pins. Links zu Wikipedia, Google Maps und Tickets/Führungen (GetYourGuide);
   „Merken“ speichert den Ort mit Foto als Favorit der Etappe
 - Buchen über **Kayak** (Strecken, Daten, Personen und Klasse vorausgefüllt, auch Gabelflüge) oder **Google Flights**
 
@@ -213,7 +213,7 @@ Dieselben Checks laufen bei jedem Push in GitHub Actions.
 | GET | `/api/hotels/status` | Ist ein LiteAPI-Key hinterlegt? |
 | POST | `/api/hotels/search` | Hotelsuche: `latitude`, `longitude`, `checkin`, `checkout`, `adults`, optional `rooms`, `radiusMeters` – oder statt Ort `hotelIds` |
 | POST | `/api/hotels/nearby` | Alle Hotels im Umkreis, auch ausgebuchte (ohne Preis) |
-| GET | `/api/activities?lat=…&lon=…&radiusMeters=…` | Aktivitäten-Vorschläge im Umkreis (500 m – 20 km), bekannteste zuerst |
+| GET | `/api/activities?lat=…&lon=…&radiusMeters=…` | Aktivitäten-Vorschläge im Umkreis (500 m – 50 km), bekannteste zuerst |
 | GET | `/api/airports?q=…` | Flughafensuche (Code, Stadt, Name; sonst über die Ortssuche in der Nähe) |
 | GET | `/api/airports/near?lat=…&lon=…&radiusKm=…` | Flughäfen im Umkreis |
 | GET | `/api/airports/lookup?codes=STR,LIS` | Flughäfen nach Code |

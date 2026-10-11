@@ -15,7 +15,7 @@ import { stageMarkers } from '../../lib/mapData'
 import { ActivityCard } from './ActivityCard'
 import { CategoryIcon } from './CategoryIcon'
 
-const radiusOptions = [2000, 5000, 10_000, 20_000]
+const radiusOptions = [2000, 5000, 10_000, 20_000, 50_000]
 
 interface ActivitySuggestionsViewProps {
   trip: Trip
@@ -196,7 +196,11 @@ function Suggestions({ trip, stage, center }: { trip: Trip; stage: Stage; center
                 <EmptyState
                   icon={<SearchX size={22} />}
                   title={all.length === 0 ? 'Keine Vorschläge gefunden' : 'Nichts passt zur Suche'}
-                  text={all.length === 0 ? 'Versuch einen größeren Umkreis.' : 'Ändere den Suchtext oder die Kategorie.'}
+                  text={
+                    all.length === 0
+                      ? 'Versuch einen größeren Umkreis – bei Regionen oder ganzen Ländern z. B. 50 km.'
+                      : 'Ändere den Suchtext oder die Kategorie.'
+                  }
                 />
               ) : (
                 shown.map((a) => (

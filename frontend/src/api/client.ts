@@ -39,6 +39,10 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
 
   if (!response.ok) {
     const problem = (body ?? {}) as ProblemDetails
+    // 404 ohne Details = das Backend kennt den Pfad nicht – fast immer läuft noch eine alte Version.
+    if (response.status === 404 && !problem.detail) {
+      throw new ApiError(404, 'Das Backend kennt diese Funktion noch nicht. Bitte das Backend neu starten (nach git pull).')
+    }
     throw new ApiError(response.status, problem.detail ?? problem.title ?? `Fehler ${response.status}`, normalizeKeys(problem.errors ?? {}))
   }
 
