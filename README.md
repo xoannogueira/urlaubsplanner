@@ -26,7 +26,11 @@ einzeln buchen.
 - **Andere Daten prüfen**: ausgewählte Hotels für dieselbe Anzahl Nächte, bis zu 3 Tage früher oder später –
   höchstens 6 LiteAPI-Abfragen, egal wie viele Hotels. Ausweichtermine lassen sich direkt merken
 - **Gemerkte Hotels neu prüfen** (z. B. Monate später): noch frei? Preis gleich? Neuen Preis oder Ausweichtermin übernehmen
-- Links zu **Booking.com** (mit Daten vorausgefüllt) und **Google Hotels** (vergleicht viele Anbieter; Daten dort wählen).
+- **Zimmervarianten** pro Hotel (z. B. Doppelzimmer, Komfort, Suite) zum Auswählen – „Merken“ speichert das gewählte Zimmer
+- **Aufteilungen vergleichen**: dieselbe Suche mit z. B. 1, 2 und 3 Zimmern (eine Abfrage pro Aufteilung), Preise direkt an jedem Hotel
+- **Marktpreis** („Booking & Co. ca. …“, vom Hotel empfohlener öffentlicher Preis) und **Kosten vor Ort** (z. B. Kurtaxe), soweit LiteAPI sie liefert
+- Links zu **Booking.com** (Daten, Personen und Zimmer vorausgefüllt) und **Google Hotels** (vergleicht viele Anbieter; Reisedaten
+  vorausgefüllt über Googles inoffiziellen `ts`-Parameter, Personen bitte dort prüfen).
   Hinweis: LiteAPI und Booking.com haben getrennte Kontingente – „frei“ in der App heißt nicht immer „frei auf Booking.com“
 
 ## Roadmap
