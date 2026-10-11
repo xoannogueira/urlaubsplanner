@@ -39,6 +39,12 @@
   --star: #b7791f;
   --danger: #b91c1c;
   --danger-ink: #ffffff;
+  /* Diagrammfarben je Kategorie (geprüft: Farbenblindheit, Abstand, Helligkeit – siehe lib/dashboard.ts) */
+  --kind-flight: #2a78d6;
+  --kind-hotel: #eb6834;
+  --kind-activity: #1baf7a;
+  --kind-transport: #eda100;
+  --kind-other: #e87ba4;
   color-scheme: light;
 }
 
@@ -56,6 +62,11 @@
   --star: #f5b544;
   --danger: #f87171;
   --danger-ink: #1a0606;
+  --kind-flight: #3987e5;
+  --kind-hotel: #d95926;
+  --kind-activity: #199e70;
+  --kind-transport: #c98500;
+  --kind-other: #d55181;
   color-scheme: dark;
 }
 

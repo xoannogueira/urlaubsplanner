@@ -4,7 +4,7 @@ Ein persönlicher Reiseplaner für mich und Freunde: mehrere Urlaube anlegen, pr
 Aktivitäten sammeln, Favoriten markieren, auswählen – und am Ende alles über eine Checkliste mit Buchungslinks
 einzeln buchen.
 
-## Stand: Phase 5 – Aktivitäten-Vorschläge
+## Stand: Phase 6 – Dashboard
 
 - Mehrere Reisen anlegen, bearbeiten, löschen
 - Etappen (Ort + Zeitraum) pro Reise, z. B. Lissabon → Porto → Algarve
@@ -47,6 +47,12 @@ einzeln buchen.
   Wikipedia-Link aus **Wikidata**. Bekannteste zuerst (Anzahl Wikipedia-Sprachversionen), Öffnungszeiten auf Deutsch, „Eintritt frei“,
   Filter nach Kategorie, Suche, Umkreis 2–50 km, Karte mit Pins. Links zu Wikipedia, Google Maps und Tickets/Führungen (GetYourGuide);
   „Merken“ speichert den Ort mit Foto als Favorit der Etappe
+- **Dashboard** in der Übersicht: Gesamtkosten, **Countdown** bis zur Abreise, Reisedauer, Buchungsfortschritt;
+  **Kosten nach Kategorie** (gestapelter Balken + Tabelle, „schon gebucht“ vs. offen) und **Kosten pro Etappe**
+  (inkl. pro Nacht); **Zeitplan Tag für Tag** mit Flügen (inkl. Uhrzeit), Aktivitäten, Transport und der Übernachtung
+  jeder Nacht – fehlende Hotels sind markiert; **Offene Punkte** mit Direktlink (kein Flug, Nächte ohne Hotel,
+  Etappen ohne Aktivitäten, noch nicht gebucht, ohne Preis). Diagrammfarben: feste Farbe pro Kategorie, geprüft auf
+  Farbenblindheit, Beträge stehen immer zusätzlich als Text daneben
 - Buchen über **Kayak** (Strecken, Daten, Personen und Klasse vorausgefüllt, auch Gabelflüge) oder **Google Flights**
 
 ## Roadmap
@@ -58,7 +64,7 @@ einzeln buchen.
 | 3 ✅ | Hotelsuche (LiteAPI) mit Preis-Pins auf der Karte |
 | 4 ✅ | Flugsuche (LiteAPI) – exakte Flughäfen oder Umkreis, Gabelflüge, Tarife, Flugbögen auf der Karte |
 | 5 ✅ | Aktivitäten-Vorschläge (OpenStreetMap + Wikidata, ohne Key) |
-| 6 | Dashboard mit Diagrammen und Zeitplan |
+| 6 ✅ | Dashboard mit Diagrammen, Zeitplan, Countdown und offenen Punkten |
 | später | Accounts für Freunde, Kostenaufteilung, Preisalarm, Abstimmung, Export (.ics/PDF) |
 
 ## Technik
