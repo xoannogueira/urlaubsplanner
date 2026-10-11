@@ -100,3 +100,33 @@
     }
   }
 }
+
+/* MapLibre-Bedienelemente an das Farbsystem anpassen */
+.maplibregl-ctrl-group {
+  background: var(--surface) !important;
+  border: 1px solid var(--line);
+  border-radius: 12px !important;
+  box-shadow: none !important;
+  overflow: hidden;
+}
+.maplibregl-ctrl-group button {
+  width: 36px !important;
+  height: 36px !important;
+}
+.maplibregl-ctrl-group button + button {
+  border-top: 1px solid var(--line) !important;
+}
+.dark .maplibregl-ctrl-group .maplibregl-ctrl-icon {
+  filter: invert(1);
+}
+.maplibregl-ctrl-attrib {
+  background: color-mix(in srgb, var(--surface) 85%, transparent) !important;
+  color: var(--muted);
+  font-size: 11px;
+}
+.maplibregl-ctrl-attrib a {
+  color: var(--muted);
+}
+.dark .maplibregl-ctrl-attrib-button {
+  filter: invert(1);
+}

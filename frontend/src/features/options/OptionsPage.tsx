@@ -1,13 +1,17 @@
 import clsx from 'clsx'
-import { BedDouble, Compass, Plane, Plus } from 'lucide-react'
-import { useMemo, useState, type ReactNode } from 'react'
+import { BedDouble, Compass, ExternalLink, List, Map as MapIcon, MapPinOff, Plane, Plus, X } from 'lucide-react'
+import { useCallback, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useTripActions } from '../../api/trips'
 import type { OptionKind, OptionStatus, TripOption } from '../../api/types'
 import { useTripContext } from '../../components/layout/tripContext'
-import { Button } from '../../components/ui/Button'
+import { TripMap } from '../../components/map/TripMap'
+import { Button, IconButton } from '../../components/ui/Button'
+import { buttonClass } from '../../components/ui/buttonStyles'
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog'
 import { EmptyState } from '../../components/ui/Feedback'
-import { formatDateRange, nightsLabel } from '../../lib/format'
+import { formatDateRange, formatEuro, hostOf, nightsLabel } from '../../lib/format'
+import { toLatLng } from '../../lib/geo'
+import { optionPins, stageMarkers } from '../../lib/mapData'
 import { kindLabels, sortOptions } from '../../lib/options'
 import { OptionCard } from './OptionCard'
 import { OptionFormDialog } from './OptionFormDialog'
@@ -22,7 +26,7 @@ const icons: Record<OptionKind, ReactNode> = {
 
 const upcoming: Partial<Record<OptionKind, string>> = {
   Flight: 'Die automatische Flugsuche mit Umkreis-Flughäfen und Karte kommt in Phase 4.',
-  Hotel: 'Die Hotelsuche mit Karte und Preis-Pins kommt in Phase 2 und 3.',
+  Hotel: 'Die automatische Hotelsuche mit Live-Preisen kommt in Phase 3.',
   Activity: 'Vorschläge für Sehenswürdigkeiten und Aktivitäten kommen in Phase 5.',
 }
 
@@ -37,6 +41,14 @@ export function OptionsPage({ kind }: { kind: OptionKind }) {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
   const [dialog, setDialog] = useState<{ option?: TripOption } | null>(null)
   const [toDelete, setToDelete] = useState<TripOption | null>(null)
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [view, setView] = useState<'list' | 'map'>('list')
+  const mapRef = useRef<HTMLElement>(null)
+  const showMapView = () => {
+    setView('map')
+    // Am Handy liegt die Karte unter den Filtern – direkt hinscrollen.
+    requestAnimationFrame(() => mapRef.current?.scrollIntoView({ block: 'start', behavior: 'smooth' }))
+  }
 
   const ofKind = useMemo(() => trip.options.filter((o) => o.kind === kind), [trip.options, kind])
   const stageById = useMemo(() => new Map(trip.stages.map((s) => [s.id, s])), [trip.stages])
@@ -56,6 +68,26 @@ export function OptionsPage({ kind }: { kind: OptionKind }) {
     stageFilter !== ALL && stageFilter !== GENERAL ? stageFilter : kind === 'Flight' ? null : (trip.stages[0]?.id ?? null)
 
   const setStatus = (option: TripOption, status: OptionStatus) => actions.setStatus.mutate({ id: option.id, status })
+
+  // Flüge haben meist keinen festen Ort – die Karte erscheint dort nur, wenn es Punkte gibt.
+  const showMap = kind !== 'Flight' || ofKind.some((o) => toLatLng(o))
+  const pins = useMemo(() => optionPins(visible), [visible])
+  const mapStages = useMemo(
+    () => stageMarkers(trip.stages).filter((s) => stageFilter === ALL || stageFilter === GENERAL || s.id === stageFilter),
+    [trip.stages, stageFilter],
+  )
+  const withoutLocation = visible.filter((o) => !toLatLng(o)).length
+  const selected = visible.find((o) => o.id === selectedId) ?? null
+
+  // Pin auf der Karte angeklickt → passende Karte in der Liste sichtbar machen.
+  const selectFromMap = useCallback((id: string | null) => {
+    setSelectedId(id)
+    if (id) {
+      requestAnimationFrame(() =>
+        document.querySelector(`[data-option-id="${CSS.escape(id)}"]`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }),
+      )
+    }
+  }, [])
 
   return (
     <div className="flex flex-col gap-5 px-4 md:px-8 pb-10 pt-5">
@@ -93,43 +125,93 @@ export function OptionsPage({ kind }: { kind: OptionKind }) {
           Ausgewählt & gebucht · {count((o) => o.status === 'Selected' || o.status === 'Booked')}
         </Chip>
         <div className="flex-1" />
+        {showMap && (
+          <div role="radiogroup" aria-label="Ansicht" className="flex rounded-xl bg-surface-2 p-1 xl:hidden">
+            <ViewButton active={view === 'list'} onClick={() => setView('list')} icon={<List size={16} />}>
+              Liste
+            </ViewButton>
+            <ViewButton active={view === 'map'} onClick={showMapView} icon={<MapIcon size={16} />}>
+              Karte
+            </ViewButton>
+          </div>
+        )}
         <Button variant="primary" icon={<Plus size={16} strokeWidth={2.5} />} onClick={() => setDialog({})}>
           {labels.singular} speichern
         </Button>
       </div>
 
-      {visible.length === 0 ? (
-        <EmptyState
-          icon={icons[kind]}
-          title={ofKind.length === 0 ? `Noch keine ${labels.plural}` : 'Nichts passt zum Filter'}
-          text={
-            ofKind.length === 0
-              ? `Speichere ${labels.plural} als Link mit Preis, markiere Favoriten und wähle am Ende aus, was gebucht wird.`
-              : 'Ändere die Etappe oder den Statusfilter.'
-          }
-          action={
-            ofKind.length === 0 && (
-              <Button variant="primary" onClick={() => setDialog({})}>
-                {labels.singular} speichern
-              </Button>
-            )
-          }
-        />
-      ) : (
-        <div className="grid grid-cols-[repeat(auto-fill,minmax(320px,1fr))] gap-4">
-          {visible.map((option) => (
-            <OptionCard
-              key={option.id}
-              option={option}
-              stage={option.stageId ? stageById.get(option.stageId) : undefined}
-              travelers={trip.travelers}
-              onStatus={(status) => setStatus(option, status)}
-              onEdit={() => setDialog({ option })}
-              onDelete={() => setToDelete(option)}
+      <div className="flex flex-wrap items-start gap-6">
+        <section aria-label={labels.plural} className={clsx('min-w-0 flex-[1_1_520px]', showMap && view === 'map' && 'max-xl:hidden')}>
+          {visible.length === 0 ? (
+            <EmptyState
+              icon={icons[kind]}
+              title={ofKind.length === 0 ? `Noch keine ${labels.plural}` : 'Nichts passt zum Filter'}
+              text={
+                ofKind.length === 0
+                  ? `Speichere ${labels.plural} als Link mit Preis, markiere Favoriten und wähle am Ende aus, was gebucht wird.`
+                  : 'Ändere die Etappe oder den Statusfilter.'
+              }
+              action={
+                ofKind.length === 0 && (
+                  <Button variant="primary" onClick={() => setDialog({})}>
+                    {labels.singular} speichern
+                  </Button>
+                )
+              }
             />
-          ))}
-        </div>
-      )}
+          ) : (
+            <div className="grid grid-cols-[repeat(auto-fill,minmax(300px,1fr))] gap-4">
+              {visible.map((option) => (
+                <OptionCard
+                  key={option.id}
+                  option={option}
+                  stage={option.stageId ? stageById.get(option.stageId) : undefined}
+                  travelers={trip.travelers}
+                  onStatus={(status) => setStatus(option, status)}
+                  onEdit={() => setDialog({ option })}
+                  onDelete={() => setToDelete(option)}
+                  selected={showMap && option.id === selectedId}
+                  onSelect={showMap && toLatLng(option) ? () => setSelectedId(option.id) : undefined}
+                />
+              ))}
+            </div>
+          )}
+        </section>
+
+        {showMap && (
+          <aside
+            ref={mapRef}
+            aria-label="Karte"
+            className={clsx('sticky top-4 flex min-w-0 scroll-mt-4 flex-[1_1_420px] flex-col gap-2', view === 'list' && 'max-xl:hidden')}
+          >
+            <div className="relative">
+              <TripMap
+                label={`Karte: ${labels.plural}`}
+                pins={pins}
+                stages={mapStages}
+                selectedId={selectedId}
+                onSelect={selectFromMap}
+                fitTo="pins"
+                className="h-[calc(100dvh-140px)] max-h-[860px] min-h-[420px] max-xl:h-[calc(100dvh-90px)]"
+              />
+              {selected && <SelectedOverlay option={selected} onClose={() => setSelectedId(null)} />}
+              {pins.length === 0 && mapStages.length === 0 && (
+                <p className="pointer-events-none absolute inset-x-6 top-1/2 -translate-y-1/2 rounded-xl bg-surface px-4 py-3 text-center text-sm text-muted shadow">
+                  Wähle beim Speichern einen Ort aus der Liste – dann erscheint hier ein Pin mit Preis.
+                </p>
+              )}
+            </div>
+            {withoutLocation > 0 && (
+              <p className="flex items-center gap-1.5 text-xs text-muted">
+                <MapPinOff size={13} />
+                {withoutLocation === 1
+                  ? '1 Eintrag hat keinen Ort und fehlt auf der Karte.'
+                  : `${withoutLocation} Einträge haben keinen Ort und fehlen auf der Karte.`}
+              </p>
+            )}
+          </aside>
+        )}
+      </div>
 
       {upcoming[kind] && <p className="rounded-2xl border border-dashed border-line px-4 py-3 text-[13px] text-muted">{upcoming[kind]}</p>}
 
@@ -156,6 +238,45 @@ export function OptionsPage({ kind }: { kind: OptionKind }) {
         }}
       />
     </div>
+  )
+}
+
+function SelectedOverlay({ option, onClose }: { option: TripOption; onClose: () => void }) {
+  return (
+    <div className="absolute inset-x-3 top-3 flex items-center gap-3 rounded-2xl border border-line bg-surface p-3.5 shadow-[0_10px_30px_rgb(0_0_0/0.3)]">
+      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+        <span className="truncate font-extrabold">{option.title}</span>
+        {option.locationName && <span className="truncate text-[13px] text-muted">{option.locationName}</span>}
+        <span className="font-mono text-sm font-semibold">{option.totalPrice != null ? formatEuro(option.totalPrice) : 'Preis offen'}</span>
+      </div>
+      {option.url && (
+        <a href={option.url} target="_blank" rel="noopener noreferrer" className={buttonClass('primary', 'md', 'h-10')}>
+          <span className="max-w-32 truncate">{hostOf(option.url)}</span>
+          <ExternalLink size={14} />
+        </a>
+      )}
+      <IconButton label="Auswahl schließen" onClick={onClose} className="size-9">
+        <X size={16} />
+      </IconButton>
+    </div>
+  )
+}
+
+function ViewButton({ active, onClick, icon, children }: { active: boolean; onClick: () => void; icon: ReactNode; children: string }) {
+  return (
+    <button
+      type="button"
+      role="radio"
+      aria-checked={active}
+      onClick={onClick}
+      className={clsx(
+        'flex h-9 cursor-pointer items-center gap-1.5 rounded-lg px-3 text-sm font-bold transition-colors duration-100',
+        active ? 'bg-accent text-accent-ink' : 'text-muted hover:text-text',
+      )}
+    >
+      {icon}
+      {children}
+    </button>
   )
 }
 

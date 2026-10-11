@@ -4,4 +4,7 @@
     <Project Path="src/Urlaubsplanner.Domain/Urlaubsplanner.Domain.csproj" />
     <Project Path="src/Urlaubsplanner.Infrastructure/Urlaubsplanner.Infrastructure.csproj" />
   </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Urlaubsplanner.Tests/Urlaubsplanner.Tests.csproj" />
+  </Folder>
 </Solution>

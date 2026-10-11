@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using Microsoft.AspNetCore.StaticFiles;
 using Urlaubsplanner.Api;
 using Urlaubsplanner.Api.Endpoints;
 using Urlaubsplanner.Infrastructure;
@@ -21,12 +22,18 @@ app.UseResponseCompression();
 
 app.MapGet("/api/health", () => TypedResults.Ok(new { status = "ok" }));
 app.MapTripEndpoints();
+app.MapPlaceEndpoints();
 
 // Im Produktivbetrieb liefert die API auch das gebaute Frontend aus (frontend/dist → wwwroot).
+// .mjs (z. B. der Web-Worker der Karte) kennt ASP.NET nicht von Haus aus – ohne Eintrag würde er nicht ausgeliefert.
+var contentTypes = new FileExtensionContentTypeProvider();
+contentTypes.Mappings[".mjs"] = "text/javascript";
 app.UseDefaultFiles();
-app.UseStaticFiles();
-// Alle Pfade außer /api/... landen in der React-App (Client-Routing); unbekannte API-Pfade bleiben 404.
-app.MapFallbackToFile("{*path:regex(^(?!api(/|$)).*$)}", "index.html");
+app.UseStaticFiles(new StaticFileOptions { ContentTypeProvider = contentTypes });
+
+// Seiten-Pfade (ohne Dateiendung, nicht /api/...) landen in der React-App (Client-Routing).
+// Fehlende Dateien und unbekannte API-Pfade bleiben ein sauberes 404 statt HTML.
+app.MapFallbackToFile("{*path:nonfile:regex(^(?!api(/|$)).*$)}", "index.html");
 
 await app.RunAsync();
 
