@@ -13,6 +13,8 @@ export interface RoomOffer {
   /** Nicht im Preis enthalten, wird vor Ort bezahlt (z. B. Kurtaxe). */
   payAtProperty: number | null
   payAtPropertyLabel: string | null
+  /** Direkter Link zu diesem Angebot beim Anbieter (Google Hotels) */
+  url?: string | null
 }
 
 export interface HotelOffer {
@@ -40,6 +42,8 @@ export interface HotelOffer {
   payAtPropertyLabel: string | null
   /** Alle Zimmervarianten, günstigste zuerst (die Felder oben = günstigste). */
   rooms: RoomOffer[]
+  /** Wohin bookingUrl führt, z. B. „Expedia“ oder „Hotelseite“; null = Booking.com-Suche */
+  bookingSource?: string | null
 }
 
 /** Hotel im Umkreis ohne Preis – für „Ausgebuchte zeigen“. */
@@ -55,6 +59,7 @@ export interface HotelListing {
   photoUrl: string | null
   bookingUrl: string
   googleUrl: string
+  bookingSource?: string | null
 }
 
 export interface AlternativeWindow {

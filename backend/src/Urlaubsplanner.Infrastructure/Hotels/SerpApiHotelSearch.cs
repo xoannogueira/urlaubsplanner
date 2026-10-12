@@ -88,18 +88,24 @@ public sealed partial class SerpApiHotelSearch(
             .. InRadius(page?.Properties ?? [], request)
                 .Where(p => !string.IsNullOrWhiteSpace(p.PropertyToken) && !string.IsNullOrWhiteSpace(p.Name))
                 .DistinctBy(p => p.PropertyToken)
-                .Select(p => new HotelListing(
-                    p.PropertyToken!,
-                    p.Name!.Trim(),
-                    NullIfEmpty(p.Address),
-                    p.GpsCoordinates?.Latitude,
-                    p.GpsCoordinates?.Longitude,
-                    Rating(p.OverallRating),
-                    p.Reviews is > 0 ? p.Reviews : null,
-                    p.ExtractedHotelClass is > 0 ? p.ExtractedHotelClass : null,
-                    Photo(p),
-                    HotelBookingLinks.BookingCom(p.Name.Trim(), request.Place, request),
-                    HotelBookingLinks.Google(p.Name.Trim(), request.Place, request.Checkin, request.Checkout))),
+                .Select(p =>
+                {
+                    var google = HotelBookingLinks.GoogleHotel(p.PropertyToken!, p.Name!.Trim(), request.Place, request.Checkin, request.Checkout);
+                    var website = WebLink(p.Link);
+                    return new HotelListing(
+                        p.PropertyToken!,
+                        p.Name!.Trim(),
+                        NullIfEmpty(p.Address),
+                        p.GpsCoordinates?.Latitude,
+                        p.GpsCoordinates?.Longitude,
+                        Rating(p.OverallRating),
+                        p.Reviews is > 0 ? p.Reviews : null,
+                        p.ExtractedHotelClass is > 0 ? p.ExtractedHotelClass : null,
+                        Photo(p),
+                        website ?? google,
+                        google,
+                        website is null ? "Google Hotels" : "Hotelseite");
+                }),
         ];
     }
 
@@ -139,13 +145,15 @@ public sealed partial class SerpApiHotelSearch(
         }
 
         var nights = Math.Max(1, request.Nights);
+        var name = p.Name.Trim();
+        var google = HotelBookingLinks.GoogleHotel(p.PropertyToken, name, request.Place, request.Checkin, request.Checkout);
         decimal? Total(RateData? total, RateData? perNight) =>
             total?.ExtractedLowest is > 0 ? total.ExtractedLowest : perNight?.ExtractedLowest is > 0 ? perNight.ExtractedLowest * nights : null;
 
         // Preise der einzelnen Anbieter (Booking.com, Expedia, Hotelseite …) – günstigster zuerst.
         var rooms = (p.FeaturedPrices ?? []).Concat(p.Prices ?? [])
             .Where(x => !string.IsNullOrWhiteSpace(x.Source))
-            .Select(x => (Source: x.Source!.Trim(), Price: Total(x.TotalRate, x.RatePerNight), x.FreeCancellation, x.Official))
+            .Select(x => (Source: x.Source!.Trim(), Price: Total(x.TotalRate, x.RatePerNight), x.FreeCancellation, x.Official, Url: WebLink(x.Link)))
             .Where(x => x.Price is > 0)
             .OrderBy(x => x.Price)
             .DistinctBy(x => x.Source, StringComparer.OrdinalIgnoreCase)
@@ -158,7 +166,8 @@ public sealed partial class SerpApiHotelSearch(
                 currency,
                 null,
                 null,
-                null))
+                null,
+                x.Url))
             .ToList();
 
         var total = Total(p.TotalRate, p.RatePerNight) ?? rooms.FirstOrDefault()?.TotalPrice;
@@ -170,11 +179,15 @@ public sealed partial class SerpApiHotelSearch(
         var price = decimal.Round(total.Value, 2);
         if (rooms.Count == 0 || rooms[0].TotalPrice > price)
         {
-            rooms.Insert(0, new RoomOffer("Google Hotels", null, false, price, currency, null, null, null));
+            rooms.Insert(0, new RoomOffer("Google Hotels", null, false, price, currency, null, null, null, google));
         }
 
-        var name = p.Name.Trim();
+        // Gebucht wird direkt beim günstigsten Anbieter, sonst auf der Hotelseite, sonst auf der Google-Seite des Hotels.
         var cheapest = rooms[0];
+        var website = WebLink(p.Link);
+        var (bookingUrl, bookingSource) = cheapest.Url is { } direct && direct != google
+            ? (direct, cheapest.Name)
+            : website is not null ? (website, "Hotelseite") : (google, "Google Hotels");
         return new HotelOffer(
             p.PropertyToken,
             name,
@@ -190,13 +203,20 @@ public sealed partial class SerpApiHotelSearch(
             cheapest.Name,
             null,
             cheapest.Refundable,
-            HotelBookingLinks.BookingCom(name, request.Place, request),
-            HotelBookingLinks.Google(name, request.Place, request.Checkin, request.Checkout),
+            bookingUrl,
+            google,
             null,
             null,
             null,
-            rooms);
+            rooms,
+            bookingSource);
     }
+
+    /// <summary>Nur echte Web-Links (http/https) – alles andere wird ignoriert.</summary>
+    private static string? WebLink(string? value) =>
+        Uri.TryCreate(value?.Trim(), UriKind.Absolute, out var uri) && (uri.Scheme == Uri.UriSchemeHttps || uri.Scheme == Uri.UriSchemeHttp)
+            ? uri.AbsoluteUri
+            : null;
 
     /// <summary>Google bewertet 1–5, die App (wie Booking) 0–10.</summary>
     private static double? Rating(double? overall) => overall is > 0 ? Math.Round(overall.Value * 2, 1) : null;
@@ -345,6 +365,7 @@ internal sealed record PaginationData(string? NextPageToken);
 /// <summary>Ein Hotel aus der Liste – oder die Detailantwort zu einem property_token (gleiche Felder, oben aufgelöst).</summary>
 internal sealed record PropertyData(
     string? Name,
+    string? Link,
     string? Address,
     string? PropertyToken,
     GpsData? GpsCoordinates,
@@ -362,6 +383,6 @@ internal sealed record GpsData(double? Latitude, double? Longitude);
 
 internal sealed record RateData(decimal? ExtractedLowest);
 
-internal sealed record PriceData(string? Source, bool? Official, RateData? RatePerNight, RateData? TotalRate, bool? FreeCancellation);
+internal sealed record PriceData(string? Source, string? Link, bool? Official, RateData? RatePerNight, RateData? TotalRate, bool? FreeCancellation);
 
 internal sealed record ImageData(string? Thumbnail, string? OriginalImage);

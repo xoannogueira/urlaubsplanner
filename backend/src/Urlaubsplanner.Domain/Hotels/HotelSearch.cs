@@ -158,6 +158,7 @@ public sealed record HotelSearchRequest
 /// Vom Hotel empfohlener öffentlicher Preis (LiteAPI „suggested selling price“) – ungefähr das, was Booking &amp; Co. zeigen.
 /// </param>
 /// <param name="PayAtProperty">Steuern/Gebühren, die nicht im Preis enthalten sind und vor Ort bezahlt werden (z. B. Kurtaxe).</param>
+/// <param name="Url">Direkter Link zu diesem Angebot beim Anbieter (Google Hotels), sonst null.</param>
 public sealed record RoomOffer(
     string? Name,
     string? BoardName,
@@ -166,7 +167,8 @@ public sealed record RoomOffer(
     string Currency,
     decimal? MarketPrice,
     decimal? PayAtProperty,
-    string? PayAtPropertyLabel);
+    string? PayAtPropertyLabel,
+    string? Url = null);
 
 /// <summary>Ein Hotel mit seinen Zimmerangeboten; die Felder oben beschreiben das günstigste Zimmer.</summary>
 /// <param name="Rating">Gästebewertung 0–10 (wie bei LiteAPI/Booking).</param>
@@ -174,6 +176,7 @@ public sealed record RoomOffer(
 /// <param name="TotalPrice">Gesamtpreis des günstigsten Zimmers für alle Nächte und Zimmer.</param>
 /// <param name="GoogleUrl">Google Hotels vergleicht viele Anbieter – hilfreich, wenn Booking.com ausgebucht ist.</param>
 /// <param name="Rooms">Alle Zimmerangebote, günstigstes zuerst.</param>
+/// <param name="BookingSource">Wohin <paramref name="BookingUrl"/> führt (z. B. „Expedia“); null = Booking.com-Suche.</param>
 public sealed record HotelOffer(
     string HotelId,
     string Name,
@@ -194,13 +197,15 @@ public sealed record HotelOffer(
     decimal? MarketPrice,
     decimal? PayAtProperty,
     string? PayAtPropertyLabel,
-    IReadOnlyList<RoomOffer> Rooms);
+    IReadOnlyList<RoomOffer> Rooms,
+    string? BookingSource = null);
 
 /// <param name="Sandbox">True, wenn mit einem Sandbox-Key gesucht wurde (Preise sind dann ggf. Testdaten).</param>
 /// <param name="NextPage">Kennung für weitere Ergebnisse (Google Hotels: 20 pro Seite); null, wenn es keine gibt.</param>
 public sealed record HotelSearchResult(IReadOnlyList<HotelOffer> Hotels, bool Sandbox, DateTimeOffset FetchedAt, string? NextPage = null);
 
 /// <summary>Ein Hotel im Umkreis – unabhängig davon, ob es für den Zeitraum frei ist.</summary>
+/// <param name="BookingSource">Wohin <paramref name="BookingUrl"/> führt (z. B. „Hotelseite“); null = Booking.com-Suche.</param>
 public sealed record HotelListing(
     string HotelId,
     string Name,
@@ -212,7 +217,8 @@ public sealed record HotelListing(
     double? Stars,
     string? PhotoUrl,
     string BookingUrl,
-    string GoogleUrl);
+    string GoogleUrl,
+    string? BookingSource = null);
 
 public interface IHotelSearch
 {

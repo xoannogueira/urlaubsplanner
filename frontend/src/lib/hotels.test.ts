@@ -228,5 +228,25 @@ describe('Zimmer und Marktpreis', () => {
     const picked = withRoom(hotel({ totalPrice: 612, roomName: 'Doppelzimmer' }), room)
     expect(picked.totalPrice).toBe(980)
     expect(hotelNotes(picked).replace(/\s/g, ' ')).toBe('Suite · Frühstück · kostenlos stornierbar · zzgl. 32 € vor Ort')
+    expect(picked.bookingUrl).toBe(hotel({}).bookingUrl)
+  })
+
+  it('führt bei Google Hotels direkt zum gewählten Anbieter, sonst zur Google-Seite des Hotels', () => {
+    const base = hotel({ bookingUrl: 'https://expedia.example/h1', bookingSource: 'Expedia', googleUrl: 'https://google.example/h1' })
+    const offer = {
+      name: 'Booking.com',
+      boardName: null,
+      refundable: false,
+      totalPrice: 630,
+      currency: 'EUR',
+      marketPrice: null,
+      payAtProperty: null,
+      payAtPropertyLabel: null,
+    }
+    expect(withRoom(base, { ...offer, url: 'https://booking.example/h1' })).toMatchObject({
+      bookingUrl: 'https://booking.example/h1',
+      bookingSource: 'Booking.com',
+    })
+    expect(withRoom(base, offer)).toMatchObject({ bookingUrl: 'https://google.example/h1', bookingSource: 'Google Hotels' })
   })
 })

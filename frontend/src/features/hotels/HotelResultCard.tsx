@@ -170,7 +170,7 @@ export function HotelResultCard(props: HotelResultCardProps) {
             )}
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <ExternalLinks bookingUrl={hotel.bookingUrl} googleUrl={hotel.googleUrl} />
+            <ExternalLinks bookingUrl={hotel.bookingUrl} googleUrl={hotel.googleUrl} bookingSource={hotel.bookingSource} />
             {saved ? (
               <span className={buttonClass('secondary', 'sm', 'cursor-default border-accent text-accent')}>
                 <Check size={15} strokeWidth={3} />
@@ -206,7 +206,7 @@ export function UnavailableHotelCard({ hotel, distanceKm, selected, onSelect, on
         <HotelHeading hotel={hotel} distanceKm={distanceKm} muted />
         <span className="w-fit rounded-md bg-danger/12 px-2 py-1 text-xs font-bold text-danger">Für deine Daten ausgebucht</span>
         <div className="mt-auto flex flex-wrap items-center justify-end gap-2 pt-1">
-          <ExternalLinks bookingUrl={hotel.bookingUrl} googleUrl={hotel.googleUrl} />
+          <ExternalLinks bookingUrl={hotel.bookingUrl} googleUrl={hotel.googleUrl} bookingSource={hotel.bookingSource} />
           <button type="button" onClick={onCheckDates} className={buttonClass('primary', 'sm')}>
             <CalendarSearch size={15} />
             Andere Daten prüfen
@@ -318,13 +318,31 @@ function HotelHeading({ hotel, distanceKm, muted }: { hotel: HotelListing | Hote
 }
 
 /** Booking.com (vorausgefüllt) und Google Hotels (vergleicht viele Anbieter). */
-export function ExternalLinks({ bookingUrl, googleUrl }: { bookingUrl: string; googleUrl: string }) {
+export function ExternalLinks({
+  bookingUrl,
+  googleUrl,
+  bookingSource,
+}: {
+  bookingUrl: string
+  googleUrl: string
+  /** z. B. „Expedia“ – dann führt der Link direkt zum Hotel bei diesem Anbieter */
+  bookingSource?: string | null
+}) {
+  const label = bookingSource ? shortSource(bookingSource) : 'Booking'
   return (
     <>
-      <a href={bookingUrl} target="_blank" rel="noopener noreferrer" className={buttonClass('secondary', 'sm')}>
-        Booking
-        <ExternalLink size={14} />
-      </a>
+      {bookingUrl !== googleUrl && (
+        <a
+          href={bookingUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          title={bookingSource ? `Direkt zum Hotel bei ${bookingSource}` : 'Booking.com-Suche mit Hotel, Daten und Personen'}
+          className={buttonClass('secondary', 'sm')}
+        >
+          {label}
+          <ExternalLink size={14} />
+        </a>
+      )}
       <a
         href={googleUrl}
         target="_blank"
@@ -337,4 +355,10 @@ export function ExternalLinks({ bookingUrl, googleUrl }: { bookingUrl: string; g
       </a>
     </>
   )
+}
+
+/** „Hotel Miradouro (Hotelseite)“ → „Hotelseite“, lange Namen kürzen, damit der Knopf klein bleibt. */
+function shortSource(source: string): string {
+  if (source.endsWith('(Hotelseite)')) return 'Hotelseite'
+  return source.length > 18 ? `${source.slice(0, 17)}…` : source
 }

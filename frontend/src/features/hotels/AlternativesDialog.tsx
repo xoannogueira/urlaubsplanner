@@ -361,7 +361,7 @@ function AlternativeChip({
       </div>
       <div className="flex flex-wrap gap-1.5">
         <a href={offer.bookingUrl} target="_blank" rel="noopener noreferrer" className={buttonClass('secondary', 'sm')}>
-          Booking
+          {offer.bookingSource ? (offer.bookingSource.endsWith('(Hotelseite)') ? 'Hotelseite' : offer.bookingSource) : 'Booking'}
           <ExternalLink size={13} />
         </a>
         {picked ? (
