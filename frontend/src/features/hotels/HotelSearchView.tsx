@@ -36,7 +36,7 @@ import { stageMarkers } from '../../lib/mapData'
 import { AlternativesDialog, type AlternativeCandidate } from './AlternativesDialog'
 import { HotelResultCard, UnavailableHotelCard, type SplitPrice } from './HotelResultCard'
 
-const radiusOptions = [1000, 3000, 5000, 10_000]
+const radiusOptions = [1000, 3000, 5000, 10_000, 20_000, 50_000]
 
 interface HotelSearchViewProps {
   trip: Trip

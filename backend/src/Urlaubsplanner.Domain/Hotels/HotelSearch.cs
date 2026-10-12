@@ -10,7 +10,7 @@ public sealed record HotelSearchRequest
 {
     public const int MaxNights = 30;
     public const int MinRadiusMeters = 500;
-    public const int MaxRadiusMeters = 30_000;
+    public const int MaxRadiusMeters = 50_000;
     public const int MaxHotelIds = 20;
     public const int MaxHotelIdLength = 200;
 
