@@ -347,7 +347,7 @@ export function ExternalLinks({
         href={googleUrl}
         target="_blank"
         rel="noopener noreferrer"
-        title="Google Hotels vergleicht viele Anbieter – Reisedaten sind übernommen, Personen bitte dort prüfen"
+        title="Google Hotels vergleicht viele Anbieter – Reisedaten und Personen sind übernommen"
         className={buttonClass('secondary', 'sm')}
       >
         Google
