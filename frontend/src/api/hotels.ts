@@ -35,7 +35,7 @@ export interface HotelOffer {
   boardName: string | null
   refundable: boolean
   bookingUrl: string
-  /** Google Hotels – vergleicht viele Anbieter; Reisedaten sind vorausgefüllt, Personen nicht. */
+  /** Google Hotels – vergleicht viele Anbieter; Reisedaten und Personen sind vorausgefüllt. */
   googleUrl: string
   marketPrice: number | null
   payAtProperty: number | null

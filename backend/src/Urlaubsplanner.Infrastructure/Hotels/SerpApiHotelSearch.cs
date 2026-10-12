@@ -90,7 +90,7 @@ public sealed partial class SerpApiHotelSearch(
                 .DistinctBy(p => p.PropertyToken)
                 .Select(p =>
                 {
-                    var google = HotelBookingLinks.GoogleHotel(p.PropertyToken!, p.Name!.Trim(), request.Place, request.Checkin, request.Checkout);
+                    var google = HotelBookingLinks.GoogleHotel(p.PropertyToken!, p.Name!.Trim(), request.Place, request.Checkin, request.Checkout, request.Adults);
                     var website = WebLink(p.Link);
                     return new HotelListing(
                         p.PropertyToken!,
@@ -146,7 +146,7 @@ public sealed partial class SerpApiHotelSearch(
 
         var nights = Math.Max(1, request.Nights);
         var name = p.Name.Trim();
-        var google = HotelBookingLinks.GoogleHotel(p.PropertyToken, name, request.Place, request.Checkin, request.Checkout);
+        var google = HotelBookingLinks.GoogleHotel(p.PropertyToken, name, request.Place, request.Checkin, request.Checkout, request.Adults);
         decimal? Total(RateData? total, RateData? perNight) =>
             total?.ExtractedLowest is > 0 ? total.ExtractedLowest : perNight?.ExtractedLowest is > 0 ? perNight.ExtractedLowest * nights : null;
 

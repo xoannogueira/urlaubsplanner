@@ -30,7 +30,7 @@ einzeln buchen.
 - **Aufteilungen vergleichen**: dieselbe Suche mit z. B. 1, 2 und 3 Zimmern (eine Abfrage pro Aufteilung), Preise direkt an jedem Hotel
 - **Marktpreis** („Booking & Co. ca. …“, vom Hotel empfohlener öffentlicher Preis) und **Kosten vor Ort** (z. B. Kurtaxe), soweit LiteAPI sie liefert
 - Links zu **Booking.com** (Daten, Personen und Zimmer vorausgefüllt) und **Google Hotels** (vergleicht viele Anbieter; Reisedaten
-  vorausgefüllt über Googles inoffiziellen `ts`-Parameter, Personen bitte dort prüfen).
+  vorausgefüllt über Googles inoffiziellen `ts`-Parameter, ebenso die Personenzahl).
   Hinweis: LiteAPI und Booking.com haben getrennte Kontingente – „frei“ in der App heißt nicht immer „frei auf Booking.com“
 - **Flugsuche** (Google Flights über SerpApi, sonst LiteAPI) für die ganze Reise: **Hin & zurück**, **Gabelflug** (zurück von der letzten Etappe)
   oder **Nur Hinflug**. Ziel- und Rückflughäfen werden aus den Etappen vorgeschlagen (nächster großer Flughafen), der Heimatflughafen

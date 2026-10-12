@@ -37,15 +37,14 @@ public static class HotelBookingLinks
 
     /// <summary>
     /// Google Hotels vergleicht viele Anbieter. Google hat kein offizielles Linkformat; die Reisedaten stecken
-    /// im inoffiziellen <c>ts</c>-Parameter (Protobuf, Base64). Personen und Zimmer lassen sich so nicht übergeben –
-    /// Google nimmt dort seine Voreinstellung (meist 2 Personen).
+    /// im inoffiziellen <c>ts</c>-Parameter (Protobuf, Base64), ebenso die Personenzahl. Zimmer lassen sich nicht übergeben.
     /// </summary>
-    public static string Google(string hotelName, string? city, DateOnly? checkin = null, DateOnly? checkout = null)
+    public static string Google(string hotelName, string? city, DateOnly? checkin = null, DateOnly? checkout = null, int? adults = null)
     {
         var query = string.IsNullOrWhiteSpace(city) ? hotelName : $"{hotelName}, {city}";
         var url = $"https://www.google.com/travel/search?q={Uri.EscapeDataString(query)}&hl=de&gl=de";
         return checkin is { } from && checkout is { } to && to > from
-            ? $"{url}&qs=CAE4AA&ts={Uri.EscapeDataString(GoogleDates(from, to))}&ap=MAE"
+            ? $"{url}&qs=CAE4AA&ts={Uri.EscapeDataString(GoogleDates(from, to, adults))}&ap=MAE"
             : url;
     }
 
@@ -53,25 +52,34 @@ public static class HotelBookingLinks
     /// Direkt die Seite des Hotels bei Google Hotels (Reiter „Preise“ mit allen Anbietern) statt einer Suchergebnisliste.
     /// Die Kennung ist der <c>property_token</c> von Google Hotels; Reisedaten wie bei <see cref="Google"/>.
     /// </summary>
-    public static string GoogleHotel(string propertyToken, string hotelName, string? city, DateOnly checkin, DateOnly checkout)
+    public static string GoogleHotel(string propertyToken, string hotelName, string? city, DateOnly checkin, DateOnly checkout, int? adults = null)
     {
         var query = string.IsNullOrWhiteSpace(city) ? hotelName : $"{hotelName}, {city}";
         var url = $"https://www.google.com/travel/hotels/entity/{Uri.EscapeDataString(propertyToken)}/prices?q={Uri.EscapeDataString(query)}&hl=de&gl=de";
-        return checkout > checkin ? $"{url}&qs=CAE4AA&ts={Uri.EscapeDataString(GoogleDates(checkin, checkout))}&ap=MAE" : url;
+        return checkout > checkin ? $"{url}&qs=CAE4AA&ts={Uri.EscapeDataString(GoogleDates(checkin, checkout, adults))}&ap=MAE" : url;
     }
 
+    /// <summary>Google Hotels nimmt höchstens so viele Personen in einer Suche.</summary>
+    public const int MaxGoogleGuests = 12;
+
     /// <summary>
-    /// Baut den <c>ts</c>-Wert: {1: 1, 3: {1: {3: ""}, 2: {2: {1: Anreise, 2: Abreise, 3: Nächte}, 6: {1: 1}}}},
-    /// ein Datum jeweils als {1: Jahr, 2: Monat, 3: Tag}.
+    /// Baut den <c>ts</c>-Wert: {1: 1, 2: Personen, 3: {1: {3: ""}, 2: {2: {1: Anreise, 2: Abreise, 3: Nächte}, 6: {1: 1}}}},
+    /// ein Datum jeweils als {1: Jahr, 2: Monat, 3: Tag}. Personen: pro Erwachsenem {1: {1: 3}}, dazu {2: 0} (keine Kinder) –
+    /// so steht es in Google-URLs („CAESCgoCCAMKAggDEAA…“ = 2 Erwachsene). Ohne Personen nimmt Google seine Voreinstellung.
     /// </summary>
-    public static string GoogleDates(DateOnly checkin, DateOnly checkout)
+    public static string GoogleDates(DateOnly checkin, DateOnly checkout, int? adults = null)
     {
         static byte[] Date(DateOnly d) => [.. Varint(1, d.Year), .. Varint(2, d.Month), .. Varint(3, d.Day)];
 
         var range = Concat(Field(1, Date(checkin)), Field(2, Date(checkout)), Varint(3, checkout.DayNumber - checkin.DayNumber));
         var stay = Concat(Field(2, range), Field(6, Varint(1, 1)));
         var search = Concat(Field(1, Field(3, [])), Field(2, stay));
-        var message = Concat(Varint(1, 1), Field(3, search));
+        var guests = adults is > 0
+            ? Concat([.. Enumerable.Repeat(Field(1, Varint(1, 3)), Math.Min(adults.Value, MaxGoogleGuests)), Varint(2, 0)])
+            : null;
+        var message = guests is null
+            ? Concat(Varint(1, 1), Field(3, search))
+            : Concat(Varint(1, 1), Field(2, guests), Field(3, search));
         return Convert.ToBase64String(message).TrimEnd('=');
     }
 

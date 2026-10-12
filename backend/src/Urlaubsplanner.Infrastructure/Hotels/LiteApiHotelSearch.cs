@@ -129,7 +129,7 @@ public sealed partial class LiteApiHotelSearch(
                 h.Stars is > 0 ? h.Stars : null,
                 NullIfEmpty(h.MainPhoto) ?? NullIfEmpty(h.Thumbnail),
                 HotelBookingLinks.BookingCom(h.Name.Trim(), h.City, request),
-                HotelBookingLinks.Google(h.Name.Trim(), h.City, request.Checkin, request.Checkout))),
+                HotelBookingLinks.Google(h.Name.Trim(), h.City, request.Checkin, request.Checkout, request.Adults))),
     ];
 
     private void EnsureConfigured()
@@ -255,7 +255,7 @@ public sealed partial class LiteApiHotelSearch(
                 cheapest.BoardName,
                 cheapest.Refundable,
                 HotelBookingLinks.For(entry.HotelId, name, hotel.CityName, request, whitelabelDomain),
-                HotelBookingLinks.Google(name, hotel.CityName, request.Checkin, request.Checkout),
+                HotelBookingLinks.Google(name, hotel.CityName, request.Checkin, request.Checkout, request.Adults),
                 cheapest.MarketPrice,
                 cheapest.PayAtProperty,
                 cheapest.PayAtPropertyLabel,

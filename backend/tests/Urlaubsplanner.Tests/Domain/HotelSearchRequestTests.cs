@@ -149,4 +149,18 @@ public sealed class HotelSearchRequestTests
         Assert.StartsWith("https://www.google.com/travel/hotels/entity/ChgI2pHwwsKssrZY/prices?q=Hotel%20A%2C%20Lissabon&hl=de&gl=de", url, StringComparison.Ordinal);
         Assert.Contains("&ts=", url, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void Google_Link_uebergibt_die_Personenzahl()
+    {
+        // Wie in echten Google-URLs: „CAESCgoCCAMKAggDEAA…“ = 2 Erwachsene, danach unverändert die Reisedaten.
+        var two = HotelBookingLinks.GoogleDates(new DateOnly(2026, 3, 15), new DateOnly(2026, 3, 20), 2);
+        Assert.Equal("CAESCgoCCAMKAggDEAAaIAoCGgASGhIUCgcI6g8QAxgPEgcI6g8QAxgUGAUyAggB", two);
+
+        var four = Convert.FromBase64String(HotelBookingLinks.GoogleDates(new DateOnly(2026, 3, 15), new DateOnly(2026, 3, 20), 4) + "=");
+        Assert.Equal(new byte[] { 0x08, 0x01, 0x12, 0x12 }, four[..4]);
+
+        var url = HotelBookingLinks.GoogleHotel("tok", "Hotel", null, new DateOnly(2027, 5, 12), new DateOnly(2027, 5, 16), 4);
+        Assert.Contains("&ts=CAESEgoC", url, StringComparison.Ordinal);
+    }
 }
