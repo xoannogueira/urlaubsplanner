@@ -4,6 +4,7 @@ using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Urlaubsplanner.Domain.Hotels;
+using Urlaubsplanner.Domain.Places;
 using Urlaubsplanner.Infrastructure.Hotels;
 using Urlaubsplanner.Infrastructure.SerpApi;
 
@@ -91,13 +92,25 @@ public sealed class SerpApiHotelSearchTests
     private static HttpResponseMessage Json(string body, HttpStatusCode status = HttpStatusCode.OK) =>
         new(status) { Content = new StringContent(body, Encoding.UTF8, "application/json") };
 
-    private static (SerpApiHotelSearch Search, FakeHandler Handler) Create(Func<Uri, HttpResponseMessage>? respond = null)
+    private sealed class FakePlaceNames(params string[] names) : IPlaceNames
+    {
+        public int Calls { get; private set; }
+
+        public Task<IReadOnlyList<string>> NamesAroundAsync(Coordinates point, CancellationToken cancellationToken)
+        {
+            Calls++;
+            return Task.FromResult<IReadOnlyList<string>>(names);
+        }
+    }
+
+    private static (SerpApiHotelSearch Search, FakeHandler Handler) Create(Func<Uri, HttpResponseMessage>? respond = null, IPlaceNames? names = null)
     {
         var handler = new FakeHandler(respond ?? (uri => Json(uri.Query.Contains("property_token", StringComparison.Ordinal) ? Details : Properties)));
         var search = new SerpApiHotelSearch(
             new HttpClient(handler) { BaseAddress = new Uri("https://serpapi.test/") },
             new MemoryCache(new MemoryCacheOptions()),
             Options.Create(new SerpApiOptions { ApiKey = "secret" }),
+            names ?? new FakePlaceNames(),
             TimeProvider.System,
             NullLogger<SerpApiHotelSearch>.Instance);
         return (search, handler);
@@ -203,5 +216,61 @@ public sealed class SerpApiHotelSearchTests
         var (used, _) = Create(_ => Json("""{ "error": "Your account has run out of searches." }""", HttpStatusCode.TooManyRequests));
         var error = await Assert.ThrowsAsync<HotelSearchUnavailableException>(() => used.SearchAsync(Lissabon, CancellationToken.None));
         Assert.Contains("aufgebraucht", error.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Unbekannter_kleiner_Ort_sucht_mit_der_Region_rund_um_die_Etappe()
+    {
+        var names = new FakePlaceNames("Fagurhólslækur", "Hornafjörður", "Suðurland");
+        var (search, handler) = Create(
+            uri => Query(uri, "q") == "Hotels Hornafjörður"
+                ? Json(Properties)
+                : Json("""{ "error": "Google Hotels hasn't returned any results for this query." }"""),
+            names);
+        var request = HotelSearchRequest.Create(38.7105, -9.1365, 50_000, new DateOnly(2027, 5, 12), new DateOnly(2027, 5, 15), 2, 1, Today, "Fagurhólslækur");
+
+        var result = await search.SearchAsync(request, CancellationToken.None);
+
+        Assert.Equal("Hotels Hornafjörður", result.SearchedFor);
+        Assert.NotEmpty(result.Hotels);
+        Assert.Equal(["Hotels Fagurhólslækur", "Hotels Hornafjörður"], handler.Calls.Select(u => Query(u, "q")));
+
+        // Ausgebuchte zeigen und dieselbe Suche nochmal: alles aus dem Cache, keine weitere Google-Suche.
+        await search.ListAsync(request, CancellationToken.None);
+        await search.SearchAsync(request, CancellationToken.None);
+        Assert.Equal(2, handler.Calls.Count);
+    }
+
+    [Fact]
+    public async Task Findet_auch_die_Region_nichts_bleibt_es_bei_hoechstens_drei_Suchen()
+    {
+        var (search, handler) = Create(
+            _ => Json("""{ "error": "Google Hotels hasn't returned any results for this query." }"""),
+            new FakePlaceNames("Höfn", "Hornafjörður", "Suðurland"));
+
+        var result = await search.SearchAsync(Lissabon, CancellationToken.None);
+
+        Assert.Empty(result.Hotels);
+        Assert.Equal("Hotels Lissabon", result.SearchedFor);
+        Assert.Equal(1 + SerpApiHotelSearch.MaxFallbackSearches, handler.Calls.Count);
+    }
+
+    [Fact]
+    public async Task Passt_die_Suche_genau_auf_ein_Hotel_wird_es_trotzdem_angezeigt()
+    {
+        var (search, _) = Create(_ => Json("""
+            {
+              "name": "Hotel Skaftafell",
+              "property_token": "tok-skaftafell",
+              "gps_coordinates": { "latitude": 38.7110, "longitude": -9.1370 },
+              "total_rate": { "extracted_lowest": 480 }
+            }
+            """));
+
+        var result = await search.SearchAsync(Lissabon, CancellationToken.None);
+
+        var hotel = Assert.Single(result.Hotels);
+        Assert.Equal("Hotel Skaftafell", hotel.Name);
+        Assert.Equal(480m, hotel.TotalPrice);
     }
 }

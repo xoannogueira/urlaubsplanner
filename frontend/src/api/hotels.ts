@@ -108,6 +108,8 @@ export interface HotelSearchResponse {
   radiusMeters: number
   /** Weitere Ergebnisse (Google Hotels: 20 pro Seite); null = alles geladen. */
   nextPage: string | null
+  /** Womit Google tatsächlich gesucht hat, z. B. „Hotels Höfn“, wenn der Etappenname zu klein war */
+  searchedFor?: string | null
 }
 
 export interface HotelSearchStatus {

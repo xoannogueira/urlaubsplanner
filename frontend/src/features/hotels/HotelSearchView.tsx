@@ -300,6 +300,14 @@ function SearchArea({
               {hotels.length === result!.hotels.length ? `${hotels.length} frei` : `${hotels.length} von ${result!.hotels.length} frei`}
               {showUnavailable && nearby.data && <span className="text-danger"> · {soldOut.length} ausgebucht</span>}
             </span>
+            {google && result!.searchedFor && result!.searchedFor !== `Hotels ${stage.name}` && (
+              <span
+                className="rounded-full border border-line px-2.5 py-1 text-xs text-muted"
+                title={`Google kennt „${stage.name}“ nicht als Ort – deshalb wurde mit dem nächstgrößeren Ort bzw. der Region gesucht.`}
+              >
+                Gesucht: „{result!.searchedFor}“
+              </span>
+            )}
             {result!.sandbox && (
               <span
                 className="flex items-center gap-1.5 rounded-full border border-star/50 px-2.5 py-1 text-xs font-bold text-star"
@@ -374,7 +382,9 @@ function SearchArea({
                   title={result!.hotels.length === 0 ? 'Keine freien Hotels gefunden' : 'Nichts passt zu den Filtern'}
                   text={
                     result!.hotels.length === 0
-                      ? 'Versuch einen größeren Umkreis – oder schalte „Ausgebuchte zeigen“ ein und prüfe andere Daten.'
+                      ? google
+                        ? `Google hat für „${result!.searchedFor ?? stage.name}“ keine freien Hotels im Umkreis gefunden. Versuch einen größeren Umkreis oder benenne die Etappe nach dem nächsten größeren Ort.`
+                        : 'Versuch einen größeren Umkreis – oder schalte „Ausgebuchte zeigen“ ein und prüfe andere Daten.'
                       : 'Entferne einen Filter, um mehr Hotels zu sehen.'
                   }
                 />

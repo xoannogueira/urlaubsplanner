@@ -202,7 +202,13 @@ public sealed record HotelOffer(
 
 /// <param name="Sandbox">True, wenn mit einem Sandbox-Key gesucht wurde (Preise sind dann ggf. Testdaten).</param>
 /// <param name="NextPage">Kennung für weitere Ergebnisse (Google Hotels: 20 pro Seite); null, wenn es keine gibt.</param>
-public sealed record HotelSearchResult(IReadOnlyList<HotelOffer> Hotels, bool Sandbox, DateTimeOffset FetchedAt, string? NextPage = null);
+/// <param name="SearchedFor">Womit tatsächlich gesucht wurde, z. B. „Hotels Höfn“ (Google Hotels); null bei Umkreissuche per Koordinaten.</param>
+public sealed record HotelSearchResult(
+    IReadOnlyList<HotelOffer> Hotels,
+    bool Sandbox,
+    DateTimeOffset FetchedAt,
+    string? NextPage = null,
+    string? SearchedFor = null);
 
 /// <summary>Ein Hotel im Umkreis – unabhängig davon, ob es für den Zeitraum frei ist.</summary>
 /// <param name="BookingSource">Wohin <paramref name="BookingUrl"/> führt (z. B. „Hotelseite“); null = Booking.com-Suche.</param>

@@ -100,4 +100,27 @@ public sealed class PhotonPlaceSearchTests
 
         await Assert.ThrowsAsync<PlaceSearchUnavailableException>(() => search.SearchAsync("Lissabon", null, CancellationToken.None));
     }
+
+    [Fact]
+    public async Task Umgekehrte_Suche_liefert_Ort_Gemeinde_und_Region()
+    {
+        var (search, handler) = Create(() => Json("""
+            {
+              "features": [
+                {
+                  "geometry": { "type": "Point", "coordinates": [-16.64, 63.88] },
+                  "properties": { "name": "Fagurhólslækur", "county": "Hornafjörður", "state": "Suðurland", "country": "Island" }
+                }
+              ]
+            }
+            """));
+
+        var names = await search.NamesAroundAsync(new Coordinates(63.8812, -16.6431), CancellationToken.None);
+
+        Assert.Equal(["Hornafjörður", "Suðurland"], names);
+        Assert.StartsWith("/reverse", handler.LastUri!.AbsolutePath, StringComparison.Ordinal);
+        Assert.Contains("lat=63.881", handler.LastUri.Query, StringComparison.Ordinal);
+
+        Assert.Empty(await Create(() => new HttpResponseMessage(HttpStatusCode.BadGateway)).Search.NamesAroundAsync(new Coordinates(1, 2), CancellationToken.None));
+    }
 }

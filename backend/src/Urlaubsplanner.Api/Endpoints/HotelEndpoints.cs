@@ -75,6 +75,7 @@ public static class HotelEndpoints
             request.Rooms,
             request.RadiusMeters,
             result.NextPage,
+            result.SearchedFor,
         });
     }
 
