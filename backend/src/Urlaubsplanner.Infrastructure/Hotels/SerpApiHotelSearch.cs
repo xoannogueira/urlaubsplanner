@@ -17,16 +17,22 @@ namespace Urlaubsplanner.Infrastructure.Hotels;
 /// Umkreissuche: eine Suche nach „Hotels {Ort}“ liefert ~20 Hotels mit Preisen mehrerer Anbieter; weitere Seiten
 /// kosten je eine Suche. Gezielt nach Hotels (Neu prüfen, andere Daten) kostet eine Suche pro Hotel.
 /// Ergebnisse werden eine Stunde gecacht.
+/// Kennt Google den Etappennamen nicht (z. B. ein Bach oder Weiler), wird mit dem nächstgrößeren Ort bzw. der Region
+/// gesucht – höchstens zwei zusätzliche Suchen, und nur wenn die erste nichts im Umkreis findet.
 /// </summary>
 public sealed partial class SerpApiHotelSearch(
     HttpClient http,
     IMemoryCache cache,
     IOptions<SerpApiOptions> options,
+    IPlaceNames places,
     TimeProvider clock,
     ILogger<SerpApiHotelSearch> logger) : IHotelSearch, IPagedHotelSearch, IHotelSearchQuota
 {
     /// <summary>Höchstens so viele Anbieter-Preise pro Hotel.</summary>
     internal const int MaxPricesPerHotel = 6;
+
+    /// <summary>Höchstens so viele Ersatz-Suchen mit größeren Orten, wenn der Etappenname nichts liefert.</summary>
+    internal const int MaxFallbackSearches = 2;
 
     private static readonly TimeSpan CacheDuration = TimeSpan.FromHours(1);
     private static readonly TimeSpan PageDuration = TimeSpan.FromHours(3);
@@ -61,8 +67,8 @@ public sealed partial class SerpApiHotelSearch(
             return new HotelSearchResult([.. offers.OrderBy(o => o.TotalPrice)], false, clock.GetUtcNow());
         }
 
-        var page = await QueryAsync<PropertiesResponse>(AreaQuery(request, null), cancellationToken).ConfigureAwait(false);
-        return ToResult(page, request);
+        var (page, place) = await AreaAsync(request, cancellationToken).ConfigureAwait(false);
+        return ToResult(page, request, place);
     }
 
     public async Task<HotelSearchResult> NextPageAsync(string nextPage, CancellationToken cancellationToken)
@@ -73,8 +79,8 @@ public sealed partial class SerpApiHotelSearch(
             throw new HotelSearchUnavailableException("Diese Suche ist abgelaufen – bitte neu suchen.");
         }
 
-        var page = await QueryAsync<PropertiesResponse>(AreaQuery(state.Request, state.Token), cancellationToken).ConfigureAwait(false);
-        return ToResult(page, state.Request);
+        var page = await QueryAsync<PropertiesResponse>(AreaQuery(state.Request, state.Place, state.Token), cancellationToken).ConfigureAwait(false);
+        return ToResult(page, state.Request, state.Place);
     }
 
     /// <summary>Alle Hotels der ersten Seite, auch ohne Preis (= für die Daten ausgebucht). Kommt aus dem Cache der Suche.</summary>
@@ -82,7 +88,8 @@ public sealed partial class SerpApiHotelSearch(
     {
         ArgumentNullException.ThrowIfNull(request);
         EnsureConfigured();
-        var page = await QueryAsync<PropertiesResponse>(AreaQuery(request, null), cancellationToken).ConfigureAwait(false);
+        // Gleiche Suche wie SearchAsync – kommt komplett aus dem Cache.
+        var (page, _) = await AreaAsync(request, cancellationToken).ConfigureAwait(false);
         return
         [
             .. InRadius(page?.Properties ?? [], request)
@@ -109,7 +116,39 @@ public sealed partial class SerpApiHotelSearch(
         ];
     }
 
-    private HotelSearchResult ToResult(PropertiesResponse? page, HotelSearchRequest request)
+    /// <summary>
+    /// Sucht „Hotels {Etappe}“. Liegt davon nichts im Umkreis, nacheinander mit Ort, Gemeinde und Region rund um den
+    /// Etappenpunkt (umgekehrte Ortssuche). Gibt die Seite und den Ortsnamen zurück, mit dem gesucht wurde.
+    /// </summary>
+    private async Task<(PropertiesResponse? Page, string Place)> AreaAsync(HotelSearchRequest request, CancellationToken cancellationToken)
+    {
+        var place = request.Place ?? (request.Center is { } c
+            ? string.Create(CultureInfo.InvariantCulture, $"{c.Latitude:F4},{c.Longitude:F4}")
+            : "Hotel");
+        var first = await QueryAsync<PropertiesResponse>(AreaQuery(request, place, null), cancellationToken).ConfigureAwait(false);
+        if (HasHotelsInRadius(first, request) || request.Center is not { } center)
+        {
+            return (first, place);
+        }
+
+        var names = await places.NamesAroundAsync(center, cancellationToken).ConfigureAwait(false);
+        foreach (var name in names.Where(n => !string.Equals(n, place, StringComparison.OrdinalIgnoreCase)).Take(MaxFallbackSearches))
+        {
+            var page = await QueryAsync<PropertiesResponse>(AreaQuery(request, name, null), cancellationToken).ConfigureAwait(false);
+            if (HasHotelsInRadius(page, request))
+            {
+                LogFallback(place, name);
+                return (page, name);
+            }
+        }
+
+        return (first, place);
+    }
+
+    private static bool HasHotelsInRadius(PropertiesResponse? page, HotelSearchRequest request) =>
+        InRadius(page?.Properties ?? [], request).Any(p => !string.IsNullOrWhiteSpace(p.PropertyToken) && !string.IsNullOrWhiteSpace(p.Name));
+
+    private HotelSearchResult ToResult(PropertiesResponse? page, HotelSearchRequest request, string place)
     {
         var offers = InRadius(page?.Properties ?? [], request)
             .Select(p => ToOffer(p, request, _options.Currency))
@@ -122,10 +161,10 @@ public sealed partial class SerpApiHotelSearch(
         if (!string.IsNullOrEmpty(page?.SerpapiPagination?.NextPageToken))
         {
             next = Guid.NewGuid().ToString("N");
-            cache.Set(PageKey(next), new Page(request, page.SerpapiPagination.NextPageToken), PageDuration);
+            cache.Set(PageKey(next), new Page(request, place, page.SerpapiPagination.NextPageToken), PageDuration);
         }
 
-        return new HotelSearchResult(offers, false, clock.GetUtcNow(), next);
+        return new HotelSearchResult(offers, false, clock.GetUtcNow(), next, $"Hotels {place}");
     }
 
     /// <summary>Google sucht per Text im ganzen Ort – Hotels außerhalb des gewählten Umkreises fallen weg.</summary>
@@ -224,11 +263,8 @@ public sealed partial class SerpApiHotelSearch(
     private static string? Photo(PropertyData p) =>
         p.Images?.Select(i => NullIfEmpty(i.OriginalImage) ?? NullIfEmpty(i.Thumbnail)).FirstOrDefault(i => i is not null);
 
-    internal List<KeyValuePair<string, string>> AreaQuery(HotelSearchRequest request, string? pageToken)
+    internal List<KeyValuePair<string, string>> AreaQuery(HotelSearchRequest request, string place, string? pageToken)
     {
-        var place = request.Place ?? (request.Center is { } c
-            ? string.Create(CultureInfo.InvariantCulture, $"{c.Latitude:F4},{c.Longitude:F4}")
-            : "Hotel");
         var query = BaseQuery(request, $"Hotels {place}");
         if (pageToken is not null)
         {
@@ -266,6 +302,12 @@ public sealed partial class SerpApiHotelSearch(
             return cached;
         }
 
+        // „Keine Ergebnisse“ merken wir uns auch – sonst kostet jede Wiederholung (z. B. Ausgebuchte zeigen) eine Suche.
+        if (cache.TryGetValue(cacheKey + ":leer", out bool _))
+        {
+            return null;
+        }
+
         var url = "search.json?" + string.Join('&', query.Append(new("api_key", _options.ApiKey!))
             .Select(p => $"{p.Key}={Uri.EscapeDataString(p.Value)}"));
         T? body;
@@ -275,10 +317,17 @@ public sealed partial class SerpApiHotelSearch(
             var text = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
             SerpApiAccount.ForgetQuota(cache);
             body = TryParse<T>(text);
+            // Passt die Suche genau auf ein Hotel, liefert Google direkt dessen Details statt einer Liste.
+            if (body is PropertiesResponse { Properties: null, Error: null } && TryParse<PropertyData>(text) is { Name: not null, PropertyToken: not null } single)
+            {
+                body = (T)(IErrorResponse)new PropertiesResponse([single], null, null);
+            }
+
             if (!response.IsSuccessStatusCode || body?.Error is not null)
             {
                 if (IsNoResults(body?.Error ?? text))
                 {
+                    cache.Set(cacheKey + ":leer", true, CacheDuration);
                     return null;
                 }
 
@@ -349,7 +398,10 @@ public sealed partial class SerpApiHotelSearch(
     [LoggerMessage(Level = LogLevel.Warning, Message = "SerpApi-Hotelsuche fehlgeschlagen")]
     private partial void LogFailed(Exception exception);
 
-    private sealed record Page(HotelSearchRequest Request, string Token);
+    [LoggerMessage(Level = LogLevel.Information, Message = "Google Hotels kennt „{Place}“ nicht – gesucht wurde mit „{Fallback}“")]
+    private partial void LogFallback(string place, string fallback);
+
+    private sealed record Page(HotelSearchRequest Request, string Place, string Token);
 }
 
 internal interface IErrorResponse

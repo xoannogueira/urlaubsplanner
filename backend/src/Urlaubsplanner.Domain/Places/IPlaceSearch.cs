@@ -15,6 +15,15 @@ public interface IPlaceSearch
     Task<IReadOnlyList<Place>> SearchAsync(string query, Coordinates? near, CancellationToken cancellationToken);
 }
 
+/// <summary>
+/// Umgekehrte Ortssuche: Namen der Orte und Regionen rund um einen Punkt, vom kleinsten zum größten
+/// (z. B. „Höfn“, „Hornafjörður“, „Suðurland“). Hilft, wenn ein Etappenname zu klein für andere Dienste ist.
+/// </summary>
+public interface IPlaceNames
+{
+    Task<IReadOnlyList<string>> NamesAroundAsync(Coordinates point, CancellationToken cancellationToken);
+}
+
 /// <summary>Ein Punkt auf der Karte (WGS84).</summary>
 public readonly record struct Coordinates(double Latitude, double Longitude)
 {

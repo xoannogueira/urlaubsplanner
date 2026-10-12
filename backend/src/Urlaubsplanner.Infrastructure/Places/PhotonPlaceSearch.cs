@@ -11,7 +11,7 @@ namespace Urlaubsplanner.Infrastructure.Places;
 /// Ortssuche über Photon (https://photon.komoot.io), kostenlos und für Suche beim Tippen gedacht.
 /// Ergebnisse werden einen Tag gecacht, damit gleiche Suchen den Dienst nicht erneut belasten.
 /// </summary>
-public sealed partial class PhotonPlaceSearch(HttpClient http, IMemoryCache cache, ILogger<PhotonPlaceSearch> logger) : IPlaceSearch
+public sealed partial class PhotonPlaceSearch(HttpClient http, IMemoryCache cache, ILogger<PhotonPlaceSearch> logger) : IPlaceSearch, IPlaceNames
 {
     public const int MaxResults = 6;
     private static readonly TimeSpan CacheDuration = TimeSpan.FromDays(1);
@@ -51,6 +51,36 @@ public sealed partial class PhotonPlaceSearch(HttpClient http, IMemoryCache cach
 
         cache.Set(cacheKey, (IReadOnlyList<Place>)places, CacheDuration);
         return places;
+    }
+
+    /// <summary>Ort, Gemeinde/Bezirk und Region am Punkt (Photon /reverse). Fehler ergeben eine leere Liste.</summary>
+    public async Task<IReadOnlyList<string>> NamesAroundAsync(Coordinates point, CancellationToken cancellationToken)
+    {
+        var at = string.Create(CultureInfo.InvariantCulture, $"lat={Math.Round(point.Latitude, 3)}&lon={Math.Round(point.Longitude, 3)}");
+        var cacheKey = $"photon:reverse:{at}";
+        if (cache.TryGetValue(cacheKey, out IReadOnlyList<string>? cached) && cached is not null)
+        {
+            return cached;
+        }
+
+        try
+        {
+            var response = await http.GetFromJsonAsync<PhotonResponse>($"reverse?{at}&limit=1&lang=de", cancellationToken).ConfigureAwait(false);
+            var p = response?.Features?.FirstOrDefault()?.Properties;
+            IReadOnlyList<string> names = p is null
+                ? []
+                : [.. new[] { p.City, p.District, p.County, p.State }
+                    .Where(n => !string.IsNullOrWhiteSpace(n))
+                    .Select(n => n!.Trim())
+                    .Distinct(StringComparer.OrdinalIgnoreCase)];
+            cache.Set(cacheKey, names, CacheDuration);
+            return names;
+        }
+        catch (Exception e) when (e is HttpRequestException or TaskCanceledException or JsonException && !cancellationToken.IsCancellationRequested)
+        {
+            LogFailed(e, at);
+            return [];
+        }
     }
 
     internal static Place? ToPlace(PhotonFeature feature)
@@ -98,6 +128,8 @@ internal sealed record PhotonGeometry(double[]? Coordinates);
 internal sealed record PhotonProperties(
     string? Name,
     string? City,
+    string? District,
+    string? County,
     string? State,
     string? Country,
     string? Type,

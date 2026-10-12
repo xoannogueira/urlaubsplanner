@@ -32,6 +32,9 @@ public static class DependencyInjection
 
         // Hotels: Google Hotels über SerpApi, sobald ein SerpApi-Key hinterlegt ist – sonst LiteAPI.
         // Mit "Hotels:Provider" = "liteapi" bzw. "serpapi" lässt sich die Quelle fest wählen.
+        // Umgekehrte Ortssuche über Photon – ohne Photon (z. B. in Tests) gibt es einfach keine Namen.
+        services.AddTransient<IPlaceNames>(sp => sp.GetRequiredService<IPlaceSearch>() as IPlaceNames ?? new NoPlaceNames());
+
         services.Configure<LiteApiOptions>(configuration.GetSection(LiteApiOptions.Section));
         services.Configure<SerpApiOptions>(configuration.GetSection(SerpApiOptions.Section));
         if (UseSerpApi(configuration, "Hotels:Provider"))
@@ -95,4 +98,11 @@ public static class DependencyInjection
             ? !string.IsNullOrWhiteSpace(configuration[$"{SerpApiOptions.Section}:ApiKey"])
             : provider.Trim().Equals("serpapi", StringComparison.OrdinalIgnoreCase);
     }
+}
+
+/// <summary>Ersatz, wenn die Ortssuche keine umgekehrte Suche kann.</summary>
+internal sealed class NoPlaceNames : IPlaceNames
+{
+    public Task<IReadOnlyList<string>> NamesAroundAsync(Coordinates point, CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<string>>([]);
 }
