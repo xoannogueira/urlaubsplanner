@@ -170,7 +170,7 @@ Dann <http://localhost:5080> öffnen.
 Hinweise:
 
 - Mit einem Sandbox-Key zeigt die App „Sandbox – Preise evtl. Testdaten“. Echte Preise gibt es mit dem Produktiv-Key (Kreditkarte im LiteAPI-Dashboard).
-- Gesucht wird pro Etappe rund um ihren Ort (Umkreis 1–10 km), mit deren Daten und der Personenzahl der Reise. Ergebnisse werden 15 Minuten gecacht.
+- Gesucht wird pro Etappe rund um ihren Ort (Umkreis 1–50 km), mit deren Daten und der Personenzahl der Reise. Ergebnisse werden 15 Minuten gecacht.
 - Der Buchungslink ist eine vorausgefüllte Booking.com-Suche. Wer eine LiteAPI-White-Label-Seite einrichtet, trägt deren Domain in
   `appsettings.json` unter `LiteApi:WhitelabelDomain` ein – dann führen die Links direkt zum Hotel auf dieser Seite.
 - Weitere Einstellungen unter `LiteApi` in `appsettings.json`: `Currency` (EUR), `GuestNationality` (DE), `MaxHotels` (50), `MaxRatesPerHotel` (10).

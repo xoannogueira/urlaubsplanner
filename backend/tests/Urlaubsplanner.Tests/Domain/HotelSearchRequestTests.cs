@@ -34,7 +34,7 @@ public sealed class HotelSearchRequestTests
     [Theory]
     [InlineData(10, 500)]
     [InlineData(3000, 3000)]
-    [InlineData(100_000, 30_000)]
+    [InlineData(100_000, 50_000)]
     public void Radius_wird_begrenzt(int radius, int expected)
     {
         Assert.Equal(expected, Create(radius: radius).RadiusMeters);
