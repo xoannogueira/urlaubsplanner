@@ -30,7 +30,7 @@ public sealed class SerpApiHotelSearchTests
               "total_rate": { "lowest": "€612", "extracted_lowest": 612 },
               "prices": [
                 { "source": "Booking.com", "rate_per_night": { "extracted_lowest": 210 } },
-                { "source": "Expedia", "rate_per_night": { "extracted_lowest": 204 } },
+                { "source": "Expedia", "link": "https://www.expedia.de/h123.Hotel-Information?chkin=2027-05-12", "rate_per_night": { "extracted_lowest": 204 } },
                 { "source": "Booking.com", "rate_per_night": { "extracted_lowest": 230 } }
               ],
               "extracted_hotel_class": 4,
@@ -40,6 +40,7 @@ public sealed class SerpApiHotelSearchTests
             },
             {
               "name": "Casa Baixa",
+              "link": "https://casabaixa.example/",
               "property_token": "tok-baixa",
               "gps_coordinates": { "latitude": 38.7100, "longitude": -9.1380 },
               "rate_per_night": { "extracted_lowest": 150 },
@@ -67,7 +68,7 @@ public sealed class SerpApiHotelSearchTests
           "address": "Rua da Prata 1, Lissabon",
           "gps_coordinates": { "latitude": 38.7139, "longitude": -9.1334 },
           "featured_prices": [
-            { "source": "Hotel Miradouro", "official": true, "total_rate": { "extracted_lowest": 590 }, "free_cancellation": true }
+            { "source": "Hotel Miradouro", "official": true, "link": "https://miradouro.example/buchen", "total_rate": { "extracted_lowest": 590 }, "free_cancellation": true }
           ],
           "prices": [
             { "source": "Booking.com", "total_rate": { "extracted_lowest": 630 } }
@@ -129,7 +130,15 @@ public sealed class SerpApiHotelSearchTests
         Assert.Equal(1873, miradouro.ReviewCount);
         Assert.Equal(4, miradouro.Stars);
         Assert.Equal("https://img/big.jpg", miradouro.PhotoUrl);
-        Assert.Contains("booking.com", miradouro.BookingUrl, StringComparison.Ordinal);
+        Assert.Equal("https://www.expedia.de/h123.Hotel-Information?chkin=2027-05-12", miradouro.BookingUrl);
+        Assert.Equal("Expedia", miradouro.BookingSource);
+        Assert.Equal(miradouro.BookingUrl, miradouro.Rooms[0].Url);
+        Assert.Null(miradouro.Rooms[1].Url);
+        Assert.StartsWith("https://www.google.com/travel/hotels/entity/tok-miradouro/prices?", miradouro.GoogleUrl, StringComparison.Ordinal);
+
+        // Ohne Anbieter-Link: Hotelseite
+        Assert.Equal("https://casabaixa.example/", baixa.BookingUrl);
+        Assert.Equal("Hotelseite", baixa.BookingSource);
 
         var uri = Assert.Single(handler.Calls);
         Assert.Equal("google_hotels", Query(uri, "engine"));
@@ -147,7 +156,9 @@ public sealed class SerpApiHotelSearchTests
 
         var listed = await search.ListAsync(Lissabon, CancellationToken.None);
 
-        Assert.Contains(listed, h => h.HotelId == "tok-voll");
+        var full = Assert.Single(listed, h => h.HotelId == "tok-voll");
+        Assert.Equal("Google Hotels", full.BookingSource);
+        Assert.Equal(full.GoogleUrl, full.BookingUrl);
         Assert.DoesNotContain(listed, h => h.HotelId == "tok-cascais");
         Assert.Single(handler.Calls);
     }
@@ -177,6 +188,7 @@ public sealed class SerpApiHotelSearchTests
         Assert.Equal(590m, hotel.TotalPrice);
         Assert.True(hotel.Refundable);
         Assert.Equal("Hotel Miradouro (Hotelseite)", hotel.RoomName);
+        Assert.Equal("https://miradouro.example/buchen", hotel.BookingUrl);
         Assert.Equal("Rua da Prata 1, Lissabon", hotel.Address);
         Assert.Equal("tok-miradouro", Query(handler.Calls[0], "property_token"));
         Assert.Equal("Hotel Miradouro", Query(handler.Calls[0], "q"));

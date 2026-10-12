@@ -205,6 +205,8 @@ So läuft es und so viel kostet es:
 
 **Hotels laufen mit demselben Key über Google Hotels:**
 
+- **Direkte Links:** Der Buchungsknopf führt direkt zum Hotel beim gewählten Anbieter (z. B. „Expedia“ oder die Hotelseite). „Google“ öffnet
+  die Seite des Hotels bei Google Hotels mit allen Preisen, nicht eine Trefferliste. Liefert Google für einen Anbieter keinen Link, führt der Knopf zur Google-Seite des Hotels.
 - **Suchen:** Eine Suche nach „Hotels {Etappe}“ liefert ca. 20 Hotels mit Preisen mehrerer Anbieter (Booking.com, Expedia, Hotelseite …). Hotels außerhalb des Umkreises fallen weg.
 - **Weitere Hotels laden:** kostet je eine Suche.
 - **Ausgebuchte zeigen:** Die Hotels kommen aus derselben Suche und kosten nichts extra.

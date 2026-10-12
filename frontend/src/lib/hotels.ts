@@ -60,8 +60,15 @@ export function hotelNotes(hotel: HotelOffer): string {
 
 /** Das Hotel mit einem anderen Zimmer als Hauptangebot (für Anzeige und Merken). */
 export function withRoom(hotel: HotelOffer, room: RoomOffer): HotelOffer {
+  // Google Hotels: Link und Beschriftung folgen dem gewählten Anbieter; ohne eigenen Link die Google-Seite des Hotels.
+  const direct = hotel.bookingSource
+    ? room.url
+      ? { bookingUrl: room.url, bookingSource: room.url === hotel.googleUrl ? 'Google Hotels' : room.name }
+      : { bookingUrl: hotel.googleUrl, bookingSource: 'Google Hotels' }
+    : {}
   return {
     ...hotel,
+    ...direct,
     roomName: room.name,
     boardName: room.boardName,
     refundable: room.refundable,

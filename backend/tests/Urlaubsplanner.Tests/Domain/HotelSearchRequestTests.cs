@@ -140,4 +140,13 @@ public sealed class HotelSearchRequestTests
         var url = HotelBookingLinks.Google("Hotel", "Lissabon", new DateOnly(2027, 5, 12), new DateOnly(2027, 5, 16));
         Assert.Contains("&qs=CAE4AA&ts=", url, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void Google_Hotelseite_fuehrt_direkt_zum_Hotel()
+    {
+        var url = HotelBookingLinks.GoogleHotel("ChgI2pHwwsKssrZY", "Hotel A", "Lissabon", new DateOnly(2027, 5, 12), new DateOnly(2027, 5, 16));
+
+        Assert.StartsWith("https://www.google.com/travel/hotels/entity/ChgI2pHwwsKssrZY/prices?q=Hotel%20A%2C%20Lissabon&hl=de&gl=de", url, StringComparison.Ordinal);
+        Assert.Contains("&ts=", url, StringComparison.Ordinal);
+    }
 }

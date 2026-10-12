@@ -50,6 +50,17 @@ public static class HotelBookingLinks
     }
 
     /// <summary>
+    /// Direkt die Seite des Hotels bei Google Hotels (Reiter „Preise“ mit allen Anbietern) statt einer Suchergebnisliste.
+    /// Die Kennung ist der <c>property_token</c> von Google Hotels; Reisedaten wie bei <see cref="Google"/>.
+    /// </summary>
+    public static string GoogleHotel(string propertyToken, string hotelName, string? city, DateOnly checkin, DateOnly checkout)
+    {
+        var query = string.IsNullOrWhiteSpace(city) ? hotelName : $"{hotelName}, {city}";
+        var url = $"https://www.google.com/travel/hotels/entity/{Uri.EscapeDataString(propertyToken)}/prices?q={Uri.EscapeDataString(query)}&hl=de&gl=de";
+        return checkout > checkin ? $"{url}&qs=CAE4AA&ts={Uri.EscapeDataString(GoogleDates(checkin, checkout))}&ap=MAE" : url;
+    }
+
+    /// <summary>
     /// Baut den <c>ts</c>-Wert: {1: 1, 3: {1: {3: ""}, 2: {2: {1: Anreise, 2: Abreise, 3: Nächte}, 6: {1: 1}}}},
     /// ein Datum jeweils als {1: Jahr, 2: Monat, 3: Tag}.
     /// </summary>
