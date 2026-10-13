@@ -5,6 +5,13 @@
     <UserSecretsId>urlaubsplanner-api-3f6c1d2e</UserSecretsId>
   </PropertyGroup>
 
+  <!-- Desktop-App für Windows (packaging/build-app.sh windows): kein Konsolenfenster, eigenes Icon. Nur für dieses Projekt,
+       deshalb nicht direkt als -p:OutputType übergeben (das würde auch die Bibliotheken treffen). -->
+  <PropertyGroup Condition="'$(DesktopWindows)' == 'true'">
+    <OutputType>WinExe</OutputType>
+    <ApplicationIcon>..\..\..\packaging\icons\Urlaubsplanner.ico</ApplicationIcon>
+  </PropertyGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\Urlaubsplanner.Domain\Urlaubsplanner.Domain.csproj" />
     <ProjectReference Include="..\Urlaubsplanner.Infrastructure\Urlaubsplanner.Infrastructure.csproj" />

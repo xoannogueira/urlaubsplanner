@@ -92,9 +92,8 @@ build_windows() {
   local name="Urlaubsplanner-Windows"
   local out="$DIST/$name/Urlaubsplanner"
   rm -rf "$DIST/$name"
-  # WinExe: kein schwarzes Konsolenfenster beim Start.
-  # Icon relativ zum Projekt angeben – so klappt es auch unter Git Bash auf Windows.
-  publish win-x64 "$out" -p:OutputType=WinExe -p:ApplicationIcon=../../../packaging/icons/Urlaubsplanner.ico
+  # DesktopWindows: kein schwarzes Konsolenfenster beim Start und eigenes Icon (siehe Urlaubsplanner.Api.csproj).
+  publish win-x64 "$out" -p:DesktopWindows=true
   mv "$out/Urlaubsplanner.Api.exe" "$out/Urlaubsplanner.exe"
   cp "$ROOT/packaging/ANLEITUNG.md" "$DIST/$name/ANLEITUNG.md"
   (cd "$DIST/$name" && rm -f "$DIST/$name.zip" &&
