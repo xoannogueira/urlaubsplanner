@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # Baut den Urlaubsplanner als Desktop-App zum Weitergeben – Doppelklick startet alles, kein Terminal nötig.
 #
-#   packaging/build-app.sh mac-arm64     # Mac mit Apple-Chip (M1–M4)
-#   packaging/build-app.sh mac-x64       # Mac mit Intel-Chip
+#   packaging/build-app.sh mac           # alle Macs (Apple-Chip und Intel in einer App)
 #   packaging/build-app.sh windows       # Windows 10/11 (64 Bit)
-#   packaging/build-app.sh all           # alles
+#   packaging/build-app.sh all           # beides
 #
-# Ergebnis: dist/Urlaubsplanner-<Ziel>.zip
+# Ergebnis: dist/Urlaubsplanner-Mac.zip und dist/Urlaubsplanner-Windows.zip – feste Namen, damit die Download-Links
+# (…/releases/latest/download/Urlaubsplanner-Mac.zip) und die automatischen Updates sie immer finden.
 # Mac-Pakete bitte auf einem Mac bauen: nur dort lässt sich die App signieren (ohne Signatur startet sie auf Apple-Chips nicht).
 set -euo pipefail
 
@@ -20,7 +20,7 @@ NUMERIC_VERSION="$(echo "$VERSION" | grep -Eo '^[0-9]+(\.[0-9]+){1,2}' || echo 0
 
 targets=("$@")
 [ ${#targets[@]} -eq 0 ] && { sed -n '2,10p' "$0"; exit 1; }
-[ "${targets[0]}" = "all" ] && targets=(mac-arm64 mac-x64 windows)
+[ "${targets[0]}" = "all" ] && targets=(mac windows)
 
 echo "▸ Frontend bauen"
 (cd "$ROOT/frontend" && npm ci --no-audit --no-fund && npm run build)
@@ -41,21 +41,24 @@ publish() { # $1 = Runtime, $2 = Zielordner, weitere Argumente gehen an dotnet p
   rm -f "$out"/*.pdb
 }
 
-build_mac() { # $1 = osx-arm64 | osx-x64
-  local rid="$1" name="Urlaubsplanner-Mac-${1#osx-}"
+build_mac() {
+  local name="Urlaubsplanner-Mac"
   local app="$DIST/$name/Urlaubsplanner.app"
   rm -rf "$DIST/$name"
   mkdir -p "$app/Contents/Resources"
-  publish "$rid" "$app/Contents/MacOS"
+  # Beide Varianten in eine App – das Startprogramm nimmt die passende. So muss niemand wissen, welchen Chip sein Mac hat.
+  publish osx-arm64 "$app/Contents/MacOS/arm64"
+  publish osx-x64 "$app/Contents/MacOS/x64"
   cp "$ICONS/Urlaubsplanner.icns" "$app/Contents/Resources/"
   # Startprogramm der App: startet den Server losgelöst und beendet sich sofort. So startet macOS die App bei jedem
   # Klick neu – läuft sie schon, öffnet der Server nur ein weiteres Fenster.
   cat > "$app/Contents/MacOS/Urlaubsplanner" <<'LAUNCHER'
 #!/bin/bash
 DIR="$(cd "$(dirname "$0")" && pwd)"
-nohup "$DIR/Urlaubsplanner.Api" --desktop >/dev/null 2>&1 &
+if [ "$(uname -m)" = "arm64" ]; then ARCH=arm64; else ARCH=x64; fi
+nohup "$DIR/$ARCH/Urlaubsplanner.Api" --desktop "$@" >/dev/null 2>&1 &
 LAUNCHER
-  chmod +x "$app/Contents/MacOS/Urlaubsplanner" "$app/Contents/MacOS/Urlaubsplanner.Api"
+  chmod +x "$app/Contents/MacOS/Urlaubsplanner" "$app/Contents/MacOS/arm64/Urlaubsplanner.Api" "$app/Contents/MacOS/x64/Urlaubsplanner.Api"
   cat > "$app/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -103,9 +106,8 @@ build_windows() {
 
 for target in "${targets[@]}"; do
   case "$target" in
-    mac-arm64) build_mac osx-arm64 ;;
-    mac-x64) build_mac osx-x64 ;;
+    mac) build_mac ;;
     windows) build_windows ;;
-    *) echo "Unbekanntes Ziel: $target (mac-arm64, mac-x64, windows, all)"; exit 1 ;;
+    *) echo "Unbekanntes Ziel: $target (mac, windows, all)"; exit 1 ;;
   esac
 done

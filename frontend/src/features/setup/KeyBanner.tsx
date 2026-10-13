@@ -3,14 +3,23 @@ import { useSettings } from '../../api/app'
 import { useFlightSearchStatus } from '../../api/flights'
 import { Button } from '../../components/ui/Button'
 import { useSetup } from './setupContext'
+import { UpdateBanner } from './UpdateBanner'
 
 /** Ab so wenigen restlichen Google-Suchen warnen. */
 export const LOW_QUOTA = 25
 
-/**
- * Hinweis oben auf jeder Seite: ohne eigenen API-Key keine Flug-/Hotelsuche; wenig oder keine Suchen mehr übrig.
- */
+/** Hinweise oben auf jeder Seite: neue App-Version, fehlender API-Key, wenig Suchen übrig. */
 export function KeyBanner() {
+  return (
+    <>
+      <UpdateBanner />
+      <KeyHint />
+    </>
+  )
+}
+
+/** Ohne eigenen API-Key keine Flug-/Hotelsuche; wenig oder keine Suchen mehr übrig. */
+function KeyHint() {
   const settings = useSettings()
   const status = useFlightSearchStatus()
   const { openSetup } = useSetup()

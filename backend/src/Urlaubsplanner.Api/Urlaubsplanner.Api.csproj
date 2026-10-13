@@ -13,6 +13,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="Urlaubsplanner.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\Urlaubsplanner.Domain\Urlaubsplanner.Domain.csproj" />
     <ProjectReference Include="..\Urlaubsplanner.Infrastructure\Urlaubsplanner.Infrastructure.csproj" />
   </ItemGroup>

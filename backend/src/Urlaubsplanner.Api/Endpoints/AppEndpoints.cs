@@ -27,7 +27,7 @@ public static partial class AppEndpoints
         {
             App = AppPaths.AppId,
             paths.Desktop,
-            Version = typeof(AppEndpoints).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion?.Split('+')[0] ?? "dev",
+            Version = AppUpdater.CurrentVersionText,
             paths.DataDirectory,
         }));
 
@@ -42,6 +42,13 @@ public static partial class AppEndpoints
             services.GetService<DesktopLifetime>()?.Closing();
             return TypedResults.NoContent();
         });
+
+        // Automatische Updates: Stand abfragen und bereitliegendes Update sofort installieren.
+        group.MapGet("/update", (AppUpdater updater) => TypedResults.Ok(updater.Status));
+        group.MapPost("/update/restart", (AppUpdater updater) =>
+            updater.RequestRestart()
+                ? Results.Accepted()
+                : Results.Problem(statusCode: StatusCodes.Status409Conflict, title: "Kein Update bereit", detail: "Es liegt gerade kein Update zum Installieren bereit."));
 
         var settings = app.MapGroup("/api/settings").WithTags("Einstellungen");
         settings.MapGet("/", GetSettings);

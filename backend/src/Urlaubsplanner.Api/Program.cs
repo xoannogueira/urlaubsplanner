@@ -1,5 +1,6 @@
 using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.StaticFiles;
+using Microsoft.Extensions.Options;
 using Urlaubsplanner.Api;
 using Urlaubsplanner.Api.Desktop;
 using Urlaubsplanner.Api.Endpoints;
@@ -21,12 +22,26 @@ Directory.CreateDirectory(paths.DataDirectory);
 builder.Configuration.AddJsonFile(paths.SettingsFile, optional: true, reloadOnChange: true);
 
 var port = 0;
+var openWindow = !args.Contains("--no-window", StringComparer.OrdinalIgnoreCase);
 if (desktop)
 {
     // Läuft die App schon, nur ein weiteres Fenster öffnen.
     if (await DesktopLauncher.TryActivateExistingAsync(paths))
     {
         return;
+    }
+
+    // Liegt noch ein heruntergeladenes Update bereit (z. B. weil die App beim letzten Mal nicht sauber beendet wurde),
+    // jetzt installieren und die neue Version starten.
+    if (builder.Configuration.GetValue($"{UpdateOptions.Section}:Enabled", true))
+    {
+        using var startupLog = new FileLoggerProvider(paths.LogFile);
+        var target = AppUpdater.DetectTarget(paths);
+        if (AppUpdater.ApplyStaged(target, paths, startupLog.CreateLogger("Urlaubsplanner.Update")))
+        {
+            target!.Relaunch(args);
+            return;
+        }
     }
 
     port = DesktopLauncher.ChoosePort();
@@ -42,6 +57,12 @@ if (desktop)
 
 builder.Services.AddSingleton(paths);
 builder.Services.AddSingleton<AppSettingsStore>();
+
+// Automatische Updates der Desktop-App von GitHub (beim Entwickeln ohne Wirkung).
+builder.Services.Configure<UpdateOptions>(builder.Configuration.GetSection(UpdateOptions.Section));
+builder.Services.AddHttpClient(AppUpdater.HttpClientName, (sp, http) => AppUpdater.ConfigureClient(http, sp.GetRequiredService<IOptions<UpdateOptions>>().Value));
+builder.Services.AddSingleton<AppUpdater>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<AppUpdater>());
 
 builder.Services.ConfigureHttpJsonOptions(options =>
     options.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
@@ -82,9 +103,22 @@ if (desktop)
     await app.StartAsync();
     var url = $"http://127.0.0.1:{port}/";
     DesktopLauncher.WriteInstance(paths, port);
-    DesktopLauncher.OpenWindow(url, paths);
+    if (openWindow)
+    {
+        DesktopLauncher.OpenWindow(url, paths);
+    }
+
     await app.WaitForShutdownAsync();
     DesktopLauncher.DeleteInstance(paths);
+
+    // Fenster geschlossen: bereitliegendes Update jetzt installieren – beim nächsten Start läuft die neue Version.
+    // Bei „Jetzt neu starten“ gleich wieder starten; das offene Fenster lädt sich dann selbst neu.
+    var updater = app.Services.GetRequiredService<AppUpdater>();
+    updater.ApplyStaged();
+    if (updater.RestartRequested)
+    {
+        updater.Relaunch(["--no-window"]);
+    }
 }
 else
 {

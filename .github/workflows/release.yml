@@ -16,10 +16,7 @@ permissions:
 
 jobs:
   mac:
-    name: Mac (${{ matrix.target }})
-    strategy:
-      matrix:
-        target: [mac-arm64, mac-x64]
+    name: Mac
     # Auf einem Mac bauen: nur dort lässt sich die App signieren (ohne Signatur startet sie auf Apple-Chips nicht).
     runs-on: macos-latest
     steps:
@@ -34,20 +31,34 @@ jobs:
           node-version-file: frontend/.nvmrc
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-      - run: packaging/build-app.sh ${{ matrix.target }} 2>&1 | tee build.log
+      - run: packaging/build-app.sh mac 2>&1 | tee build.log
       - name: Fehler anzeigen
         if: failure()
         run: grep -iE "error|fehl|not found|No such" build.log | tail -n 15 | sed 's/^/::error::/' || tail -n 15 build.log | sed 's/^/::error::/'
       - name: Signatur prüfen
         run: |
-          app="dist/Urlaubsplanner-Mac-${{ matrix.target == 'mac-arm64' && 'arm64' || 'x64' }}/Urlaubsplanner.app"
+          app="dist/Urlaubsplanner-Mac/Urlaubsplanner.app"
           codesign --verify --deep --verbose=2 "$app"
           test -x "$app/Contents/MacOS/Urlaubsplanner"
-          test -f "$app/Contents/MacOS/wwwroot/index.html"
-          test -f "$app/Contents/MacOS/desktop.json"
+          for arch in arm64 x64; do
+            test -x "$app/Contents/MacOS/$arch/Urlaubsplanner.Api"
+            test -f "$app/Contents/MacOS/$arch/wwwroot/index.html"
+            test -f "$app/Contents/MacOS/$arch/desktop.json"
+          done
+          file "$app/Contents/MacOS/arm64/Urlaubsplanner.Api" "$app/Contents/MacOS/x64/Urlaubsplanner.Api"
+      - name: App kurz starten (Rauchtest)
+        run: |
+          export URLAUBSPLANNER_DATA="$RUNNER_TEMP/daten" URLAUBSPLANNER_BROWSER=/usr/bin/true Updates__Enabled=false
+          dist/Urlaubsplanner-Mac/Urlaubsplanner.app/Contents/MacOS/Urlaubsplanner
+          for i in $(seq 1 30); do curl -sf http://127.0.0.1:51770/api/app/info && break; sleep 1; done
+          curl -sf http://127.0.0.1:51770/api/app/info | grep -q urlaubsplanner
+          curl -sf http://127.0.0.1:51770/ | grep -q '<div id="root">'
+          curl -sf -X POST http://127.0.0.1:51770/api/app/closing
+          sleep 12
+          ! curl -sf http://127.0.0.1:51770/api/app/info
       - uses: actions/upload-artifact@v4
         with:
-          name: Urlaubsplanner-${{ matrix.target }}
+          name: Urlaubsplanner-mac
           path: dist/*.zip
 
   windows:
@@ -77,6 +88,16 @@ jobs:
           test -f dist/Urlaubsplanner-Windows/Urlaubsplanner/Urlaubsplanner.exe
           test -f dist/Urlaubsplanner-Windows/Urlaubsplanner/wwwroot/index.html
           test -f dist/Urlaubsplanner-Windows/Urlaubsplanner/desktop.json
+      - name: App kurz starten (Rauchtest)
+        run: |
+          export URLAUBSPLANNER_DATA="$RUNNER_TEMP/daten" URLAUBSPLANNER_BROWSER='C:\Windows\System32\where.exe' Updates__Enabled=false
+          ./dist/Urlaubsplanner-Windows/Urlaubsplanner/Urlaubsplanner.exe &
+          for i in $(seq 1 40); do curl -sf http://127.0.0.1:51770/api/app/info && break; sleep 1; done
+          curl -sf http://127.0.0.1:51770/api/app/info | grep -q urlaubsplanner
+          curl -sf http://127.0.0.1:51770/ | grep -q '<div id="root">'
+          curl -sf -X POST http://127.0.0.1:51770/api/app/closing
+          sleep 12
+          ! curl -sf http://127.0.0.1:51770/api/app/info
       - uses: actions/upload-artifact@v4
         with:
           name: Urlaubsplanner-windows

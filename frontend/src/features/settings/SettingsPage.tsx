@@ -1,7 +1,7 @@
 import { ArrowLeft, BookOpen, CircleCheck, ExternalLink, FolderOpen, KeyRound, Trash2 } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 import { Link } from 'react-router'
-import { useAppInfo, useRemoveSerpApiKey, useSettings } from '../../api/app'
+import { useAppInfo, useRemoveSerpApiKey, useSettings, useUpdateStatus } from '../../api/app'
 import { useFlightSearchStatus } from '../../api/flights'
 import { Logo, ThemeToggle } from '../../components/layout/Brand'
 import { Button } from '../../components/ui/Button'
@@ -18,6 +18,7 @@ import { KEY_URL, SIGN_UP_URL, Warning } from '../setup/SetupWizard'
 export function SettingsPage() {
   const settings = useSettings()
   const info = useAppInfo()
+  const update = useUpdateStatus(info.data?.desktop ?? false)
   const status = useFlightSearchStatus()
   const remove = useRemoveSerpApiKey()
   const { openSetup } = useSetup()
@@ -131,6 +132,7 @@ export function SettingsPage() {
               <p className="text-xs text-muted">
                 Zum Sichern oder Umziehen auf einen anderen Computer diesen Ordner kopieren (bei geschlossener App).
                 {info.data && ` · Version ${info.data.version}`}
+                {update.data && ` · ${updateText(update.data.state, update.data.available, update.data.progress)}`}
               </p>
             </Section>
           </>
@@ -160,4 +162,21 @@ function Section({ title, description, children }: { title: string; description:
       {children}
     </section>
   )
+}
+
+function updateText(state: string, available: string | null, progress: number | null): string {
+  switch (state) {
+    case 'Checking':
+      return 'Suche nach Updates …'
+    case 'Downloading':
+      return `Lade Version ${available} (${progress ?? 0} %)`
+    case 'Ready':
+      return `Version ${available} wird beim Schließen installiert`
+    case 'UpToDate':
+      return 'Aktuell'
+    case 'Failed':
+      return 'Update-Suche fehlgeschlagen'
+    default:
+      return 'Automatische Updates aus'
+  }
 }
