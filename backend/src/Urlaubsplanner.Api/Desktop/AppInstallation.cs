@@ -94,6 +94,7 @@ public sealed partial class AppInstallation(AppPaths paths, IHostApplicationLife
             catch (Exception e) when (e is IOException or InvalidOperationException or System.Xml.XmlException or System.ComponentModel.Win32Exception)
             {
                 // Dock-Eintrag bleibt dann als „?“ stehen – nicht schlimm.
+                LogDockUnreadable(e.Message);
             }
         }
 
