@@ -34,7 +34,10 @@ jobs:
           node-version-file: frontend/.nvmrc
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-      - run: packaging/build-app.sh ${{ matrix.target }}
+      - run: packaging/build-app.sh ${{ matrix.target }} 2>&1 | tee build.log
+      - name: Fehler anzeigen
+        if: failure()
+        run: grep -iE "error|fehl|not found|No such" build.log | tail -n 15 | sed 's/^/::error::/' || tail -n 15 build.log | sed 's/^/::error::/'
       - name: Signatur prüfen
         run: |
           app="dist/Urlaubsplanner-Mac-${{ matrix.target == 'mac-arm64' && 'arm64' || 'x64' }}/Urlaubsplanner.app"
@@ -65,7 +68,10 @@ jobs:
           node-version-file: frontend/.nvmrc
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-      - run: packaging/build-app.sh windows
+      - run: packaging/build-app.sh windows 2>&1 | tee build.log
+      - name: Fehler anzeigen
+        if: failure()
+        run: grep -iE "error|fehl|not found|No such" build.log | tail -n 15 | sed 's/^/::error::/' || tail -n 15 build.log | sed 's/^/::error::/'
       - name: Paket prüfen
         run: |
           test -f dist/Urlaubsplanner-Windows/Urlaubsplanner/Urlaubsplanner.exe
