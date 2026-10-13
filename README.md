@@ -4,6 +4,17 @@ Ein persönlicher Reiseplaner für mich und Freunde: mehrere Urlaube anlegen, pr
 Aktivitäten sammeln, Favoriten markieren, auswählen – und am Ende alles über eine Checkliste mit Buchungslinks
 einzeln buchen.
 
+## Herunterladen
+
+Eine Datei laden, entpacken, App-Icon anklicken. Die App aktualisiert sich danach von selbst.
+
+| System | Download |
+| ------ | -------- |
+| **Mac** (Apple-Chip und Intel) | [Urlaubsplanner-Mac.zip](https://github.com/xoannogueira/urlaubsplanner/releases/latest/download/Urlaubsplanner-Mac.zip) |
+| **Windows** 10/11 | [Urlaubsplanner-Windows.zip](https://github.com/xoannogueira/urlaubsplanner/releases/latest/download/Urlaubsplanner-Windows.zip) |
+
+Schritt für Schritt erklärt: [Anleitung](packaging/ANLEITUNG.md) (liegt auch jedem Zip bei).
+
 ## Stand: Phase 6 – Dashboard
 
 - Mehrere Reisen anlegen, bearbeiten, löschen
@@ -166,15 +177,36 @@ ein paar Sekunden. Ein zweiter Klick, während die App läuft, öffnet nur ein w
 - **Erster Start:** Ein Tutorial führt durchs Anlegen eines eigenen, kostenlosen SerpApi-Keys. Der Key wird in der App eingetragen,
   geprüft und gespeichert, kein Terminal nötig. Unter **Einstellungen** lässt er sich ändern.
 - **Warnungen:** Ohne Key und bei wenigen restlichen Suchen erscheint oben ein Hinweis.
+- **Ein Paket pro System:** `Urlaubsplanner-Mac.zip` enthält die App für Apple-Chips und Intel (das Startprogramm nimmt die passende),
+  `Urlaubsplanner-Windows.zip` einen Ordner mit `Urlaubsplanner.exe`. Die Namen bleiben immer gleich, deshalb funktionieren die
+  Download-Links oben für jede Version.
+- **Automatische Updates:** Kurz nach dem Start fragt die App bei GitHub nach dem neuesten Release
+  (`releases/latest`, ohne Key, 60 Anfragen/Stunde frei), lädt das passende Zip im Hintergrund, prüft die Prüfsumme und entpackt es in
+  den Datenordner. Installiert wird beim Schließen der App (oder sofort per „Jetzt neu starten“): Auf dem Mac wird die ganze
+  `Urlaubsplanner.app` getauscht, unter Windows werden die alten Dateien in `*.old` umbenannt und beim nächsten Start gelöscht.
+  Voraussetzung: Die App liegt in einem beschreibbaren Ordner (Mac: „Programme“, Windows z. B. „Dokumente“). Läuft sie auf dem Mac
+  direkt aus dem Download-Ordner (App Translocation), zeigt sie einen Hinweis statt sich zu aktualisieren.
+  Abschalten: `Updates__Enabled=false`.
 
-**Pakete bauen:**
+**Neue Version veröffentlichen** (Terminal auf dem MacBook):
 
-- **Automatisch (empfohlen):** Auf GitHub unter **Actions → „App bauen“ → Run workflow** laufen lassen und die Zips herunterladen.
-  Ein Tag wie `v1.0.0` legt zusätzlich ein Release mit den Zips an, den Link kannst du an Freunde schicken.
-- **Lokal auf dem Mac:**
+```bash
+cd ~/Documents/Projects/urlaubsplanner
+git checkout main && git pull
+git tag v0.2.0            # jedes Mal eine höhere Nummer
+git push origin v0.2.0
+```
+
+Der Workflow **„App bauen“** baut dann beide Zips (Mac auf einem Mac-Runner, signiert), testet sie und legt ein GitHub-Release an.
+Ab dann bekommen alle Freunde das Update beim nächsten Start der App.
+
+**Pakete ohne Release bauen:**
+
+- Auf GitHub unter **Actions → „App bauen“ → Run workflow** laufen lassen und die Zips herunterladen.
+- Lokal auf dem Mac:
 
   ```bash
-  packaging/build-app.sh mac-arm64        # oder mac-x64, windows, all → dist/*.zip
+  packaging/build-app.sh mac          # oder windows, all → dist/*.zip
   ```
 
 Die Anleitung für Freunde liegt jedem Zip bei (`packaging/ANLEITUNG.md`).

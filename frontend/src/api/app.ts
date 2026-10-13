@@ -63,3 +63,32 @@ export function useRemoveSerpApiKey() {
     onSuccess: refresh,
   })
 }
+
+export type UpdateState = 'Off' | 'Checking' | 'UpToDate' | 'Downloading' | 'Ready' | 'Failed'
+
+export interface UpdateStatus {
+  current: string
+  available: string | null
+  state: UpdateState
+  progress: number | null
+  /** Für Menschen: warum es keine Updates gibt bzw. was schiefging */
+  hint: string | null
+}
+
+/** Stand der automatischen Updates – nur in der Desktop-App; während Prüfen/Laden öfter nachfragen. */
+export function useUpdateStatus(enabled: boolean) {
+  return useQuery({
+    queryKey: ['app', 'update'],
+    queryFn: () => api<UpdateStatus>('/app/update'),
+    enabled,
+    refetchInterval: (query) => {
+      const state = query.state.data?.state
+      return state === 'Checking' || state === 'Downloading' || state === undefined ? 4_000 : 5 * 60_000
+    },
+  })
+}
+
+/** Bereitliegendes Update sofort installieren: die App beendet sich und startet neu. */
+export function useRestartForUpdate() {
+  return useMutation({ mutationFn: () => api<void>('/app/update/restart', { method: 'POST' }) })
+}
