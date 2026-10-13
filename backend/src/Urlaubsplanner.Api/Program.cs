@@ -25,10 +25,13 @@ var port = 0;
 var openWindow = !args.Contains("--no-window", StringComparer.OrdinalIgnoreCase);
 if (desktop)
 {
-    // Läuft die App schon, nur ein weiteres Fenster öffnen.
-    if (await DesktopLauncher.TryActivateExistingAsync(paths))
+    // Läuft die App schon: offenes Fenster nach vorne holen (oder eins öffnen) – kein zweiter Server.
+    using (var launchLog = new FileLoggerProvider(paths.LogFile))
     {
-        return;
+        if (await DesktopLauncher.TryActivateExistingAsync(paths, launchLog.CreateLogger("Urlaubsplanner.Start")))
+        {
+            return;
+        }
     }
 
     // Liegt noch ein heruntergeladenes Update bereit (z. B. weil die App beim letzten Mal nicht sauber beendet wurde),
@@ -118,6 +121,11 @@ if (desktop)
     if (updater.RestartRequested)
     {
         updater.Relaunch(["--no-window"]);
+    }
+    else
+    {
+        // Mac: Browser ohne Fenster läuft sonst im Dock weiter.
+        WindowFocus.CloseBrowser(paths);
     }
 }
 else

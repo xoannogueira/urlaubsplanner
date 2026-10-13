@@ -15,6 +15,8 @@ public sealed record SerpApiKeyBody(string? ApiKey);
 /// <param name="FromApp">In der App eingetragen (dort änderbar) – sonst über User Secrets oder Umgebung gesetzt.</param>
 public sealed record SerpApiKeyStatus(bool Configured, string? Hint, bool FromApp);
 
+public sealed record WindowsResponse(int Open, bool Starting);
+
 public sealed record SettingsResponse(SerpApiKeyStatus SerpApi, string FlightsProvider, string HotelsProvider, string DataDirectory, bool Desktop);
 
 /// <summary>App-Infos, Lebenszeichen des Fensters (Desktop-App) und Einstellungen wie der eigene API-Key.</summary>
@@ -32,15 +34,23 @@ public static partial class AppEndpoints
         }));
 
         // Nur in der Desktop-App gibt es den Wächter, der den Server beim Schließen des Fensters beendet.
-        group.MapPost("/heartbeat", (IServiceProvider services) =>
+        // „fenster“ = Kennung des Fensters, damit beim Schließen eines von zwei Fenstern nicht die ganze App endet.
+        group.MapPost("/heartbeat", (IServiceProvider services, string? fenster) =>
         {
-            services.GetService<DesktopLifetime>()?.Heartbeat();
+            services.GetService<DesktopLifetime>()?.Heartbeat(fenster);
             return TypedResults.NoContent();
         });
-        group.MapPost("/closing", (IServiceProvider services) =>
+        group.MapPost("/closing", (IServiceProvider services, string? fenster) =>
         {
-            services.GetService<DesktopLifetime>()?.Closing();
+            services.GetService<DesktopLifetime>()?.Closing(fenster);
             return TypedResults.NoContent();
+        });
+
+        // Für den zweiten Klick aufs App-Icon: Ist schon ein Fenster offen, wird es nach vorne geholt statt ein neues zu öffnen.
+        group.MapGet("/windows", (IServiceProvider services) =>
+        {
+            var lifetime = services.GetService<DesktopLifetime>();
+            return TypedResults.Ok(new WindowsResponse(lifetime?.OpenWindows ?? 0, lifetime?.WaitingForFirstWindow ?? false));
         });
 
         // Automatische Updates: Stand abfragen und bereitliegendes Update sofort installieren.

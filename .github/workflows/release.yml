@@ -56,6 +56,7 @@ jobs:
           curl -sf -X POST http://127.0.0.1:51770/api/app/closing
           sleep 12
           ! curl -sf http://127.0.0.1:51770/api/app/info
+      # Den Fenstertest gibt es nur unter Windows: Chrome öffnet auf den Mac-Testmaschinen von GitHub gar keine Fenster.
       - uses: actions/upload-artifact@v4
         with:
           name: Urlaubsplanner-mac
@@ -98,6 +99,20 @@ jobs:
           curl -sf -X POST http://127.0.0.1:51770/api/app/closing
           sleep 12
           ! curl -sf http://127.0.0.1:51770/api/app/info
+      - name: Echtes Fenster – zweiter Klick holt es nach vorne
+        # Nur zur Info: auf der Testmaschine darf ein per Skript gestartetes Programm evtl. kein Fenster nach vorne holen.
+        continue-on-error: true
+        run: |
+          export URLAUBSPLANNER_DATA="$RUNNER_TEMP/fenster" Updates__Enabled=false
+          exe=./dist/Urlaubsplanner-Windows/Urlaubsplanner/Urlaubsplanner.exe
+          api=http://127.0.0.1:51770/api/app
+          $exe &
+          for i in $(seq 1 60); do [ "$(curl -sf $api/windows)" = '{"open":1}' ] && break; sleep 1; done
+          echo "::notice::Windows nach dem Start: $(curl -sf $api/windows)"
+          $exe
+          sleep 10
+          echo "::notice::Windows nach zweitem Klick: $(curl -sf $api/windows) – $(grep 'läuft schon' "$URLAUBSPLANNER_DATA/urlaubsplanner.log" | tail -n 1 | cut -c21-)"
+          taskkill //IM Urlaubsplanner.exe //F || true
       - uses: actions/upload-artifact@v4
         with:
           name: Urlaubsplanner-windows
