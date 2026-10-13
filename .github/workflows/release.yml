@@ -56,62 +56,7 @@ jobs:
           curl -sf -X POST http://127.0.0.1:51770/api/app/closing
           sleep 12
           ! curl -sf http://127.0.0.1:51770/api/app/info
-      - name: Echtes Fenster – zweiter Klick holt es nach vorne
-        # Nur zur Info (Ergebnis als Hinweis oben im Lauf): Fenster-Verhalten hängt von der Testmaschine ab.
-        continue-on-error: true
-        run: |
-          data="$RUNNER_TEMP/fenster"
-          app="$PWD/dist/Urlaubsplanner-Mac/Urlaubsplanner.app"
-          api=http://127.0.0.1:51770/api/app
-          # Wie ein Klick im Finder (über macOS), mit eigenem Datenordner und ohne Updates.
-          start() { open --env URLAUBSPLANNER_DATA="$data" --env Updates__Enabled=false "$app"; }
-          start
-          for i in $(seq 1 60); do [ "$(curl -sf $api/windows)" = '{"open":1}' ] && break; sleep 1; done
-          echo "::notice::Mac nach dem Start: $(curl -sf $api/windows)"
-          # Diagnose: Log, Browserprozesse, Bildschirmfoto (als Artefakt)
-          tail -n 8 "$data/urlaubsplanner.log" | cut -c1-300 | sed 's/^/::notice::Log: /'
-          ps -axww -o pid=,args= | grep -i "chrom" | grep -v grep | grep -v -- "--type=" | cut -c1-300 | sed 's/^/::notice::ps: /'
-          screencapture -x "$RUNNER_TEMP/fenster.png" || true
-          lsof -nP -iTCP:51770 | cut -c1-200 | head -n 8 | sed 's/^/::notice::lsof: /'
-          printf '%s\n' 'import CoreGraphics' \
-            'let l = CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as! [[String: Any]]' \
-            'for w in l { let b = w[kCGWindowBounds as String] as? [String: Any] ?? [:]; print(w[kCGWindowOwnerPID as String] ?? 0, w[kCGWindowOwnerName as String] ?? "", "layer", w[kCGWindowLayer as String] ?? 0, b["Width"] ?? 0, "x", b["Height"] ?? 0) }' \
-            > "$RUNNER_TEMP/fenster.swift"
-          swift "$RUNNER_TEMP/fenster.swift" 2>&1 | head -n 12 | sed 's/^/::notice::win: /'
-          start
-          sleep 10
-          echo "::notice::Mac nach zweitem Klick: $(curl -sf $api/windows) – $(grep 'läuft schon' "$data/urlaubsplanner.log" | tail -n 1 | cut -c21-)"
-          pkill -TERM -f "Urlaubsplanner.app/Contents/MacOS/.*/Urlaubsplanner.Api" || true
-          sleep 8
-          if pgrep -f "user-data-dir=$data/fenster" >/dev/null; then
-            echo "::warning::Mac: Browser läuft nach dem Beenden noch"
-          else
-            echo "::notice::Mac: Browser nach dem Beenden geschlossen"
-          fi
-          tail -n 4 "$data/urlaubsplanner.log" | cut -c1-300 | sed 's/^/::notice::Log Ende: /'
-      - name: Diagnose – Chrome direkt starten (vorübergehend)
-        continue-on-error: true
-        timeout-minutes: 3
-        run: |
-          cd "$RUNNER_TEMP"; mkdir -p web && echo hallo > web/index.html
-          (cd web && nohup python3 -m http.server 8765 >"$RUNNER_TEMP/http.log" 2>&1 </dev/null &)
-          sleep 2
-          chrome="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
-          "$chrome" --app=http://127.0.0.1:8765/?direkt --user-data-dir="$RUNNER_TEMP/p1" --no-first-run --no-default-browser-check >"$RUNNER_TEMP/c1.log" 2>&1 </dev/null &
-          echo "::notice::Schritt 1 gestartet"
-          sleep 25
-          echo "::notice::direkt: $(grep -c direkt "$RUNNER_TEMP/http.log") Anfragen; $(tail -n 3 "$RUNNER_TEMP/c1.log" | tr '\n' ' ' | cut -c1-400)"
-          open -na "Google Chrome" --args --app=http://127.0.0.1:8765/?open --user-data-dir="$RUNNER_TEMP/p2" --no-first-run --no-default-browser-check
-          sleep 25
-          echo "::notice::open -na: $(grep -c open "$RUNNER_TEMP/http.log") Anfragen"
-          head -c 600 "$RUNNER_TEMP/http.log" | tr '\n' ' ' | sed 's/^/::notice::http: /'; echo
-          swift "$RUNNER_TEMP/fenster.swift" 2>&1 | grep -i chrom | head -n 5 | sed 's/^/::notice::win: /'
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: fenster-mac
-          path: ${{ runner.temp }}/fenster.png
-          if-no-files-found: ignore
+      # Den Fenstertest gibt es nur unter Windows: Chrome öffnet auf den Mac-Testmaschinen von GitHub gar keine Fenster.
       - uses: actions/upload-artifact@v4
         with:
           name: Urlaubsplanner-mac
