@@ -28,7 +28,7 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
       headers: { 'Content-Type': 'application/json', Accept: 'application/json', ...init.headers },
     })
   } catch {
-    throw new ApiError(0, 'Server nicht erreichbar. Läuft das Backend?')
+    throw new ApiError(0, 'Keine Verbindung zum Urlaubsplanner. Wurde die App geschlossen? Dann über das App-Icon neu öffnen.')
   }
 
   if (response.status === 204) {
@@ -41,7 +41,10 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
     const problem = (body ?? {}) as ProblemDetails
     // 404 ohne Details = das Backend kennt den Pfad nicht – fast immer läuft noch eine alte Version.
     if (response.status === 404 && !problem.detail) {
-      throw new ApiError(404, 'Das Backend kennt diese Funktion noch nicht. Bitte das Backend neu starten (nach git pull).')
+      throw new ApiError(
+        404,
+        'Diese Funktion kennt die laufende App noch nicht. Bitte die App schließen und neu öffnen (bzw. das Backend nach git pull neu starten).',
+      )
     }
     throw new ApiError(response.status, problem.detail ?? problem.title ?? `Fehler ${response.status}`, normalizeKeys(problem.errors ?? {}))
   }

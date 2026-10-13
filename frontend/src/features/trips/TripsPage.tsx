@@ -1,11 +1,13 @@
-import { Luggage, Plus } from 'lucide-react'
+import { Luggage, Plus, Settings } from 'lucide-react'
 import { Link, useNavigate, useSearchParams } from 'react-router'
 import { useCreateTrip, useTrips } from '../../api/trips'
 import type { TripListItem } from '../../api/types'
 import { Logo, ThemeToggle } from '../../components/layout/Brand'
 import { Button } from '../../components/ui/Button'
+import { buttonClass } from '../../components/ui/buttonStyles'
 import { EmptyState, ErrorState, ProgressBar, Skeleton } from '../../components/ui/Feedback'
 import { formatDateRange, formatEuro, peopleLabel } from '../../lib/format'
+import { KeyBanner } from '../setup/KeyBanner'
 import { TripFormDialog } from './TripFormDialog'
 
 export function TripsPage() {
@@ -22,8 +24,15 @@ export function TripsPage() {
     <div className="min-h-dvh">
       <header className="flex flex-wrap items-center justify-between gap-4 border-b border-line bg-surface px-4 md:px-8 py-5">
         <Logo />
-        <ThemeToggle />
+        <div className="flex items-center gap-2">
+          <Link to="/einstellungen" className={buttonClass('secondary', 'md', 'h-10')} aria-label="Einstellungen">
+            <Settings size={16} />
+            <span className="max-sm:sr-only">Einstellungen</span>
+          </Link>
+          <ThemeToggle />
+        </div>
       </header>
+      <KeyBanner />
 
       <div className="mx-auto flex max-w-[1200px] flex-col gap-7 px-4 md:px-8 py-10">
         <div className="flex flex-wrap items-end justify-between gap-4">

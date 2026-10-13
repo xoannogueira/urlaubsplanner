@@ -19,6 +19,7 @@ import type { MapAirport, MapArc } from '../../components/map/types'
 import { Button } from '../../components/ui/Button'
 import { EmptyState, ErrorState, Skeleton } from '../../components/ui/Feedback'
 import { QuotaBadge } from '../../components/ui/QuotaBadge'
+import { GoogleSetupHint } from '../setup/GoogleSetupHint'
 import { controlClass } from '../../components/ui/fieldStyles'
 import { addDays } from '../../lib/dates'
 import { formatShortDate, peopleLabel, todayIso } from '../../lib/format'
@@ -587,24 +588,7 @@ function DateAndRadius({
 }
 
 function SetupHint({ provider }: { provider: FlightSearchStatus['provider'] }) {
-  if (provider === 'serpapi') {
-    return (
-      <section className="flex flex-col gap-3 rounded-[20px] border border-dashed border-line p-6">
-        <span className="flex size-12 items-center justify-center rounded-2xl bg-accent-soft text-accent">
-          <KeyRound size={22} />
-        </span>
-        <h3 className="text-lg font-extrabold">Flugsuche einrichten</h3>
-        <p className="max-w-2xl text-[15px] leading-relaxed text-muted">
-          Die Flugsuche nutzt Google Flights über SerpApi. Hinterlege den Key einmal im Terminal (im Ordner
-          <code className="mx-1 rounded bg-surface-2 px-1.5 py-0.5 font-mono text-[13px]">backend/src/Urlaubsplanner.Api</code>) und starte
-          das Backend neu:
-        </p>
-        <pre className="overflow-x-auto rounded-xl bg-surface-2 p-4 font-mono text-[13px]">
-          dotnet user-secrets set "SerpApi:ApiKey" "…"
-        </pre>
-      </section>
-    )
-  }
+  if (provider === 'serpapi') return <GoogleSetupHint what="Flugsuche" />
   return (
     <section className="flex flex-col gap-3 rounded-[20px] border border-dashed border-line p-6">
       <span className="flex size-12 items-center justify-center rounded-2xl bg-accent-soft text-accent">

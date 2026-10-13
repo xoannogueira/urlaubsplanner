@@ -13,7 +13,7 @@ describe('api', () => {
     respond(404, { title: 'Not Found', status: 404 })
     const error = await api('/activities').catch((e: unknown) => e)
     expect(error).toBeInstanceOf(ApiError)
-    expect((error as ApiError).message).toContain('Backend neu starten')
+    expect((error as ApiError).message).toContain('App schließen und neu öffnen')
   })
 
   it('zeigt fachliche 404-Meldungen unverändert', async () => {

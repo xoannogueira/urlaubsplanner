@@ -1,11 +1,12 @@
 import clsx from 'clsx'
-import { BedDouble, CalendarDays, ChartColumn, ClipboardCheck, Compass, Minus, Plane, Plus, Users } from 'lucide-react'
+import { BedDouble, CalendarDays, ChartColumn, ClipboardCheck, Compass, Minus, Plane, Plus, Settings, Users } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { Link, NavLink, Outlet, useParams } from 'react-router'
 import { useTrip, useTripActions, useTrips } from '../../api/trips'
 import type { Trip } from '../../api/types'
 import { formatDateRange, peopleLabel } from '../../lib/format'
 import { isChosen } from '../../lib/options'
+import { KeyBanner } from '../../features/setup/KeyBanner'
 import { ErrorState, Skeleton } from '../ui/Feedback'
 import { Logo, ThemeToggle } from './Brand'
 import type { TripContext } from './tripContext'
@@ -18,6 +19,7 @@ export function TripLayout() {
     <div className="flex min-h-dvh flex-wrap">
       <Sidebar trip={trip} />
       <main className="flex min-w-0 flex-[999_1_560px] flex-col">
+        <KeyBanner />
         {isPending ? (
           <div className="flex flex-col gap-4 p-8">
             <Skeleton className="h-16 w-1/2" />
@@ -93,6 +95,11 @@ function Sidebar({ trip }: { trip?: Trip }) {
           <Plus size={16} strokeWidth={2.5} />
           Neue Reise
         </Link>
+      </div>
+      <div className="mt-auto max-md:mt-0 max-md:ml-auto">
+        <NavItem to="/einstellungen" icon={<Settings size={18} />}>
+          Einstellungen
+        </NavItem>
       </div>
     </nav>
   )

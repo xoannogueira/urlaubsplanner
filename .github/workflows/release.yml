@@ -1,0 +1,96 @@
+name: App bauen
+
+# Baut die Desktop-App für Mac (Apple-Chip und Intel) und Windows.
+# - Von Hand (Actions → „App bauen“ → Run workflow): Zips als Artefakte zum Herunterladen.
+# - Bei einem Tag wie v1.0.0: zusätzlich ein GitHub-Release mit den Zips zum Weitergeben an Freunde.
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+  # Änderungen am Paketbau gleich im Pull Request prüfen.
+  pull_request:
+    paths: ['packaging/**', '.github/workflows/release.yml', 'backend/src/Urlaubsplanner.Api/Desktop/**']
+
+permissions:
+  contents: write
+
+jobs:
+  mac:
+    name: Mac (${{ matrix.target }})
+    strategy:
+      matrix:
+        target: [mac-arm64, mac-x64]
+    # Auf einem Mac bauen: nur dort lässt sich die App signieren (ohne Signatur startet sie auf Apple-Chips nicht).
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: frontend/.nvmrc
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: packaging/build-app.sh ${{ matrix.target }}
+      - name: Signatur prüfen
+        run: |
+          app="dist/Urlaubsplanner-Mac-${{ matrix.target == 'mac-arm64' && 'arm64' || 'x64' }}/Urlaubsplanner.app"
+          codesign --verify --deep --verbose=2 "$app"
+          test -x "$app/Contents/MacOS/Urlaubsplanner"
+          test -f "$app/Contents/MacOS/wwwroot/index.html"
+          test -f "$app/Contents/MacOS/desktop.json"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Urlaubsplanner-${{ matrix.target }}
+          path: dist/*.zip
+
+  windows:
+    name: Windows
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: frontend/.nvmrc
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: packaging/build-app.sh windows
+      - name: Paket prüfen
+        run: |
+          test -f dist/Urlaubsplanner-Windows/Urlaubsplanner/Urlaubsplanner.exe
+          test -f dist/Urlaubsplanner-Windows/Urlaubsplanner/wwwroot/index.html
+          test -f dist/Urlaubsplanner-Windows/Urlaubsplanner/desktop.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Urlaubsplanner-windows
+          path: dist/*.zip
+
+  release:
+    name: Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [mac, windows]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Release mit den Zips anlegen
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" dist/*.zip \
+            --title "Urlaubsplanner ${GITHUB_REF_NAME}" \
+            --notes-file packaging/ANLEITUNG.md

@@ -1,5 +1,7 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
+using Urlaubsplanner.Domain;
 using Urlaubsplanner.Domain.Activities;
 using Urlaubsplanner.Domain.Flights;
 using Urlaubsplanner.Domain.Hotels;
@@ -37,6 +39,16 @@ public static class DependencyInjection
 
         services.Configure<LiteApiOptions>(configuration.GetSection(LiteApiOptions.Section));
         services.Configure<SerpApiOptions>(configuration.GetSection(SerpApiOptions.Section));
+
+        // Der SerpApi-Key kann zur Laufzeit in der App eingetragen werden (settings.json) – deshalb bei jeder
+        // Anfrage den aktuellen Stand lesen statt des Werts vom Start.
+        services.AddTransient<IOptions<SerpApiOptions>>(sp => Options.Create(sp.GetRequiredService<IOptionsMonitor<SerpApiOptions>>().CurrentValue));
+        services.AddHttpClient<ISearchKeyCheck, SerpApiKeyCheck>(http =>
+        {
+            http.BaseAddress = new Uri(configuration[$"{SerpApiOptions.Section}:BaseUrl"] ?? "https://serpapi.com/");
+            http.Timeout = TimeSpan.FromSeconds(15);
+        })
+        .RemoveAllLoggers();
         if (UseSerpApi(configuration, "Hotels:Provider"))
         {
             services.AddHttpClient<IHotelSearch, SerpApiHotelSearch>(http =>
@@ -91,12 +103,21 @@ public static class DependencyInjection
         return services;
     }
 
+    /// <summary>
+    /// Ohne feste Wahl: SerpApi (Google) – außer es ist nur ein LiteAPI-Key hinterlegt. So nutzt die App für Freunde
+    /// ohne Key gleich die Google-Suche, und der Key lässt sich später in der App eintragen.
+    /// </summary>
     private static bool UseSerpApi(IConfiguration configuration, string providerKey)
     {
         var provider = configuration[providerKey];
-        return string.IsNullOrWhiteSpace(provider)
-            ? !string.IsNullOrWhiteSpace(configuration[$"{SerpApiOptions.Section}:ApiKey"])
-            : provider.Trim().Equals("serpapi", StringComparison.OrdinalIgnoreCase);
+        if (!string.IsNullOrWhiteSpace(provider))
+        {
+            return provider.Trim().Equals("serpapi", StringComparison.OrdinalIgnoreCase);
+        }
+
+        var hasSerpApi = !string.IsNullOrWhiteSpace(configuration[$"{SerpApiOptions.Section}:ApiKey"]);
+        var hasLiteApi = !string.IsNullOrWhiteSpace(configuration[$"{LiteApiOptions.Section}:ApiKey"]);
+        return hasSerpApi || !hasLiteApi;
     }
 }
 
