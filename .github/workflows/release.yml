@@ -91,17 +91,20 @@ jobs:
           tail -n 4 "$data/urlaubsplanner.log" | cut -c1-300 | sed 's/^/::notice::Log Ende: /'
       - name: Diagnose – Chrome direkt starten (vorübergehend)
         continue-on-error: true
+        timeout-minutes: 3
         run: |
           cd "$RUNNER_TEMP"; mkdir -p web && echo hallo > web/index.html
-          (cd web && python3 -m http.server 8765 >"$RUNNER_TEMP/http.log" 2>&1 &)
+          (cd web && nohup python3 -m http.server 8765 >"$RUNNER_TEMP/http.log" 2>&1 </dev/null &)
           sleep 2
           chrome="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
-          "$chrome" --app=http://127.0.0.1:8765/?direkt --user-data-dir="$RUNNER_TEMP/p1" --no-first-run --no-default-browser-check >"$RUNNER_TEMP/c1.log" 2>&1 &
+          "$chrome" --app=http://127.0.0.1:8765/?direkt --user-data-dir="$RUNNER_TEMP/p1" --no-first-run --no-default-browser-check >"$RUNNER_TEMP/c1.log" 2>&1 </dev/null &
+          echo "::notice::Schritt 1 gestartet"
           sleep 25
           echo "::notice::direkt: $(grep -c direkt "$RUNNER_TEMP/http.log") Anfragen; $(tail -n 3 "$RUNNER_TEMP/c1.log" | tr '\n' ' ' | cut -c1-400)"
           open -na "Google Chrome" --args --app=http://127.0.0.1:8765/?open --user-data-dir="$RUNNER_TEMP/p2" --no-first-run --no-default-browser-check
           sleep 25
           echo "::notice::open -na: $(grep -c open "$RUNNER_TEMP/http.log") Anfragen"
+          head -c 600 "$RUNNER_TEMP/http.log" | tr '\n' ' ' | sed 's/^/::notice::http: /'; echo
           swift "$RUNNER_TEMP/fenster.swift" 2>&1 | grep -i chrom | head -n 5 | sed 's/^/::notice::win: /'
       - uses: actions/upload-artifact@v4
         if: always()
