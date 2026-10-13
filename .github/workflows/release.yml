@@ -31,6 +31,11 @@ jobs:
           node-version-file: frontend/.nvmrc
           cache: npm
           cache-dependency-path: frontend/package-lock.json
+      - name: dmgbuild installieren (Installationsfenster mit Pfeil)
+        run: |
+          python3 -m venv "$RUNNER_TEMP/dmg"
+          "$RUNNER_TEMP/dmg/bin/pip" install --quiet dmgbuild pyobjc-framework-Quartz
+          echo "$RUNNER_TEMP/dmg/bin" >> "$GITHUB_PATH"
       - run: packaging/build-app.sh mac 2>&1 | tee build.log
       - name: Fehler anzeigen
         if: failure()
@@ -56,11 +61,37 @@ jobs:
           curl -sf -X POST http://127.0.0.1:51770/api/app/closing
           sleep 12
           ! curl -sf http://127.0.0.1:51770/api/app/info
+      - name: Installationsfenster (.dmg) prüfen
+        run: |
+          hdiutil attach -nobrowse -readonly dist/Urlaubsplanner-Mac.dmg -mountpoint "$RUNNER_TEMP/dmg-inhalt"
+          test -x "$RUNNER_TEMP/dmg-inhalt/Urlaubsplanner.app/Contents/MacOS/Urlaubsplanner"
+          test "$(readlink "$RUNNER_TEMP/dmg-inhalt/Programme")" = /Applications
+          codesign --verify --deep "$RUNNER_TEMP/dmg-inhalt/Urlaubsplanner.app"
+          hdiutil detach "$RUNNER_TEMP/dmg-inhalt"
+      - name: Dock und Deinstallieren aus der App
+        run: |
+          apps="$RUNNER_TEMP/Programme"; mkdir -p "$apps"
+          cp -R dist/Urlaubsplanner-Mac/Urlaubsplanner.app "$apps/"
+          export URLAUBSPLANNER_DATA="$RUNNER_TEMP/mac-daten" URLAUBSPLANNER_BROWSER=/usr/bin/true Updates__Enabled=false
+          api=http://127.0.0.1:51770/api/app
+          "$apps/Urlaubsplanner.app/Contents/MacOS/Urlaubsplanner"
+          for i in $(seq 1 30); do curl -sf $api/info >/dev/null && break; sleep 1; done
+          curl -sf $api/installation | tee /dev/stderr | grep -q '"canUninstall":true'
+          curl -sf -X POST $api/installation/dock | grep -q '"inDock":true'
+          defaults read com.apple.dock persistent-apps | grep -q "Programme/Urlaubsplanner.app"
+          curl -sf -X POST -H 'Content-Type: application/json' -d '{"keepData":false}' $api/installation/uninstall
+          sleep 12
+          ! curl -sf $api/info
+          test ! -e "$apps/Urlaubsplanner.app" || { echo "::error::App wurde nicht entfernt"; exit 1; }
+          test ! -e "$URLAUBSPLANNER_DATA" || { echo "::error::Daten wurden nicht entfernt"; exit 1; }
+          ! defaults read com.apple.dock persistent-apps | grep -q "Programme/Urlaubsplanner.app" || { echo "::error::Dock-Eintrag noch da"; exit 1; }
       # Den Fenstertest gibt es nur unter Windows: Chrome öffnet auf den Mac-Testmaschinen von GitHub gar keine Fenster.
       - uses: actions/upload-artifact@v4
         with:
           name: Urlaubsplanner-mac
-          path: dist/*.zip
+          path: |
+            dist/*.zip
+            dist/*.dmg
 
   windows:
     name: Windows
@@ -80,6 +111,9 @@ jobs:
           node-version-file: frontend/.nvmrc
           cache: npm
           cache-dependency-path: frontend/package-lock.json
+      - name: Inno Setup bereitstellen
+        shell: pwsh
+        run: if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) { choco install innosetup --no-progress -y }
       - run: packaging/build-app.sh windows 2>&1 | tee build.log
       - name: Fehler anzeigen
         if: failure()
@@ -89,6 +123,7 @@ jobs:
           test -f dist/Urlaubsplanner-Windows/Urlaubsplanner/Urlaubsplanner.exe
           test -f dist/Urlaubsplanner-Windows/Urlaubsplanner/wwwroot/index.html
           test -f dist/Urlaubsplanner-Windows/Urlaubsplanner/desktop.json
+          test -f dist/Urlaubsplanner-Setup.exe
       - name: App kurz starten (Rauchtest)
         run: |
           export URLAUBSPLANNER_DATA="$RUNNER_TEMP/daten" URLAUBSPLANNER_BROWSER='C:\Windows\System32\where.exe' Updates__Enabled=false
@@ -99,6 +134,48 @@ jobs:
           curl -sf -X POST http://127.0.0.1:51770/api/app/closing
           sleep 12
           ! curl -sf http://127.0.0.1:51770/api/app/info
+      - name: Installer, Deinstaller und Deinstallieren aus der App
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $app = Join-Path $env:LOCALAPPDATA 'Programs\Urlaubsplanner'
+          $data = Join-Path $env:LOCALAPPDATA 'Urlaubsplanner'
+          $desktop = Join-Path ([Environment]::GetFolderPath('Desktop')) 'Urlaubsplanner.lnk'
+          $start = Join-Path ([Environment]::GetFolderPath('Programs')) 'Urlaubsplanner.lnk'
+          function Install { Start-Process dist\Urlaubsplanner-Setup.exe -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/TASKS=desktopicon' -Wait }
+          function Check($ok, $message) { if (-not $ok) { Write-Output "::error::$message"; exit 1 } }
+
+          # 1. Installieren: App, Deinstaller, Startmenü und Desktop
+          Install
+          Check (Test-Path "$app\Urlaubsplanner.exe") 'App nicht installiert'
+          Check (Test-Path "$app\unins000.exe") 'Deinstaller fehlt'
+          Check (Test-Path $desktop) 'Desktop-Verknüpfung fehlt'
+          Check (Test-Path $start) 'Startmenü-Eintrag fehlt'
+
+          # 2. Deinstaller ohne /DELETEDATA: alles weg, Reisen bleiben
+          New-Item -ItemType Directory -Force $data | Out-Null
+          Set-Content (Join-Path $data 'trips.json') '{"trips":[]}'
+          Start-Process "$app\unins000.exe" -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART' -Wait
+          Start-Sleep -Seconds 5
+          Check (-not (Test-Path "$app\Urlaubsplanner.exe")) 'App nach dem Deinstallieren noch da'
+          Check (-not (Test-Path $desktop)) 'Desktop-Verknüpfung noch da'
+          Check (Test-Path (Join-Path $data 'trips.json')) 'Reisen wurden ohne Nachfrage gelöscht'
+
+          # 3. Wieder installieren und aus der App heraus komplett entfernen
+          Install
+          $env:URLAUBSPLANNER_BROWSER = 'C:\Windows\System32\where.exe'
+          $env:Updates__Enabled = 'false'
+          Start-Process "$app\Urlaubsplanner.exe"
+          $api = 'http://127.0.0.1:51770/api/app'
+          for ($i = 0; $i -lt 40; $i++) { try { Invoke-RestMethod "$api/info" | Out-Null; break } catch { Start-Sleep 1 } }
+          $status = Invoke-RestMethod "$api/installation"
+          Write-Output "Installation: $($status | ConvertTo-Json -Compress)"
+          Check ($status.canUninstall -and $status.installer) 'App erkennt den Installer nicht'
+          Invoke-RestMethod -Method Post "$api/installation/uninstall" -ContentType 'application/json' -Body '{"keepData":false}'
+          for ($i = 0; $i -lt 45 -and ((Test-Path $app) -or (Test-Path $data)); $i++) { Start-Sleep 1 }
+          Check (-not (Test-Path "$app\Urlaubsplanner.exe")) 'App nach Deinstallieren aus der App noch da'
+          Check (-not (Test-Path $data)) 'Daten nach Deinstallieren aus der App noch da'
+          Check (-not (Test-Path $desktop)) 'Desktop-Verknüpfung nach Deinstallieren aus der App noch da'
       - name: Echtes Fenster – zweiter Klick holt es nach vorne
         # Nur zur Info: auf der Testmaschine darf ein per Skript gestartetes Programm evtl. kein Fenster nach vorne holen.
         continue-on-error: true
@@ -116,7 +193,9 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: Urlaubsplanner-windows
-          path: dist/*.zip
+          path: |
+            dist/*.zip
+            dist/*.exe
 
   release:
     name: Release
@@ -133,6 +212,6 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "${GITHUB_REF_NAME}" dist/*.zip \
+          gh release create "${GITHUB_REF_NAME}" dist/*.zip dist/*.dmg dist/*.exe \
             --title "Urlaubsplanner ${GITHUB_REF_NAME}" \
             --notes-file packaging/ANLEITUNG.md

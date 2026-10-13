@@ -6,14 +6,16 @@ einzeln buchen.
 
 ## Herunterladen
 
-Eine Datei laden, entpacken, App-Icon anklicken. Die App aktualisiert sich danach von selbst.
+Installieren, App-Icon anklicken, fertig. Die App aktualisiert sich danach von selbst.
 
 | System | Download |
 | ------ | -------- |
-| **Mac** (Apple-Chip und Intel) | [Urlaubsplanner-Mac.zip](https://github.com/xoannogueira/urlaubsplanner/releases/latest/download/Urlaubsplanner-Mac.zip) |
-| **Windows** 10/11 | [Urlaubsplanner-Windows.zip](https://github.com/xoannogueira/urlaubsplanner/releases/latest/download/Urlaubsplanner-Windows.zip) |
+| **Mac** (Apple-Chip und Intel) | [Urlaubsplanner-Mac.dmg](https://github.com/xoannogueira/urlaubsplanner/releases/latest/download/Urlaubsplanner-Mac.dmg) – öffnen und die App in „Programme“ ziehen |
+| **Windows** 10/11 | [Urlaubsplanner-Setup.exe](https://github.com/xoannogueira/urlaubsplanner/releases/latest/download/Urlaubsplanner-Setup.exe) – Installer mit Desktop-Verknüpfung |
 
-Schritt für Schritt erklärt: [Anleitung](packaging/ANLEITUNG.md) (liegt auch jedem Zip bei).
+Schritt für Schritt erklärt: [Anleitung](packaging/ANLEITUNG.md). Ohne Installation gibt es die App auch als Zip
+([Mac](https://github.com/xoannogueira/urlaubsplanner/releases/latest/download/Urlaubsplanner-Mac.zip),
+[Windows](https://github.com/xoannogueira/urlaubsplanner/releases/latest/download/Urlaubsplanner-Windows.zip)).
 
 ## Stand: Phase 6 – Dashboard
 
@@ -177,9 +179,18 @@ ein paar Sekunden (nach dem letzten, falls mehrere offen sind). Ein zweiter Klic
 - **Erster Start:** Ein Tutorial führt durchs Anlegen eines eigenen, kostenlosen SerpApi-Keys. Der Key wird in der App eingetragen,
   geprüft und gespeichert, kein Terminal nötig. Unter **Einstellungen** lässt er sich ändern.
 - **Warnungen:** Ohne Key und bei wenigen restlichen Suchen erscheint oben ein Hinweis.
-- **Ein Paket pro System:** `Urlaubsplanner-Mac.zip` enthält die App für Apple-Chips und Intel (das Startprogramm nimmt die passende),
-  `Urlaubsplanner-Windows.zip` einen Ordner mit `Urlaubsplanner.exe`. Die Namen bleiben immer gleich, deshalb funktionieren die
-  Download-Links oben für jede Version.
+- **Installieren:** Mac über `Urlaubsplanner-Mac.dmg` (Fenster mit Pfeil: App in „Programme“ ziehen; gebaut mit
+  [dmgbuild](https://github.com/dmgbuild/dmgbuild)), Windows über `Urlaubsplanner-Setup.exe`
+  ([Inno Setup](https://jrsoftware.org/isinfo.php), `packaging/windows/Urlaubsplanner.iss`): ohne Admin-Rechte nach
+  `%LOCALAPPDATA%\Programs\Urlaubsplanner`, Startmenü und Desktop-Verknüpfung, Deinstaller mit Frage nach den Daten.
+  Die Zips (`Urlaubsplanner-Mac.zip` für Apple-Chips und Intel, `Urlaubsplanner-Windows.zip`) sind die Grundlage der Updates.
+  Alle Namen bleiben immer gleich, deshalb funktionieren die Download-Links oben für jede Version.
+- **Standardbrowser:** Die App erkennt den Standardbrowser (Mac: LaunchServices, Windows: Registry). Chrome, Edge, Brave und
+  Vivaldi öffnen sie als eigenes App-Fenster, Safari, Firefox & Co. als Tab. Links nach außen öffnen immer im Standardbrowser.
+  `URLAUBSPLANNER_BROWSER=…` erzwingt einen bestimmten Browser.
+- **Dock und Deinstallieren:** Unter **Einstellungen → App auf diesem Computer** legt sich die App auf dem Mac ins Dock
+  (`defaults export/import com.apple.dock`) und entfernt sich auf beiden Systemen selbst – App, Verknüpfungen bzw.
+  Dock-Eintrag, Browser-Profil und auf Wunsch alle Daten.
 - **Automatische Updates:** Kurz nach dem Start fragt die App bei GitHub nach dem neuesten Release
   (`releases/latest`, ohne Key, 60 Anfragen/Stunde frei), lädt das passende Zip im Hintergrund, prüft die Prüfsumme und entpackt es in
   den Datenordner. Installiert wird beim Schließen der App (oder sofort per „Jetzt neu starten“): Auf dem Mac wird die ganze

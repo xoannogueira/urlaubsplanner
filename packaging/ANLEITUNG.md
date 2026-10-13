@@ -5,25 +5,25 @@ Deine Daten bleiben auf deinem Computer. Du brauchst kein Terminal und musst nic
 
 ## Mac
 
-1. **Zip öffnen.** Doppelklick auf `Urlaubsplanner-Mac.zip`. Danach liegt `Urlaubsplanner` (mit dem Koffer-Icon) daneben.
-2. **In „Programme“ ziehen.** Zieh `Urlaubsplanner` in den Ordner **Programme** (im Finder links in der Seitenleiste).
-   Das ist wichtig: Nur von dort kann sich die App selbst aktualisieren.
+1. **`Urlaubsplanner-Mac.dmg` öffnen** (Doppelklick). Es öffnet sich ein Fenster mit dem Koffer-Icon und dem Ordner
+   „Programme“.
+2. **Das Koffer-Icon auf den Ordner „Programme“ ziehen.** Fertig installiert. Das Fenster kannst du danach schließen
+   (und in der Seitenleiste des Finders auf ⏏ neben „Urlaubsplanner“ klicken).
 3. **Beim ersten Mal öffnen.** Die App ist nicht bei Apple registriert, deshalb fragt dein Mac einmal nach:
-   - **Rechtsklick** (oder Ctrl-Klick) auf `Urlaubsplanner` → **Öffnen** → nochmal **Öffnen**.
+   - Im Finder **Programme** öffnen, **Rechtsklick** (oder Ctrl-Klick) auf `Urlaubsplanner` → **Öffnen** → nochmal **Öffnen**.
    - Kommt nur „kann nicht geöffnet werden“: **Systemeinstellungen → Datenschutz & Sicherheit**, ganz nach unten scrollen
      und bei „Urlaubsplanner“ auf **Trotzdem öffnen** klicken.
-4. **Fertig.** Ab jetzt reicht ein normaler Klick. Tipp: Zieh die App ins Dock, dann hast du sie immer griffbereit.
+4. **Ins Dock legen:** Am Ende des Tutorials (oder unter **Einstellungen**) auf **„Ins Dock legen“** klicken. Ab jetzt reicht
+   ein Klick aufs Icon im Dock.
 
 ## Windows
 
-1. **Zip entpacken.** Rechtsklick auf `Urlaubsplanner-Windows.zip` → **Alle extrahieren…** → **Extrahieren**.
-2. **Ordner ablegen.** Verschieb den Ordner `Urlaubsplanner` z. B. nach **Dokumente**. (Nicht in „Programme“ – dort darf
-   sich die App nicht selbst aktualisieren.)
-3. **Starten.** Im Ordner auf **`Urlaubsplanner`** (mit dem Koffer-Icon) doppelklicken.
-4. **Beim ersten Mal:** Erscheint „Der Computer wurde durch Windows geschützt“, auf **Weitere Informationen** →
-   **Trotzdem ausführen** klicken.
-5. **Icon auf den Desktop:** Rechtsklick auf `Urlaubsplanner` → **Weitere Optionen anzeigen** → **Senden an** →
-   **Desktop (Verknüpfung erstellen)**.
+1. **`Urlaubsplanner-Setup.exe` öffnen** (Doppelklick).
+2. Erscheint „Der Computer wurde durch Windows geschützt“: auf **Weitere Informationen** → **Trotzdem ausführen** klicken.
+   Das passiert nur beim ersten Mal.
+3. Im Installer **Weiter** und **Installieren** klicken. Das Häkchen bei „Verknüpfung auf dem Desktop anlegen“ ist schon
+   gesetzt. Zum Schluss startet der Urlaubsplanner auf Wunsch gleich.
+4. Ab jetzt startest du die App über das Icon auf dem Desktop oder im Startmenü.
 
 ## Erster Start
 
@@ -46,12 +46,19 @@ Hintergrund. Dann erscheint oben ein Hinweis:
 
 Deine Reisen und dein Key bleiben bei einem Update natürlich erhalten. Welche Version du hast, steht unter **Einstellungen**.
 
+## Deinstallieren
+
+- **In der App:** **Einstellungen → „Urlaubsplanner deinstallieren“**. Du wählst, ob deine Reisen gelöscht oder behalten
+  werden. Die App schließt sich und ist nach ein paar Sekunden komplett weg – mit Dock-Eintrag bzw. Verknüpfungen.
+- **Windows** geht auch ganz normal über **Einstellungen → Apps → Urlaubsplanner → Deinstallieren**.
+
 ## Gut zu wissen
 
-- **Fenster:** Die App öffnet sich in einem eigenen Fenster, wenn Google Chrome, Microsoft Edge oder Brave installiert ist.
-  Sonst öffnet sie sich als Tab in deinem Standardbrowser.
+- **Browser:** Die App öffnet sich mit deinem Standardbrowser. Ist das Chrome, Edge, Brave oder Vivaldi, bekommt sie ein
+  eigenes Fenster wie eine richtige App. Bei Safari oder Firefox öffnet sie sich als Tab.
+- **Links** in der App (Booking, Google Flights …) öffnen sich immer in deinem Standardbrowser – dort, wo du eingeloggt bist.
 - **Schon offen?** Ein Klick aufs Icon holt das offene Fenster nach vorne – es startet nichts doppelt.
-- **Beenden:** Einfach das Fenster schließen. Nach etwa 10 Sekunden ist der Urlaubsplanner komplett beendet.
+- **Beenden:** Einfach das Fenster (bzw. den Tab) schließen. Nach etwa 10 Sekunden ist der Urlaubsplanner komplett beendet.
 - **Deine Daten** (Reisen, Einstellungen, Key) liegen nur auf deinem Computer:
   - Mac: `~/Library/Application Support/Urlaubsplanner`
   - Windows: `%LOCALAPPDATA%\Urlaubsplanner`
