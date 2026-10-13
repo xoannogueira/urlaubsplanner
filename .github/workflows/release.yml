@@ -72,6 +72,12 @@ jobs:
           tail -n 8 "$data/urlaubsplanner.log" | cut -c1-300 | sed 's/^/::notice::Log: /'
           ps -axww -o pid=,args= | grep -i "chrom" | grep -v grep | grep -v -- "--type=" | cut -c1-300 | sed 's/^/::notice::ps: /'
           screencapture -x "$RUNNER_TEMP/fenster.png" || true
+          lsof -nP -iTCP:51770 | cut -c1-200 | head -n 8 | sed 's/^/::notice::lsof: /'
+          printf '%s\n' 'import CoreGraphics' \
+            'let l = CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as! [[String: Any]]' \
+            'for w in l { let b = w[kCGWindowBounds as String] as? [String: Any] ?? [:]; print(w[kCGWindowOwnerPID as String] ?? 0, w[kCGWindowOwnerName as String] ?? "", "layer", w[kCGWindowLayer as String] ?? 0, b["Width"] ?? 0, "x", b["Height"] ?? 0) }' \
+            > "$RUNNER_TEMP/fenster.swift"
+          swift "$RUNNER_TEMP/fenster.swift" 2>&1 | head -n 12 | sed 's/^/::notice::win: /'
           start
           sleep 10
           echo "::notice::Mac nach zweitem Klick: $(curl -sf $api/windows) – $(grep 'läuft schon' "$data/urlaubsplanner.log" | tail -n 1 | cut -c21-)"
