@@ -69,7 +69,16 @@ public static partial class AppEndpoints
         // Installation: Dock (Mac) und Deinstallieren.
         group.MapGet("/installation", (AppInstallation installation) => TypedResults.Ok(installation.Status()));
         group.MapPost("/installation/dock", (AppInstallation installation) =>
-            installation.AddToDock() ? Results.Ok(installation.Status()) : Results.Conflict());
+        {
+            try
+            {
+                return installation.AddToDock() ? Results.Ok(installation.Status()) : Results.Conflict();
+            }
+            catch (Exception e) when (e is IOException or InvalidOperationException or System.Xml.XmlException or System.ComponentModel.Win32Exception)
+            {
+                return Results.Problem(e.Message, title: "Ins Dock legen hat nicht geklappt");
+            }
+        });
         group.MapPost("/installation/uninstall", (AppInstallation installation, UninstallBody body) =>
             installation.Status().CanUninstall && installation.RequestUninstall(body.KeepData) ? Results.Accepted() : Results.Conflict());
 

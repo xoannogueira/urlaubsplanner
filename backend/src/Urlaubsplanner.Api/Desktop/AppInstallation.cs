@@ -60,11 +60,14 @@ public sealed partial class AppInstallation(AppPaths paths, IHostApplicationLife
         }
 
         var plist = Dock.Export();
-        if (!Dock.Contains(plist, mac.BundlePath))
+        if (Dock.Contains(plist, mac.BundlePath))
         {
-            Dock.Import(Dock.WithApp(plist, mac.BundlePath));
+            return true;
         }
 
+        Dock.Import(Dock.WithApp(plist, mac.BundlePath));
+        var saved = Dock.Contains(Dock.Export(), mac.BundlePath);
+        LogDock(saved);
         return true;
     }
 
@@ -170,6 +173,9 @@ public sealed partial class AppInstallation(AppPaths paths, IHostApplicationLife
         Remove-Item -LiteralPath $PSCommandPath -Force
         """;
 
+    [LoggerMessage(Level = LogLevel.Information, Message = "Ins Dock gelegt (Eintrag gespeichert: {Saved})")]
+    private partial void LogDock(bool saved);
+
     [LoggerMessage(Level = LogLevel.Warning, Message = "Dock-Einstellungen nicht lesbar: {Reason}")]
     private partial void LogDockUnreadable(string reason);
 
@@ -191,12 +197,23 @@ internal static class Dock
 
     public static void Import(string plistXml)
     {
-        var start = new ProcessStartInfo("/usr/bin/defaults", ["import", "com.apple.dock", "-"]) { UseShellExecute = false, RedirectStandardInput = true };
-        using (var process = Process.Start(start) ?? throw new InvalidOperationException("defaults"))
+        // Über eine Datei statt stdin – „defaults import“ liest stdin nicht überall zuverlässig.
+        var file = Path.Combine(Path.GetTempPath(), $"urlaubsplanner-dock-{Environment.ProcessId}.plist");
+        File.WriteAllText(file, plistXml);
+        try
         {
-            process.StandardInput.Write(plistXml);
-            process.StandardInput.Close();
+            var start = new ProcessStartInfo("/usr/bin/defaults", ["import", "com.apple.dock", file]) { UseShellExecute = false, RedirectStandardError = true };
+            using var process = Process.Start(start) ?? throw new InvalidOperationException("defaults");
+            var error = process.StandardError.ReadToEnd();
             process.WaitForExit(5000);
+            if (process.ExitCode != 0)
+            {
+                throw new InvalidOperationException($"defaults import: {error.Trim()}");
+            }
+        }
+        finally
+        {
+            File.Delete(file);
         }
 
         // Dock neu starten, damit es die Änderung zeigt (startet sofort von selbst wieder).
