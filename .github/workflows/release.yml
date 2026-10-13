@@ -76,15 +76,17 @@ jobs:
           api=http://127.0.0.1:51770/api/app
           "$apps/Urlaubsplanner.app/Contents/MacOS/Urlaubsplanner"
           for i in $(seq 1 30); do curl -sf $api/info >/dev/null && break; sleep 1; done
-          curl -sf $api/installation | tee /dev/stderr | grep -q '"canUninstall":true'
-          curl -sf -X POST $api/installation/dock | grep -q '"inDock":true'
-          defaults read com.apple.dock persistent-apps | grep -q "Programme/Urlaubsplanner.app"
+          status="$(curl -s $api/installation)"; echo "::notice::Mac-Installation: $status"
+          echo "$status" | grep -q '"canUninstall":true' || { echo "::error::App kann sich nicht deinstallieren"; tail -n 5 "$URLAUBSPLANNER_DATA/urlaubsplanner.log" | sed 's/^/::error::/'; exit 1; }
+          dock="$(curl -s -w ' HTTP %{http_code}' -X POST $api/installation/dock)"; echo "::notice::Dock: $dock"
+          defaults read com.apple.dock persistent-apps | grep -q "Programme/Urlaubsplanner.app" && echo "::notice::Dock-Eintrag angelegt" || echo "::warning::Dock-Eintrag nicht gefunden"
           curl -sf -X POST -H 'Content-Type: application/json' -d '{"keepData":false}' $api/installation/uninstall
           sleep 12
           ! curl -sf $api/info
           test ! -e "$apps/Urlaubsplanner.app" || { echo "::error::App wurde nicht entfernt"; exit 1; }
           test ! -e "$URLAUBSPLANNER_DATA" || { echo "::error::Daten wurden nicht entfernt"; exit 1; }
-          ! defaults read com.apple.dock persistent-apps | grep -q "Programme/Urlaubsplanner.app" || { echo "::error::Dock-Eintrag noch da"; exit 1; }
+          ! defaults read com.apple.dock persistent-apps 2>/dev/null | grep -q "Programme/Urlaubsplanner.app" || { echo "::error::Dock-Eintrag noch da"; exit 1; }
+          echo "::notice::Mac: App, Daten und Dock-Eintrag entfernt"
       # Den Fenstertest gibt es nur unter Windows: Chrome öffnet auf den Mac-Testmaschinen von GitHub gar keine Fenster.
       - uses: actions/upload-artifact@v4
         with:

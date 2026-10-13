@@ -34,8 +34,21 @@ public sealed partial class AppInstallation(AppPaths paths, IHostApplicationLife
             platform,
             CanUninstall: _target is WindowsFolder || (mac is not null && !translocated),
             CanAddToDock: mac is not null && !translocated,
-            InDock: mac is not null && !translocated && Dock.Contains(Dock.Export(), mac.BundlePath),
+            InDock: mac is not null && !translocated && IsInDock(mac.BundlePath),
             Installer: _target is WindowsFolder w && File.Exists(Path.Combine(w.InstallDirectory, "unins000.exe")));
+    }
+
+    private bool IsInDock(string bundlePath)
+    {
+        try
+        {
+            return Dock.Contains(Dock.Export(), bundlePath);
+        }
+        catch (Exception e) when (e is IOException or InvalidOperationException or System.Xml.XmlException or System.ComponentModel.Win32Exception)
+        {
+            LogDockUnreadable(e.Message);
+            return false;
+        }
     }
 
     /// <summary>Mac: App ins Dock legen (rechts neben die anderen Apps).</summary>
@@ -156,6 +169,9 @@ public sealed partial class AppInstallation(AppPaths paths, IHostApplicationLife
             : $"Remove-Item -LiteralPath {Ps(data)} -Recurse -Force")}}
         Remove-Item -LiteralPath $PSCommandPath -Force
         """;
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Dock-Einstellungen nicht lesbar: {Reason}")]
+    private partial void LogDockUnreadable(string reason);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Deinstallieren angefordert (Daten behalten: {KeepData})")]
     private partial void LogUninstall(bool keepData);
