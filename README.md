@@ -155,6 +155,33 @@ cd ../backend/src/Urlaubsplanner.Api && dotnet run
 
 Dann <http://localhost:5080> öffnen.
 
+### Als Desktop-App für Freunde
+
+Mit einem Doppelklick aufs App-Icon startet alles. Der Server läuft unsichtbar im Hintergrund, die App öffnet sich in einem eigenen
+Fenster (Chrome, Edge oder Brave im App-Modus, sonst im Standardbrowser). Wird das Fenster geschlossen, beendet sich der Server nach
+ein paar Sekunden. Ein zweiter Klick, während die App läuft, öffnet nur ein weiteres Fenster.
+
+- **Daten:** Reisen, Einstellungen, der eigene API-Key und das Log liegen im Benutzerordner. Auf dem Mac ist das
+  `~/Library/Application Support/Urlaubsplanner`, unter Windows `%LOCALAPPDATA%\Urlaubsplanner`.
+- **Erster Start:** Ein Tutorial führt durchs Anlegen eines eigenen, kostenlosen SerpApi-Keys. Der Key wird in der App eingetragen,
+  geprüft und gespeichert, kein Terminal nötig. Unter **Einstellungen** lässt er sich ändern.
+- **Warnungen:** Ohne Key und bei wenigen restlichen Suchen erscheint oben ein Hinweis.
+
+**Pakete bauen:**
+
+- **Automatisch (empfohlen):** Auf GitHub unter **Actions → „App bauen“ → Run workflow** laufen lassen und die Zips herunterladen.
+  Ein Tag wie `v1.0.0` legt zusätzlich ein Release mit den Zips an, den Link kannst du an Freunde schicken.
+- **Lokal auf dem Mac:**
+
+  ```bash
+  packaging/build-app.sh mac-arm64        # oder mac-x64, windows, all → dist/*.zip
+  ```
+
+Die Anleitung für Freunde liegt jedem Zip bei (`packaging/ANLEITUNG.md`).
+
+**Desktop-Modus beim Entwickeln testen:** `dotnet run -- --desktop`. Mit `URLAUBSPLANNER_DATA=…` lässt sich ein anderer Datenordner
+wählen.
+
 ### Hotelsuche einrichten (LiteAPI)
 
 1. Kostenlosen Account auf <https://www.liteapi.travel> anlegen, im Dashboard unter *Developer → API Keys* den Sandbox-Key (`sand_…`) kopieren.

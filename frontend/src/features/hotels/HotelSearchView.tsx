@@ -19,6 +19,7 @@ import type { MapPin, PinTone } from '../../components/map/types'
 import { Button } from '../../components/ui/Button'
 import { EmptyState, ErrorState, Skeleton } from '../../components/ui/Feedback'
 import { QuotaBadge } from '../../components/ui/QuotaBadge'
+import { GoogleSetupHint } from '../setup/GoogleSetupHint'
 import { formatDateRange, formatEuro, nightsLabel, peopleLabel } from '../../lib/format'
 import { distanceKm, toLatLng } from '../../lib/geo'
 import {
@@ -501,24 +502,7 @@ function pinFor(
 }
 
 function SetupHint({ provider }: { provider: HotelSearchStatus['provider'] }) {
-  if (provider === 'serpapi') {
-    return (
-      <section className="flex flex-col gap-3 rounded-[20px] border border-dashed border-line p-6">
-        <span className="flex size-12 items-center justify-center rounded-2xl bg-accent-soft text-accent">
-          <KeyRound size={22} />
-        </span>
-        <h3 className="text-lg font-extrabold">Hotelsuche einrichten</h3>
-        <p className="max-w-2xl text-[15px] leading-relaxed text-muted">
-          Die Hotelsuche nutzt Google Hotels über SerpApi (derselbe Key wie die Flugsuche). Hinterlege ihn einmal im Terminal (im Ordner
-          <code className="mx-1 rounded bg-surface-2 px-1.5 py-0.5 font-mono text-[13px]">backend/src/Urlaubsplanner.Api</code>) und starte
-          das Backend neu:
-        </p>
-        <pre className="overflow-x-auto rounded-xl bg-surface-2 p-4 font-mono text-[13px]">
-          dotnet user-secrets set "SerpApi:ApiKey" "…"
-        </pre>
-      </section>
-    )
-  }
+  if (provider === 'serpapi') return <GoogleSetupHint what="Hotelsuche" />
   return (
     <section className="flex flex-col gap-3 rounded-[20px] border border-dashed border-line p-6">
       <span className="flex size-12 items-center justify-center rounded-2xl bg-accent-soft text-accent">

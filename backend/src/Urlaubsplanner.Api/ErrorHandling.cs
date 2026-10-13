@@ -45,6 +45,10 @@ internal sealed class DomainExceptionHandler : IExceptionHandler
                 statusCode: StatusCodes.Status502BadGateway,
                 title: "Flugsuche nicht erreichbar",
                 detail: e.Message),
+            KeyCheckUnavailableException e => TypedResults.Problem(
+                statusCode: StatusCodes.Status502BadGateway,
+                title: "Prüfung nicht möglich",
+                detail: e.Message),
             ActivitySearchUnavailableException e => TypedResults.Problem(
                 statusCode: StatusCodes.Status502BadGateway,
                 title: "Vorschläge nicht verfügbar",
