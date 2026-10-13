@@ -42,7 +42,12 @@ function withPdfText<T>(node: T): T {
   if (typeof node === 'string') return pdfText(node) as T
   if (Array.isArray(node)) return node.map(withPdfText) as T
   if (node && typeof node === 'object') {
-    return Object.fromEntries(Object.entries(node).map(([k, v]) => [k, k === 'text' || k === 'stack' || k === 'columns' || k === 'body' || k === 'table' ? withPdfText(v) : v])) as T
+    return Object.fromEntries(
+      Object.entries(node).map(([k, v]) => [
+        k,
+        k === 'text' || k === 'stack' || k === 'columns' || k === 'body' || k === 'table' ? withPdfText(v) : v,
+      ]),
+    ) as T
   }
   return node
 }
@@ -159,7 +164,16 @@ function openPoints(trip: Trip, missingNights: number): Content {
     margin: [0, 8, 0, 0],
     table: {
       widths: ['*'],
-      body: [[{ text: [{ text: 'Noch offen: ', bold: true }, points.join(' · ')], color: color.warn, fillColor: color.warnSoft, margin: [10, 6, 10, 6] }]],
+      body: [
+        [
+          {
+            text: [{ text: 'Noch offen: ', bold: true }, points.join(' · ')],
+            color: color.warn,
+            fillColor: color.warnSoft,
+            margin: [10, 6, 10, 6],
+          },
+        ],
+      ],
     },
     layout: 'noBorders',
   }
@@ -179,12 +193,13 @@ function section(title: string, kind: OptionKind | null, pageBreak = false): Con
 
 const empty = (text: string): Content => ({ text, style: 'small', italics: true, margin: [0, 2, 0, 0] })
 
-function chip(status: OptionStatus): Content {
+function chip(status: OptionStatus): ContentTable {
   const s = statusChip[status]
   return {
-    table: { body: [[{ text: s.text, fontSize: 7, bold: true, color: s.ink, fillColor: s.fill, margin: [5, 1, 5, 1], characterSpacing: 0.5 }]] },
+    table: {
+      body: [[{ text: s.text, fontSize: 7, bold: true, color: s.ink, fillColor: s.fill, margin: [5, 1, 5, 1], characterSpacing: 0.5 }]],
+    },
     layout: 'noBorders',
-    width: 'auto',
   }
 }
 
@@ -194,7 +209,7 @@ function itemHead(option: TripOption, title = option.title): Content {
     columns: [
       { text: pdfText(title), style: 'itemTitle', width: '*' },
       { text: priceText(option), bold: true, alignment: 'right', width: 'auto', margin: [0, 1, 8, 0] },
-      chip(option.status),
+      { ...chip(option.status), width: 'auto' },
     ],
   }
 }
@@ -206,7 +221,14 @@ function priceText(option: TripOption): string {
 
 function linkLine(option: TripOption, label = 'Ansehen / buchen'): Content {
   if (!option.url) return ''
-  return { text: [{ text: `${label}: `, color: color.muted }, { text: hostOf(option.url), link: option.url, color: color.accent, decoration: 'underline' }], style: 'small', margin: [0, 2, 0, 0] }
+  return {
+    text: [
+      { text: `${label}: `, color: color.muted },
+      { text: hostOf(option.url), link: option.url, color: color.accent, decoration: 'underline' },
+    ],
+    style: 'small',
+    margin: [0, 2, 0, 0],
+  }
 }
 
 function card(items: Content[], kind: OptionKind): Content {
@@ -279,7 +301,13 @@ function flightBlock(option: TripOption): Content {
 
 function hotelsOfStage(trip: Trip, stage: Stage): Content {
   const hotels = trip.options.filter((o) => o.kind === 'Hotel' && o.stageId === stage.id && isChosen(o)).sort(byStart)
-  const heading = { text: [{ text: stage.name, bold: true }, { text: `   ${formatDateRange(stage.startDate, stage.endDate)} · ${nightsLabel(stage.nights)}`, color: color.muted }], margin: [0, 10, 0, 0] } satisfies Content
+  const heading = {
+    text: [
+      { text: stage.name, bold: true },
+      { text: `   ${formatDateRange(stage.startDate, stage.endDate)} · ${nightsLabel(stage.nights)}`, color: color.muted },
+    ],
+    margin: [0, 10, 0, 0],
+  } satisfies Content
   if (hotels.length === 0) return [heading, { text: 'Noch keine Unterkunft ausgewählt.', color: color.warn, margin: [0, 4, 0, 0] }]
   return [
     heading,
@@ -289,7 +317,10 @@ function hotelsOfStage(trip: Trip, stage: Stage): Content {
       return card(
         [
           itemHead(h),
-          { text: `Check-in ${formatShortDate(from)}  ›  Check-out ${formatShortDate(to)}  (${nightsLabel(days(from, to))})`, margin: [0, 3, 0, 0] },
+          {
+            text: `Check-in ${formatShortDate(from)}  ›  Check-out ${formatShortDate(to)}  (${nightsLabel(days(from, to))})`,
+            margin: [0, 3, 0, 0],
+          },
           h.locationName ? { text: h.locationName, style: 'small' } : '',
           h.notes ? { text: pdfText(h.notes), style: 'small', margin: [0, 2, 0, 0] } : '',
           linkLine(h),
@@ -304,7 +335,10 @@ function activities(trip: Trip): Content {
   const remembered = (o: TripOption) => o.kind === 'Activity' && o.status !== 'Idea'
   const groups = [
     ...trip.stages.map((s) => ({ name: s.name, items: trip.options.filter((o) => remembered(o) && o.stageId === s.id) })),
-    { name: 'Ganze Reise', items: trip.options.filter((o) => remembered(o) && (!o.stageId || !trip.stages.some((s) => s.id === o.stageId))) },
+    {
+      name: 'Ganze Reise',
+      items: trip.options.filter((o) => remembered(o) && (!o.stageId || !trip.stages.some((s) => s.id === o.stageId))),
+    },
   ].filter((g) => g.items.length > 0)
   if (groups.length === 0) return empty('Noch keine Aktivitäten gemerkt.')
   return groups.map((g) => [
@@ -313,7 +347,9 @@ function activities(trip: Trip): Content {
       const [description, ...rest] = (a.notes ?? '').split('\n').filter(Boolean)
       const hours = rest.find((l) => l.startsWith('Öffnungszeiten:'))
       const free = rest.includes('Eintritt frei')
-      const sub = [a.locationName, a.startDate ? formatShortDate(a.startDate) : null, free ? 'Eintritt frei' : null].filter(Boolean).join(' · ')
+      const sub = [a.locationName, a.startDate ? formatShortDate(a.startDate) : null, free ? 'Eintritt frei' : null]
+        .filter(Boolean)
+        .join(' · ')
       return card(
         [
           itemHead(a),
@@ -343,8 +379,16 @@ function extraBlock(option: TripOption): Content {
 function dayTable(days: ReturnType<typeof buildTimeline>['days']): Content {
   const body: TableCell[][] = [['Tag', 'Ort', 'Programm', 'Übernachtung'].map((h) => ({ text: h, style: 'label' }))]
   for (const d of days) {
-    const program = d.items.length > 0 ? pdfText(d.items.map((i) => `${kindLabels[i.kind].singular}: ${i.title}${i.time ? ` (${i.time})` : ''}`).join('\n')) : '–'
-    const night = d.night === 'missing' ? { text: 'fehlt noch', color: color.warn, bold: true } : d.night ? { text: pdfText(d.night.title) + (d.night.booked ? '' : ' (noch buchen)') } : { text: 'Abreise', color: color.muted }
+    const program =
+      d.items.length > 0
+        ? pdfText(d.items.map((i) => `${kindLabels[i.kind].singular}: ${i.title}${i.time ? ` (${i.time})` : ''}`).join('\n'))
+        : '–'
+    const night =
+      d.night === 'missing'
+        ? { text: 'fehlt noch', color: color.warn, bold: true }
+        : d.night
+          ? { text: pdfText(d.night.title) + (d.night.booked ? '' : ' (noch buchen)') }
+          : { text: 'Abreise', color: color.muted }
     body.push([
       { text: formatShortDate(d.date), bold: true, noWrap: true },
       { text: d.stage?.name ?? '–', color: d.stageStart ? color.text : color.muted },
@@ -368,9 +412,17 @@ function costTables(trip: Trip): Content {
           headerRows: 1,
           widths: ['*', 'auto', 'auto'],
           body: [
-            [{ text: 'Kategorie', style: 'label' }, { text: 'Gebucht', style: 'label', alignment: 'right' }, { text: 'Gesamt', style: 'label', alignment: 'right' }],
+            [
+              { text: 'Kategorie', style: 'label' },
+              { text: 'Gebucht', style: 'label', alignment: 'right' },
+              { text: 'Gesamt', style: 'label', alignment: 'right' },
+            ],
             ...kinds.map((k) => [`${kindLabels[k.kind].plural} (${k.count})`, right(formatEuro(k.booked)), right(formatEuro(k.total))]),
-            [{ text: 'Summe', bold: true }, right(formatEuro(round(kinds.reduce((n, k) => n + k.booked, 0))), true), right(formatEuro(total), true)],
+            [
+              { text: 'Summe', bold: true },
+              right(formatEuro(round(kinds.reduce((n, k) => n + k.booked, 0))), true),
+              right(formatEuro(total), true),
+            ],
           ],
         },
         layout: thinRows,
@@ -382,8 +434,16 @@ function costTables(trip: Trip): Content {
           headerRows: 1,
           widths: ['*', 'auto', 'auto'],
           body: [
-            [{ text: 'Etappe', style: 'label' }, { text: 'Pro Nacht', style: 'label', alignment: 'right' }, { text: 'Gesamt', style: 'label', alignment: 'right' }],
-            ...stages.map((s) => [s.nights > 0 ? `${s.name} (${nightsLabel(s.nights)})` : s.name, right(s.nights > 0 ? formatEuro(round(s.total / s.nights)) : '–'), right(formatEuro(s.total))]),
+            [
+              { text: 'Etappe', style: 'label' },
+              { text: 'Pro Nacht', style: 'label', alignment: 'right' },
+              { text: 'Gesamt', style: 'label', alignment: 'right' },
+            ],
+            ...stages.map((s) => [
+              s.nights > 0 ? `${s.name} (${nightsLabel(s.nights)})` : s.name,
+              right(s.nights > 0 ? formatEuro(round(s.total / s.nights)) : '–'),
+              right(formatEuro(s.total)),
+            ]),
           ],
         },
         layout: thinRows,

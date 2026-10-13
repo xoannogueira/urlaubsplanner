@@ -111,7 +111,8 @@ export const sampleTrip: Trip = {
       title: 'Castelo de São Jorge',
       locationName: 'Burg / Schloss',
       url: 'https://de.wikipedia.org/wiki/Castelo_de_S%C3%A3o_Jorge',
-      notes: 'Maurische Burg auf dem höchsten Hügel der Altstadt mit Blick über Lissabon und den Tejo.\nÖffnungszeiten: täglich 09:00–21:00',
+      notes:
+        'Maurische Burg auf dem höchsten Hügel der Altstadt mit Blick über Lissabon und den Tejo.\nÖffnungszeiten: täglich 09:00–21:00',
     }),
     option({
       id: 'a3',
@@ -134,7 +135,8 @@ export const sampleTrip: Trip = {
       startDate: '2027-05-18',
       locationName: 'Sehenswürdigkeit',
       url: 'https://www.livrarialello.pt',
-      notes: 'Eine der schönsten Buchhandlungen der Welt, mit neugotischer Fassade und geschwungener Holztreppe.\nÖffnungszeiten: täglich 09:00–19:00',
+      notes:
+        'Eine der schönsten Buchhandlungen der Welt, mit neugotischer Fassade und geschwungener Holztreppe.\nÖffnungszeiten: täglich 09:00–19:00',
     }),
     option({
       id: 'a5',

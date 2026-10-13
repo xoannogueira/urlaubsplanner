@@ -57,6 +57,8 @@ Deine Reisen und dein Key bleiben bei einem Update natürlich erhalten. Welche V
 - **Browser:** Die App öffnet sich mit deinem Standardbrowser. Ist das Chrome, Edge, Brave oder Vivaldi, bekommt sie ein
   eigenes Fenster wie eine richtige App. Bei Safari oder Firefox öffnet sie sich als Tab.
 - **Links** in der App (Booking, Google Flights …) öffnen sich immer in deinem Standardbrowser – dort, wo du eingeloggt bist.
+- **Reiseplan als PDF:** In jeder Reise gibt es links den Punkt **„PDF“**. Ein Klick auf **„PDF erstellen“** speichert den
+  ganzen Plan im Ordner **Downloads** und öffnet ihn – zum Ausdrucken oder fürs Handy.
 - **Schon offen?** Ein Klick aufs Icon holt das offene Fenster nach vorne – es startet nichts doppelt.
 - **Beenden:** Einfach das Fenster (bzw. den Tab) schließen. Nach etwa 10 Sekunden ist der Urlaubsplanner komplett beendet.
 - **Deine Daten** (Reisen, Einstellungen, Key) liegen nur auf deinem Computer:

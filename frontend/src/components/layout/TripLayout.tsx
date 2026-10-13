@@ -1,5 +1,5 @@
 import clsx from 'clsx'
-import { BedDouble, CalendarDays, ChartColumn, ClipboardCheck, Compass, Minus, Plane, Plus, Settings, Users } from 'lucide-react'
+import { BedDouble, CalendarDays, ChartColumn, ClipboardCheck, Compass, FileText, Minus, Plane, Plus, Settings, Users } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { Link, NavLink, Outlet, useParams } from 'react-router'
 import { useTrip, useTripActions, useTrips } from '../../api/trips'
@@ -75,6 +75,9 @@ function Sidebar({ trip }: { trip?: Trip }) {
           </NavItem>
           <NavItem to={`${base}/checkliste`} icon={<ClipboardCheck size={18} />} badge={`${booked}/${chosen.length}`}>
             Checkliste
+          </NavItem>
+          <NavItem to={`${base}/pdf`} icon={<FileText size={18} />}>
+            PDF
           </NavItem>
         </div>
       )}
