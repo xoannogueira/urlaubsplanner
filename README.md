@@ -66,6 +66,9 @@ Schritt für Schritt erklärt: [Anleitung](packaging/ANLEITUNG.md). Ohne Install
   jeder Nacht – fehlende Hotels sind markiert; **Offene Punkte** mit Direktlink (kein Flug, Nächte ohne Hotel,
   Etappen ohne Aktivitäten, noch nicht gebucht, ohne Preis). Diagrammfarben: feste Farbe pro Kategorie, geprüft auf
   Farbenblindheit, Beträge stehen immer zusätzlich als Text daneben
+- **Reiseplan als PDF** (Tab „PDF“): Überblick, Flüge mit Zeiten und Flugnummern, Unterkünfte mit Check-in/-out, gemerkte
+  Aktivitäten, Tag-für-Tag-Plan und Kosten. Erzeugt im Browser ([pdfmake](https://pdfmake.github.io), erst beim Klick geladen);
+  die Desktop-App speichert sie im Downloads-Ordner (eine Datei pro Reise, neue Fassung ersetzt die alte) und öffnet sie
 - Buchen über **Kayak** (Strecken, Daten, Personen und Klasse vorausgefüllt, auch Gabelflüge) oder **Google Flights**
 
 ## Roadmap

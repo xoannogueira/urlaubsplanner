@@ -123,3 +123,22 @@ export function useUninstall() {
     mutationFn: (keepData: boolean) => api<void>('/app/installation/uninstall', { method: 'POST', ...json({ keepData }) }),
   })
 }
+
+export interface PdfSaved {
+  path: string
+  fileName: string
+}
+
+/** Desktop-App: PDF im Downloads-Ordner speichern und öffnen. */
+export async function savePdf(pdf: Blob, title: string): Promise<PdfSaved> {
+  const response = await fetch(`/api/app/pdf?title=${encodeURIComponent(title)}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/pdf' },
+    body: pdf,
+  })
+  if (!response.ok) {
+    const problem = (await response.json().catch(() => null)) as { detail?: string; title?: string } | null
+    throw new Error(problem?.detail ?? problem?.title ?? 'Die PDF konnte nicht gespeichert werden.')
+  }
+  return (await response.json()) as PdfSaved
+}

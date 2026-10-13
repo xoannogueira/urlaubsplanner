@@ -21,6 +21,8 @@ public sealed record OpenUrlBody(string? Url);
 
 public sealed record UninstallBody(bool KeepData);
 
+public sealed record PdfSaved(string Path, string FileName);
+
 public sealed record SettingsResponse(SerpApiKeyStatus SerpApi, string FlightsProvider, string HotelsProvider, string DataDirectory, bool Desktop);
 
 /// <summary>App-Infos, Lebenszeichen des Fensters (Desktop-App) und Einstellungen wie der eigene API-Key.</summary>
@@ -64,6 +66,38 @@ public static partial class AppEndpoints
             }
 
             return DefaultBrowser.OpenUrl(uri.AbsoluteUri) ? Results.NoContent() : Results.Problem("Der Browser ließ sich nicht öffnen.");
+        });
+
+        // Reiseplan-PDF (im Browser erzeugt): im Downloads-Ordner speichern und öffnen.
+        group.MapPost("/pdf", async (AppPaths paths, HttpRequest request, string? title) =>
+        {
+            if (!paths.Desktop)
+            {
+                return Results.Conflict();
+            }
+
+            if (!string.Equals(request.ContentType, "application/pdf", StringComparison.OrdinalIgnoreCase))
+            {
+                return Results.StatusCode(StatusCodes.Status415UnsupportedMediaType);
+            }
+
+            using var buffer = new MemoryStream();
+            await request.Body.CopyToAsync(buffer).ConfigureAwait(false);
+            var pdf = buffer.ToArray();
+            if (pdf.Length < 5 || !pdf.AsSpan(0, 5).SequenceEqual("%PDF-"u8))
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]> { ["pdf"] = ["Keine PDF-Datei."] });
+            }
+
+            try
+            {
+                var path = PdfExport.SaveAndOpen(pdf, title ?? "Reise");
+                return Results.Ok(new PdfSaved(path, Path.GetFileName(path)));
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+                return Results.Problem(e.Message, title: "Die PDF konnte nicht gespeichert werden");
+            }
         });
 
         // Installation: Dock (Mac) und Deinstallieren.

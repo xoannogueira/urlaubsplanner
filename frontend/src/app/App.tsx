@@ -4,6 +4,7 @@ import { TripLayout } from '../components/layout/TripLayout'
 import { ChecklistPage } from '../features/checklist/ChecklistPage'
 import { OptionsPage } from '../features/options/OptionsPage'
 import { OverviewPage } from '../features/overview/OverviewPage'
+import { PdfPage } from '../features/pdf/PdfPage'
 import { SettingsPage } from '../features/settings/SettingsPage'
 import { SetupProvider } from '../features/setup/SetupProvider'
 import { TripsPage } from '../features/trips/TripsPage'
@@ -28,6 +29,7 @@ export function App() {
               <Route path="hotels" element={<OptionsPage key="Hotel" kind="Hotel" />} />
               <Route path="aktivitaeten" element={<OptionsPage key="Activity" kind="Activity" />} />
               <Route path="checkliste" element={<ChecklistPage />} />
+              <Route path="pdf" element={<PdfPage />} />
             </Route>
             <Route path="*" element={<NotFound />} />
           </Routes>
