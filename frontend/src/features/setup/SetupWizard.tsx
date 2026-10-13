@@ -1,10 +1,11 @@
 import clsx from 'clsx'
 import { ArrowLeft, ArrowRight, CircleCheck, ExternalLink, HardDrive, Hotel, Map, Plane, TriangleAlert, UserPlus } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
-import type { SaveKeyResult } from '../../api/app'
+import { useAppInfo, useInstallation, type SaveKeyResult } from '../../api/app'
 import { Button } from '../../components/ui/Button'
 import { buttonClass } from '../../components/ui/buttonStyles'
 import { Dialog } from '../../components/ui/Dialog'
+import { DockRow } from '../settings/InstallationSection'
 import { KeyForm } from './KeyForm'
 import { SearchCosts } from './SearchCosts'
 import type { SetupStep } from './setupContext'
@@ -209,6 +210,20 @@ function Done({ saved, configured }: { saved: SaveKeyResult | null; configured: 
       <p className="text-xs text-muted">
         Den Key kannst du jederzeit unter „Einstellungen“ ändern. Das Kontingent startet jeden Monat neu.
       </p>
+      <DockHint />
+    </div>
+  )
+}
+
+/** Mac: am Ende des Tutorials anbieten, die App ins Dock zu legen. */
+function DockHint() {
+  const info = useAppInfo()
+  const installation = useInstallation(info.data?.desktop ?? false)
+  if (installation.data?.platform !== 'mac' || installation.data.inDock) return null
+  return (
+    <div className="flex flex-col gap-2 border-t border-line pt-4">
+      <p className="text-[15px] font-semibold">Tipp: Leg den Urlaubsplanner ins Dock</p>
+      <DockRow installation={installation.data} />
     </div>
   )
 }

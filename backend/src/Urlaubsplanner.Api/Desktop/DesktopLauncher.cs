@@ -73,7 +73,12 @@ public static partial class DesktopLauncher
                 }
             }
 
-            OpenWindow(url, paths);
+            var opened = OpenWindow(url, paths);
+            if (logger is not null)
+            {
+                LogOpened(logger, opened);
+            }
+
             return true;
         }
         catch (Exception e) when (e is HttpRequestException or TaskCanceledException or JsonException or IOException)
@@ -141,38 +146,49 @@ public static partial class DesktopLauncher
         }
     }
 
-    /// <summary>Öffnet die App in einem eigenen Fenster (Chromium-Browser im App-Modus) oder im Standardbrowser.</summary>
-    public static void OpenWindow(string url, AppPaths paths)
+    /// <summary>
+    /// Öffnet die App im Standardbrowser: als eigenes App-Fenster, wenn er das kann (Chrome, Edge, Brave, Vivaldi),
+    /// sonst als Tab (Safari, Firefox …). Lässt sich der Standardbrowser nicht bestimmen, wird ein vorhandener
+    /// Chromium-Browser genommen. Gibt zurück, wie geöffnet wurde (fürs Log).
+    /// </summary>
+    public static string OpenWindow(string url, AppPaths paths)
     {
         ArgumentNullException.ThrowIfNull(paths);
-        var browser = FindChromium();
-        if (browser is not null)
+        var custom = Environment.GetEnvironmentVariable("URLAUBSPLANNER_BROWSER");
+        if (string.IsNullOrWhiteSpace(custom))
         {
-            var start = new ProcessStartInfo(browser) { UseShellExecute = false };
-            start.ArgumentList.Add($"--app={url}");
-            start.ArgumentList.Add($"--user-data-dir={paths.BrowserProfile}");
-            start.ArgumentList.Add("--no-first-run");
-            start.ArgumentList.Add("--no-default-browser-check");
-            start.ArgumentList.Add("--window-size=1440,920");
-            if (TryStart(start))
+            var choice = DefaultBrowser.Detect();
+            if (choice?.AppWindowExecutable is { } exe && TryStart(AppWindow(exe, url, paths)))
             {
-                return;
+                return $"App-Fenster mit {choice.Name}";
+            }
+
+            if (choice is not null && DefaultBrowser.OpenUrl(url))
+            {
+                return $"Tab im Standardbrowser ({choice.Name})";
             }
         }
 
+        var browser = FindChromium();
+        if (browser is not null && TryStart(AppWindow(browser, url, paths)))
+        {
+            return $"App-Fenster mit {Path.GetFileNameWithoutExtension(browser)}";
+        }
+
         // Kein Chrome/Edge/Brave: normaler Tab im Standardbrowser.
-        if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
-        {
-            TryStart(new ProcessStartInfo("open", url) { UseShellExecute = false });
-        }
-        else if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-        {
-            TryStart(new ProcessStartInfo(url) { UseShellExecute = true });
-        }
-        else
-        {
-            TryStart(new ProcessStartInfo("xdg-open", url) { UseShellExecute = false });
-        }
+        DefaultBrowser.OpenUrl(url);
+        return "Tab im Standardbrowser";
+    }
+
+    private static ProcessStartInfo AppWindow(string browser, string url, AppPaths paths)
+    {
+        var start = new ProcessStartInfo(browser) { UseShellExecute = false };
+        start.ArgumentList.Add($"--app={url}");
+        start.ArgumentList.Add($"--user-data-dir={paths.BrowserProfile}");
+        start.ArgumentList.Add("--no-first-run");
+        start.ArgumentList.Add("--no-default-browser-check");
+        start.ArgumentList.Add("--window-size=1440,920");
+        return start;
     }
 
     private static bool TryStart(ProcessStartInfo start)
@@ -234,6 +250,9 @@ public static partial class DesktopLauncher
 
         return candidates.FirstOrDefault(File.Exists);
     }
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Fenster geöffnet: {How}")]
+    internal static partial void LogOpened(ILogger logger, string how);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "App startet gerade – Fenster ist unterwegs, kein zweites")]
     private static partial void LogStillStarting(ILogger logger);

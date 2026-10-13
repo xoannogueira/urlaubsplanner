@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useAppInfo, useSettings } from '../../api/app'
+import { externalUrl } from '../../lib/links'
 import { SetupContext, rememberSetupDismissed, setupDismissed, type SetupStep } from './setupContext'
 import { SetupWizard } from './SetupWizard'
 
@@ -18,6 +19,7 @@ export function SetupProvider({ children }: { children: ReactNode }) {
   const configured = settings.data?.serpApi.configured ?? false
 
   useDesktopLifeline(info.data?.desktop ?? false)
+  useExternalLinks(info.data?.desktop ?? false)
 
   const value = useMemo(
     () => ({
@@ -81,6 +83,39 @@ function useDesktopLifeline(desktop: boolean) {
       window.clearInterval(timer)
       document.removeEventListener('visibilitychange', onVisible)
       window.removeEventListener('pagehide', onHide)
+    }
+  }, [desktop])
+}
+
+/**
+ * Desktop-App: Links nach außen (Booking, Google Flights …) im Standardbrowser der Person öffnen – mit ihren
+ * Logins – statt im App-Fenster. Klappt das nicht, öffnet der Link wie gewohnt.
+ */
+function useExternalLinks(desktop: boolean) {
+  useEffect(() => {
+    if (!desktop) return
+    const onClick = (event: MouseEvent) => {
+      if (event.defaultPrevented || (event.type === 'click' && event.button !== 0) || (event.type === 'auxclick' && event.button !== 1))
+        return
+      const link = event.target instanceof Element ? event.target.closest<HTMLAnchorElement>('a[href]') : null
+      const url = link ? externalUrl(link.href) : null
+      if (!url) return
+      event.preventDefault()
+      void fetch('/api/app/open-url', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url }),
+      })
+        .then((res) => {
+          if (!res.ok) window.open(url, '_blank', 'noopener')
+        })
+        .catch(() => window.open(url, '_blank', 'noopener'))
+    }
+    document.addEventListener('click', onClick, true)
+    document.addEventListener('auxclick', onClick, true)
+    return () => {
+      document.removeEventListener('click', onClick, true)
+      document.removeEventListener('auxclick', onClick, true)
     }
   }, [desktop])
 }

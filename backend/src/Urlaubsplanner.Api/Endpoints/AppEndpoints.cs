@@ -17,6 +17,10 @@ public sealed record SerpApiKeyStatus(bool Configured, string? Hint, bool FromAp
 
 public sealed record WindowsResponse(int Open, bool Starting);
 
+public sealed record OpenUrlBody(string? Url);
+
+public sealed record UninstallBody(bool KeepData);
+
 public sealed record SettingsResponse(SerpApiKeyStatus SerpApi, string FlightsProvider, string HotelsProvider, string DataDirectory, bool Desktop);
 
 /// <summary>App-Infos, Lebenszeichen des Fensters (Desktop-App) und Einstellungen wie der eigene API-Key.</summary>
@@ -45,6 +49,38 @@ public static partial class AppEndpoints
             services.GetService<DesktopLifetime>()?.Closing(fenster);
             return TypedResults.NoContent();
         });
+
+        // Links aus der App im Standardbrowser öffnen (mit den Logins der Person) statt im App-Fenster.
+        group.MapPost("/open-url", (AppPaths paths, OpenUrlBody body) =>
+        {
+            if (!paths.Desktop)
+            {
+                return Results.Conflict();
+            }
+
+            if (!Uri.TryCreate(body.Url, UriKind.Absolute, out var uri) || (uri.Scheme != Uri.UriSchemeHttps && uri.Scheme != Uri.UriSchemeHttp))
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]> { ["url"] = ["Nur http- und https-Adressen."] });
+            }
+
+            return DefaultBrowser.OpenUrl(uri.AbsoluteUri) ? Results.NoContent() : Results.Problem("Der Browser ließ sich nicht öffnen.");
+        });
+
+        // Installation: Dock (Mac) und Deinstallieren.
+        group.MapGet("/installation", (AppInstallation installation) => TypedResults.Ok(installation.Status()));
+        group.MapPost("/installation/dock", (AppInstallation installation) =>
+        {
+            try
+            {
+                return installation.AddToDock() ? Results.Ok(installation.Status()) : Results.Conflict();
+            }
+            catch (Exception e) when (e is IOException or InvalidOperationException or System.Xml.XmlException or System.ComponentModel.Win32Exception)
+            {
+                return Results.Problem(e.Message, title: "Ins Dock legen hat nicht geklappt");
+            }
+        });
+        group.MapPost("/installation/uninstall", (AppInstallation installation, UninstallBody body) =>
+            installation.Status().CanUninstall && installation.RequestUninstall(body.KeepData) ? Results.Accepted() : Results.Conflict());
 
         // Für den zweiten Klick aufs App-Icon: Ist schon ein Fenster offen, wird es nach vorne geholt statt ein neues zu öffnen.
         group.MapGet("/windows", (IServiceProvider services) =>

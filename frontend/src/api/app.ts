@@ -92,3 +92,34 @@ export function useUpdateStatus(enabled: boolean) {
 export function useRestartForUpdate() {
   return useMutation({ mutationFn: () => api<void>('/app/update/restart', { method: 'POST' }) })
 }
+
+export interface Installation {
+  platform: 'mac' | 'windows' | 'other'
+  /** Läuft als gepackte Desktop-App und kann sich selbst entfernen */
+  canUninstall: boolean
+  /** Mac: kann ins Dock (liegt nicht mehr im Download-Ordner) */
+  canAddToDock: boolean
+  inDock: boolean
+  /** Windows: mit dem Installer installiert */
+  installer: boolean
+}
+
+export function useInstallation(enabled: boolean) {
+  return useQuery({ queryKey: ['app', 'installation'], queryFn: () => api<Installation>('/app/installation'), enabled, staleTime: 60_000 })
+}
+
+/** Mac: App ins Dock legen. */
+export function useAddToDock() {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: () => api<Installation>('/app/installation/dock', { method: 'POST' }),
+    onSuccess: (data) => client.setQueryData(['app', 'installation'], data),
+  })
+}
+
+/** App deinstallieren – sie beendet sich danach selbst. */
+export function useUninstall() {
+  return useMutation({
+    mutationFn: (keepData: boolean) => api<void>('/app/installation/uninstall', { method: 'POST', ...json({ keepData }) }),
+  })
+}

@@ -5,8 +5,10 @@
 #   packaging/build-app.sh windows       # Windows 10/11 (64 Bit)
 #   packaging/build-app.sh all           # beides
 #
-# Ergebnis: dist/Urlaubsplanner-Mac.zip und dist/Urlaubsplanner-Windows.zip – feste Namen, damit die Download-Links
-# (…/releases/latest/download/Urlaubsplanner-Mac.zip) und die automatischen Updates sie immer finden.
+# Ergebnis (feste Namen, damit die Download-Links …/releases/latest/download/… und die Updates sie immer finden):
+#   dist/Urlaubsplanner-Mac.dmg       Installationsfenster für den Mac (App in „Programme“ ziehen)
+#   dist/Urlaubsplanner-Setup.exe     Installer für Windows (braucht Inno Setup 6)
+#   dist/Urlaubsplanner-Mac.zip, dist/Urlaubsplanner-Windows.zip – für die automatischen Updates
 # Mac-Pakete bitte auf einem Mac bauen: nur dort lässt sich die App signieren (ohne Signatur startet sie auf Apple-Chips nicht).
 set -euo pipefail
 
@@ -89,6 +91,26 @@ PLIST
   (cd "$DIST/$name" && rm -f "$DIST/$name.zip" &&
     if command -v ditto >/dev/null; then ditto -c -k --sequesterRsrc . "$DIST/$name.zip"; else zip -qry "$DIST/$name.zip" .; fi)
   echo "✓ $DIST/$name.zip"
+  build_dmg "$app"
+}
+
+# Installationsfenster für den Mac: App + Ordner „Programme“ zum Hinüberziehen. Das Zip bleibt für die Updates.
+build_dmg() {
+  local app="$1" dmg="$DIST/Urlaubsplanner-Mac.dmg"
+  command -v hdiutil >/dev/null || { echo "⚠ hdiutil fehlt (kein Mac) – kein .dmg"; return; }
+  rm -f "$dmg"
+  if command -v dmgbuild >/dev/null; then
+    dmgbuild -s "$ROOT/packaging/mac/dmg_settings.py" -D app="$app" -D icon="$ICONS/Urlaubsplanner.icns" "Urlaubsplanner" "$dmg"
+  else
+    # Ohne dmgbuild: gleiche Dateien, nur ohne Pfeil im Hintergrund.
+    local stage
+    stage="$(mktemp -d)"
+    cp -R "$app" "$stage/"
+    ln -s /Applications "$stage/Programme"
+    hdiutil create -volname Urlaubsplanner -srcfolder "$stage" -ov -format UDZO "$dmg" >/dev/null
+    rm -rf "$stage"
+  fi
+  echo "✓ $dmg"
 }
 
 build_windows() {
@@ -102,6 +124,22 @@ build_windows() {
   (cd "$DIST/$name" && rm -f "$DIST/$name.zip" &&
     if command -v zip >/dev/null; then zip -qr "$DIST/$name.zip" .; else 7z a -tzip -bso0 "$DIST/$name.zip" .; fi)
   echo "✓ $DIST/$name.zip"
+  build_installer "$out"
+}
+
+# Windows-Installer (Inno Setup): Urlaubsplanner-Setup.exe. Das Zip bleibt für die Updates.
+build_installer() {
+  local iscc
+  iscc="$(command -v iscc || command -v ISCC.exe || true)"
+  for candidate in "/c/Program Files (x86)/Inno Setup 6/ISCC.exe" "/c/Program Files/Inno Setup 6/ISCC.exe"; do
+    [ -z "$iscc" ] && [ -f "$candidate" ] && iscc="$candidate"
+  done
+  [ -z "$iscc" ] && { echo "⚠ Inno Setup (ISCC) fehlt – kein Installer, nur das Zip"; return; }
+  win() { if command -v cygpath >/dev/null; then cygpath -w "$1"; else echo "$1"; fi; }
+  # MSYS würde „/D…“ sonst für einen Pfad halten.
+  MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*' "$iscc" /Q "/DAppVersion=$NUMERIC_VERSION" "/DSourceDir=$(win "$1")" "/DOutputDir=$(win "$DIST")" \
+    "$(win "$ROOT/packaging/windows/Urlaubsplanner.iss")"
+  echo "✓ $DIST/Urlaubsplanner-Setup.exe"
 }
 
 for target in "${targets[@]}"; do

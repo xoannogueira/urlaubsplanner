@@ -12,6 +12,7 @@ import { KeyForm } from '../setup/KeyForm'
 import { KeyBanner } from '../setup/KeyBanner'
 import { SearchCosts } from '../setup/SearchCosts'
 import { useSetup } from '../setup/setupContext'
+import { InstallationSection } from './InstallationSection'
 import { KEY_URL, SIGN_UP_URL, Warning } from '../setup/SetupWizard'
 
 /** API-Key, verbleibende Suchen, was Suchen kosten und wo die Daten liegen. */
@@ -135,6 +136,8 @@ export function SettingsPage() {
                 {update.data && ` · ${updateText(update.data.state, update.data.available, update.data.progress)}`}
               </p>
             </Section>
+
+            {info.data?.desktop && <InstallationSection />}
           </>
         )}
       </div>

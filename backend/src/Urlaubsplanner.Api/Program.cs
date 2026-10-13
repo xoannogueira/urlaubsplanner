@@ -60,6 +60,7 @@ if (desktop)
 
 builder.Services.AddSingleton(paths);
 builder.Services.AddSingleton<AppSettingsStore>();
+builder.Services.AddSingleton<AppInstallation>();
 
 // Automatische Updates der Desktop-App von GitHub (beim Entwickeln ohne Wirkung).
 builder.Services.Configure<UpdateOptions>(builder.Configuration.GetSection(UpdateOptions.Section));
@@ -108,11 +109,19 @@ if (desktop)
     DesktopLauncher.WriteInstance(paths, port);
     if (openWindow)
     {
-        DesktopLauncher.OpenWindow(url, paths);
+        var opened = DesktopLauncher.OpenWindow(url, paths);
+        var startLog = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("Urlaubsplanner.Start");
+        DesktopLauncher.LogOpened(startLog, opened);
     }
 
     await app.WaitForShutdownAsync();
     DesktopLauncher.DeleteInstance(paths);
+
+    // Deinstallieren angefordert: aufräumen lassen, sonst nichts mehr tun.
+    if (app.Services.GetRequiredService<AppInstallation>().RunPendingUninstall())
+    {
+        return;
+    }
 
     // Fenster geschlossen: bereitliegendes Update jetzt installieren – beim nächsten Start läuft die neue Version.
     // Bei „Jetzt neu starten“ gleich wieder starten; das offene Fenster lädt sich dann selbst neu.

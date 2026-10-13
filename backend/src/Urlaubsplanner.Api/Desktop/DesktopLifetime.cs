@@ -15,9 +15,10 @@ public sealed partial class DesktopLifetime(
     public static readonly TimeSpan CloseGrace = TimeSpan.FromSeconds(8);
 
     /// <summary>
-    /// Ohne jedes Lebenszeichen. Großzügig, weil Browser Timer in minimierten Fenstern stark drosseln.
+    /// Ohne jedes Lebenszeichen. Großzügig, weil Browser Timer in minimierten Fenstern und Hintergrund-Tabs
+    /// (Safari) stark drosseln – ein übrig gebliebener Server stört nicht, ein zu früh beendeter schon.
     /// </summary>
-    public static readonly TimeSpan IdleTimeout = TimeSpan.FromMinutes(30);
+    public static readonly TimeSpan IdleTimeout = TimeSpan.FromHours(4);
 
     /// <summary>
     /// Bis wann ein Fenster als offen gilt. Minimierte Fenster melden sich höchstens einmal pro Minute.
