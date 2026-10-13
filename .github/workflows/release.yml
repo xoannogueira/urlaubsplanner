@@ -68,6 +68,10 @@ jobs:
           start
           for i in $(seq 1 60); do [ "$(curl -sf $api/windows)" = '{"open":1}' ] && break; sleep 1; done
           echo "::notice::Mac nach dem Start: $(curl -sf $api/windows)"
+          # Diagnose: Log, Browserprozesse, Bildschirmfoto (als Artefakt)
+          tail -n 8 "$data/urlaubsplanner.log" | cut -c1-300 | sed 's/^/::notice::Log: /'
+          ps -axww -o pid=,args= | grep -i "chrom" | grep -v grep | grep -v -- "--type=" | cut -c1-300 | sed 's/^/::notice::ps: /'
+          screencapture -x "$RUNNER_TEMP/fenster.png" || true
           start
           sleep 10
           echo "::notice::Mac nach zweitem Klick: $(curl -sf $api/windows) – $(grep 'läuft schon' "$data/urlaubsplanner.log" | tail -n 1 | cut -c21-)"
@@ -78,6 +82,13 @@ jobs:
           else
             echo "::notice::Mac: Browser nach dem Beenden geschlossen"
           fi
+          tail -n 4 "$data/urlaubsplanner.log" | cut -c1-300 | sed 's/^/::notice::Log Ende: /'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: fenster-mac
+          path: ${{ runner.temp }}/fenster.png
+          if-no-files-found: ignore
       - uses: actions/upload-artifact@v4
         with:
           name: Urlaubsplanner-mac
