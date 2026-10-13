@@ -84,10 +84,8 @@ jobs:
           echo "::notice::Dock läuft: $(pgrep -x Dock || echo nein) · Einträge: $(defaults read com.apple.dock persistent-apps 2>&1 | grep -c '_CFURLString\"' )"
           defaults read com.apple.dock persistent-apps | grep -q "Programme/Urlaubsplanner.app" || { echo "::error::Dock-Eintrag nicht angelegt"; exit 1; }
           echo "::notice::Dock-Eintrag angelegt"
-          defaults export com.apple.dock - | grep -B6 -A12 "Programme/Urlaubsplanner" | tr -s ' \t\n' ' ' | cut -c1-900 | sed 's/^/::notice::Eintrag: /'
           curl -sf -X POST -H 'Content-Type: application/json' -d '{"keepData":false}' $api/installation/uninstall
           sleep 12
-          defaults export com.apple.dock - | grep -B6 -A12 "Programme/Urlaubsplanner" | tr -s ' \t\n' ' ' | cut -c1-900 | sed 's/^/::notice::Nach dem Deinstallieren: /' || true
           ! curl -sf $api/info
           test ! -e "$apps/Urlaubsplanner.app" || { echo "::error::App wurde nicht entfernt"; exit 1; }
           test ! -e "$URLAUBSPLANNER_DATA" || { echo "::error::Daten wurden nicht entfernt"; exit 1; }

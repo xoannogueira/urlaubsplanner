@@ -217,8 +217,9 @@ internal static class Dock
             File.Delete(file);
         }
 
-        // Dock neu starten, damit es die Änderung zeigt (startet sofort von selbst wieder).
-        using var kill = Process.Start(new ProcessStartInfo("/usr/bin/killall", ["Dock"]) { UseShellExecute = false });
+        // Dock neu starten, damit es die Änderung zeigt (startet sofort von selbst wieder). Hart beenden: Bei einem
+        // normalen Beenden speichert das Dock seinen alten Stand und macht die Änderung wieder rückgängig.
+        using var kill = Process.Start(new ProcessStartInfo("/usr/bin/killall", ["-KILL", "Dock"]) { UseShellExecute = false });
         kill?.WaitForExit(3000);
     }
 
