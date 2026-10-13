@@ -14,7 +14,9 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 DIST="$ROOT/dist"
 API="$ROOT/backend/src/Urlaubsplanner.Api"
 ICONS="$ROOT/packaging/icons"
+# Anzeige-Version z. B. „1.2.0“ oder „1.2.0-3-gabc123“; .NET und macOS brauchen eine reine Zahl wie 1.2.0.
 VERSION="${VERSION:-$(git -C "$ROOT" describe --tags --always 2>/dev/null | sed 's/^v//' || echo 0.0.0)}"
+NUMERIC_VERSION="$(echo "$VERSION" | grep -Eo '^[0-9]+(\.[0-9]+){1,2}' || echo 0.0.0)"
 
 targets=("$@")
 [ ${#targets[@]} -eq 0 ] && { sed -n '2,10p' "$0"; exit 1; }
@@ -33,7 +35,7 @@ publish() { # $1 = Runtime, $2 = Zielordner, weitere Argumente gehen an dotnet p
   dotnet publish "$API" -c Release -r "$rid" --self-contained true -o "$out" \
     -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true \
     -p:DebugType=None -p:GenerateDocumentationFile=false \
-    -p:Version="${VERSION%%-*}" -p:InformationalVersion="$VERSION" "$@"
+    -p:Version="$NUMERIC_VERSION" -p:InformationalVersion="$VERSION" "$@"
   # Kennzeichnet den Ordner als Desktop-App: Datenordner im Benutzerverzeichnis, eigenes Fenster, Beenden beim Schließen.
   echo '{ "Desktop": { "Enabled": true } }' > "$out/desktop.json"
   rm -f "$out"/*.pdb
@@ -65,8 +67,8 @@ LAUNCHER
   <key>CFBundleExecutable</key><string>Urlaubsplanner</string>
   <key>CFBundleIconFile</key><string>Urlaubsplanner</string>
   <key>CFBundlePackageType</key><string>APPL</string>
-  <key>CFBundleShortVersionString</key><string>${VERSION%%-*}</string>
-  <key>CFBundleVersion</key><string>${VERSION%%-*}</string>
+  <key>CFBundleShortVersionString</key><string>${NUMERIC_VERSION}</string>
+  <key>CFBundleVersion</key><string>${NUMERIC_VERSION}</string>
   <key>LSMinimumSystemVersion</key><string>12.0</string>
   <!-- Der Server läuft unsichtbar im Hintergrund; sichtbar ist nur das App-Fenster. -->
   <key>LSUIElement</key><true/>
