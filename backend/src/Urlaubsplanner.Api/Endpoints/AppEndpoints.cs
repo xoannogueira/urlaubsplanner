@@ -15,7 +15,7 @@ public sealed record SerpApiKeyBody(string? ApiKey);
 /// <param name="FromApp">In der App eingetragen (dort änderbar) – sonst über User Secrets oder Umgebung gesetzt.</param>
 public sealed record SerpApiKeyStatus(bool Configured, string? Hint, bool FromApp);
 
-public sealed record WindowsResponse(int Open);
+public sealed record WindowsResponse(int Open, bool Starting);
 
 public sealed record SettingsResponse(SerpApiKeyStatus SerpApi, string FlightsProvider, string HotelsProvider, string DataDirectory, bool Desktop);
 
@@ -48,7 +48,10 @@ public static partial class AppEndpoints
 
         // Für den zweiten Klick aufs App-Icon: Ist schon ein Fenster offen, wird es nach vorne geholt statt ein neues zu öffnen.
         group.MapGet("/windows", (IServiceProvider services) =>
-            TypedResults.Ok(new WindowsResponse(services.GetService<DesktopLifetime>()?.OpenWindows ?? 0)));
+        {
+            var lifetime = services.GetService<DesktopLifetime>();
+            return TypedResults.Ok(new WindowsResponse(lifetime?.OpenWindows ?? 0, lifetime?.WaitingForFirstWindow ?? false));
+        });
 
         // Automatische Updates: Stand abfragen und bereitliegendes Update sofort installieren.
         group.MapGet("/update", (AppUpdater updater) => TypedResults.Ok(updater.Status));

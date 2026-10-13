@@ -24,7 +24,12 @@ public sealed partial class DesktopLifetime(
     /// </summary>
     public static readonly TimeSpan WindowAlive = TimeSpan.FromMinutes(3);
 
+    /// <summary>So lange nach dem Start gilt das erste Fenster als „unterwegs“ (Browser startet noch).</summary>
+    public static readonly TimeSpan FirstWindowWait = TimeSpan.FromSeconds(30);
+
     private readonly Lock _gate = new();
+    private readonly DateTimeOffset _started = clock.GetUtcNow();
+    private bool _everSeen;
     private readonly Dictionary<string, DateTimeOffset> _windows = new(StringComparer.Ordinal);
     private DateTimeOffset _lastSeen = clock.GetUtcNow();
     private DateTimeOffset? _closingSince;
@@ -37,6 +42,7 @@ public sealed partial class DesktopLifetime(
         {
             _windows[window ?? string.Empty] = now;
             _lastSeen = now;
+            _everSeen = true;
             _closingSince = null;
         }
     }
@@ -63,6 +69,21 @@ public sealed partial class DesktopLifetime(
             lock (_gate)
             {
                 return _windows.Values.Count(seen => now - seen < WindowAlive);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Die App wurde gerade gestartet und ihr erstes Fenster hat sich noch nicht gemeldet – ein ungeduldiger zweiter
+    /// Klick soll dann kein zweites Fenster öffnen.
+    /// </summary>
+    public bool WaitingForFirstWindow
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return !_everSeen && clock.GetUtcNow() - _started < FirstWindowWait;
             }
         }
     }

@@ -47,7 +47,18 @@ public static partial class DesktopLauncher
                 return false;
             }
 
-            var windows = await GetOpenWindowsAsync(http, url).ConfigureAwait(false);
+            var (windows, starting) = await GetOpenWindowsAsync(http, url).ConfigureAwait(false);
+            if (starting)
+            {
+                // Das erste Fenster ist noch unterwegs (z. B. doppelt geklickt) – kein zweites öffnen.
+                if (logger is not null)
+                {
+                    LogStillStarting(logger);
+                }
+
+                return true;
+            }
+
             if (windows > 0)
             {
                 var result = WindowFocus.TryBringToFront(paths);
@@ -71,18 +82,21 @@ public static partial class DesktopLauncher
         }
     }
 
-    private static async Task<int> GetOpenWindowsAsync(HttpClient http, string url)
+    private static async Task<(int Open, bool Starting)> GetOpenWindowsAsync(HttpClient http, string url)
     {
         try
         {
             var json = await http.GetStringAsync(new Uri(url + "api/app/windows")).ConfigureAwait(false);
             using var doc = JsonDocument.Parse(json);
-            return doc.RootElement.TryGetProperty("open", out var open) && open.TryGetInt32(out var count) ? count : 0;
+            var root = doc.RootElement;
+            var open = root.TryGetProperty("open", out var o) && o.TryGetInt32(out var count) ? count : 0;
+            var starting = root.TryGetProperty("starting", out var s) && s.ValueKind == JsonValueKind.True;
+            return (open, starting);
         }
         catch (Exception e) when (e is HttpRequestException or TaskCanceledException or JsonException)
         {
             // Ältere Version ohne diese Abfrage: wie bisher ein Fenster öffnen.
-            return 0;
+            return (0, false);
         }
     }
 
@@ -220,6 +234,9 @@ public static partial class DesktopLauncher
 
         return candidates.FirstOrDefault(File.Exists);
     }
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "App startet gerade – Fenster ist unterwegs, kein zweites")]
+    private static partial void LogStillStarting(ILogger logger);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "App läuft schon ({Windows} Fenster offen) – nach vorne holen: {Result}")]
     private static partial void LogSecondLaunch(ILogger logger, int windows, FocusResult result);

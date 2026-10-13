@@ -100,6 +100,25 @@ public sealed class DesktopLifetimeTests
     }
 
     [Fact]
+    public void Direkt_nach_dem_Start_ist_das_erste_Fenster_unterwegs()
+    {
+        var (lifetime, _) = Create();
+        Assert.True(lifetime.WaitingForFirstWindow);
+
+        lifetime.Heartbeat("a");
+        Assert.False(lifetime.WaitingForFirstWindow);
+    }
+
+    [Fact]
+    public void Kommt_das_erste_Fenster_nie_gilt_es_nach_der_Wartezeit_nicht_mehr_als_unterwegs()
+    {
+        var (lifetime, clock) = Create();
+        clock.Now += DesktopLifetime.FirstWindowWait;
+
+        Assert.False(lifetime.WaitingForFirstWindow);
+    }
+
+    [Fact]
     public void Ganz_ohne_Lebenszeichen_beendet_nach_der_Sicherheitsfrist()
     {
         var (lifetime, clock) = Create();
