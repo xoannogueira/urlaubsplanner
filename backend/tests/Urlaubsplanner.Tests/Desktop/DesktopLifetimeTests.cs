@@ -57,6 +57,49 @@ public sealed class DesktopLifetimeTests
     }
 
     [Fact]
+    public void Schliessen_eines_von_zwei_Fenstern_beendet_die_App_nicht()
+    {
+        var (lifetime, clock) = Create();
+        lifetime.Heartbeat("a");
+        lifetime.Heartbeat("b");
+        Assert.Equal(2, lifetime.OpenWindows);
+
+        lifetime.Closing("a");
+        clock.Now += DesktopLifetime.CloseGrace * 3;
+        Assert.False(lifetime.ShouldStop());
+        Assert.Equal(1, lifetime.OpenWindows);
+
+        lifetime.Closing("b");
+        clock.Now += DesktopLifetime.CloseGrace;
+        Assert.True(lifetime.ShouldStop());
+        Assert.Equal(0, lifetime.OpenWindows);
+    }
+
+    [Fact]
+    public void Neu_laden_behaelt_die_Fensterkennung()
+    {
+        var (lifetime, clock) = Create();
+        lifetime.Heartbeat("a");
+        lifetime.Closing("a");
+        clock.Now += TimeSpan.FromSeconds(1);
+        lifetime.Heartbeat("a");
+        clock.Now += DesktopLifetime.CloseGrace;
+
+        Assert.False(lifetime.ShouldStop());
+        Assert.Equal(1, lifetime.OpenWindows);
+    }
+
+    [Fact]
+    public void Fenster_ohne_Lebenszeichen_zaehlt_nicht_mehr_als_offen()
+    {
+        var (lifetime, clock) = Create();
+        lifetime.Heartbeat("a");
+        clock.Now += DesktopLifetime.WindowAlive;
+
+        Assert.Equal(0, lifetime.OpenWindows);
+    }
+
+    [Fact]
     public void Ganz_ohne_Lebenszeichen_beendet_nach_der_Sicherheitsfrist()
     {
         var (lifetime, clock) = Create();

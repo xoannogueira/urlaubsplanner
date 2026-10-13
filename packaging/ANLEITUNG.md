@@ -50,7 +50,8 @@ Deine Reisen und dein Key bleiben bei einem Update natürlich erhalten. Welche V
 
 - **Fenster:** Die App öffnet sich in einem eigenen Fenster, wenn Google Chrome, Microsoft Edge oder Brave installiert ist.
   Sonst öffnet sie sich als Tab in deinem Standardbrowser.
-- **Beenden:** Einfach das Fenster schließen. Nach ein paar Sekunden ist der Urlaubsplanner komplett beendet.
+- **Schon offen?** Ein Klick aufs Icon holt das offene Fenster nach vorne – es startet nichts doppelt.
+- **Beenden:** Einfach das Fenster schließen. Nach etwa 10 Sekunden ist der Urlaubsplanner komplett beendet.
 - **Deine Daten** (Reisen, Einstellungen, Key) liegen nur auf deinem Computer:
   - Mac: `~/Library/Application Support/Urlaubsplanner`
   - Windows: `%LOCALAPPDATA%\Urlaubsplanner`

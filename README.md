@@ -170,7 +170,7 @@ Dann <http://localhost:5080> öffnen.
 
 Mit einem Doppelklick aufs App-Icon startet alles. Der Server läuft unsichtbar im Hintergrund, die App öffnet sich in einem eigenen
 Fenster (Chrome, Edge oder Brave im App-Modus, sonst im Standardbrowser). Wird das Fenster geschlossen, beendet sich der Server nach
-ein paar Sekunden. Ein zweiter Klick, während die App läuft, öffnet nur ein weiteres Fenster.
+ein paar Sekunden (nach dem letzten, falls mehrere offen sind). Ein zweiter Klick, während die App läuft, holt das offene Fenster nach vorne statt ein neues zu öffnen – ist es im Dock bzw. in der Taskleiste minimiert oder klappt das Nach-vorne-Holen nicht, öffnet sich ein neues Fenster.
 
 - **Daten:** Reisen, Einstellungen, der eigene API-Key und das Log liegen im Benutzerordner. Auf dem Mac ist das
   `~/Library/Application Support/Urlaubsplanner`, unter Windows `%LOCALAPPDATA%\Urlaubsplanner`.

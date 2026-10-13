@@ -10,7 +10,7 @@ namespace Urlaubsplanner.Api.Desktop;
 /// Alles rund um den Start per Doppelklick: läuft die App schon (dann nur Fenster öffnen), welcher Port,
 /// und das App-Fenster selbst – Chrome/Edge/Brave im App-Modus (ohne Adressleiste), sonst der Standardbrowser.
 /// </summary>
-public static class DesktopLauncher
+public static partial class DesktopLauncher
 {
     /// <summary>Fester Port, damit Einstellungen im Browser (z. B. Heimatflughafen) beim nächsten Start noch da sind.</summary>
     public const int PreferredPort = 51770;
@@ -19,8 +19,11 @@ public static class DesktopLauncher
 
     private sealed record Instance(int Port, int ProcessId);
 
-    /// <summary>Läuft die App schon? Dann nur ein Fenster öffnen – kein zweiter Server.</summary>
-    public static async Task<bool> TryActivateExistingAsync(AppPaths paths)
+    /// <summary>
+    /// Läuft die App schon? Dann kein zweiter Server: das offene Fenster nach vorne holen, oder – wenn keins offen ist
+    /// oder das nicht klappt – ein Fenster öffnen.
+    /// </summary>
+    public static async Task<bool> TryActivateExistingAsync(AppPaths paths, ILogger? logger = null)
     {
         ArgumentNullException.ThrowIfNull(paths);
         if (!File.Exists(paths.InstanceFile))
@@ -44,12 +47,42 @@ public static class DesktopLauncher
                 return false;
             }
 
+            var windows = await GetOpenWindowsAsync(http, url).ConfigureAwait(false);
+            if (windows > 0)
+            {
+                var result = WindowFocus.TryBringToFront(paths);
+                if (logger is not null)
+                {
+                    LogSecondLaunch(logger, windows, result);
+                }
+
+                if (result == FocusResult.Done)
+                {
+                    return true;
+                }
+            }
+
             OpenWindow(url, paths);
             return true;
         }
         catch (Exception e) when (e is HttpRequestException or TaskCanceledException or JsonException or IOException)
         {
             return false;
+        }
+    }
+
+    private static async Task<int> GetOpenWindowsAsync(HttpClient http, string url)
+    {
+        try
+        {
+            var json = await http.GetStringAsync(new Uri(url + "api/app/windows")).ConfigureAwait(false);
+            using var doc = JsonDocument.Parse(json);
+            return doc.RootElement.TryGetProperty("open", out var open) && open.TryGetInt32(out var count) ? count : 0;
+        }
+        catch (Exception e) when (e is HttpRequestException or TaskCanceledException or JsonException)
+        {
+            // Ältere Version ohne diese Abfrage: wie bisher ein Fenster öffnen.
+            return 0;
         }
     }
 
@@ -187,4 +220,7 @@ public static class DesktopLauncher
 
         return candidates.FirstOrDefault(File.Exists);
     }
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "App läuft schon ({Windows} Fenster offen) – nach vorne holen: {Result}")]
+    private static partial void LogSecondLaunch(ILogger logger, int windows, FocusResult result);
 }

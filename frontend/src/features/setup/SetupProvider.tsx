@@ -46,6 +46,20 @@ export function SetupProvider({ children }: { children: ReactNode }) {
   )
 }
 
+/** Kennung dieses Fensters – bleibt beim Neuladen gleich (sessionStorage gilt pro Fenster). */
+function windowId(): string {
+  const key = 'urlaubsplanner.fenster'
+  try {
+    const existing = sessionStorage.getItem(key)
+    if (existing) return existing
+    const id = crypto.randomUUID()
+    sessionStorage.setItem(key, id)
+    return id
+  } catch {
+    return Math.random().toString(36).slice(2)
+  }
+}
+
 /**
  * Lebenszeichen an die Desktop-App: alle 20 s und beim Zurückkehren ins Fenster. Beim Schließen (oder Neuladen)
  * meldet sich das Fenster ab; kommt danach kein Lebenszeichen mehr, beendet sich die App nach ein paar Sekunden.
@@ -53,11 +67,12 @@ export function SetupProvider({ children }: { children: ReactNode }) {
 function useDesktopLifeline(desktop: boolean) {
   useEffect(() => {
     if (!desktop) return
-    const beat = () => void fetch('/api/app/heartbeat', { method: 'POST' }).catch(() => undefined)
+    const query = `?fenster=${encodeURIComponent(windowId())}`
+    const beat = () => void fetch(`/api/app/heartbeat${query}`, { method: 'POST' }).catch(() => undefined)
     const onVisible = () => {
       if (document.visibilityState === 'visible') beat()
     }
-    const onHide = () => navigator.sendBeacon('/api/app/closing')
+    const onHide = () => navigator.sendBeacon(`/api/app/closing${query}`)
     beat()
     const timer = window.setInterval(beat, 20_000)
     document.addEventListener('visibilitychange', onVisible)
