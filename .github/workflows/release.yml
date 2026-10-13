@@ -82,7 +82,8 @@ jobs:
           sleep 3
           grep -i "dock" "$URLAUBSPLANNER_DATA/urlaubsplanner.log" | cut -c1-250 | sed 's/^/::notice::Log: /' || true
           echo "::notice::Dock läuft: $(pgrep -x Dock || echo nein) · Einträge: $(defaults read com.apple.dock persistent-apps 2>&1 | grep -c '_CFURLString\"' )"
-          defaults read com.apple.dock persistent-apps | grep -q "Programme/Urlaubsplanner.app" && echo "::notice::Dock-Eintrag angelegt" || echo "::warning::Dock-Eintrag nicht gefunden"
+          defaults read com.apple.dock persistent-apps | grep -q "Programme/Urlaubsplanner.app" || { echo "::error::Dock-Eintrag nicht angelegt"; exit 1; }
+          echo "::notice::Dock-Eintrag angelegt"
           curl -sf -X POST -H 'Content-Type: application/json' -d '{"keepData":false}' $api/installation/uninstall
           sleep 12
           ! curl -sf $api/info

@@ -243,7 +243,7 @@ internal static class Dock
                 new XElement("string", Path.GetFileNameWithoutExtension(bundlePath))),
             new XElement("key", "tile-type"),
             new XElement("string", "file-tile")));
-        return doc.Declaration + Environment.NewLine + doc;
+        return Serialize(doc);
     }
 
     public static string WithoutApp(string plistXml, string bundlePath)
@@ -254,7 +254,20 @@ internal static class Dock
             entry.Remove();
         }
 
-        return doc.Declaration + Environment.NewLine + doc;
+        return Serialize(doc);
+    }
+
+    /// <summary>
+    /// Plist-Kopf selbst schreiben: .NET gibt den DOCTYPE als „…dtd"[]>“ aus, das macOS ablehnt.
+    /// </summary>
+    private static string Serialize(XDocument doc)
+    {
+        doc.DocumentType?.Remove();
+        return """
+            <?xml version="1.0" encoding="UTF-8"?>
+            <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+
+            """ + doc.Root;
     }
 
     private static XElement AppsArray(XDocument doc)

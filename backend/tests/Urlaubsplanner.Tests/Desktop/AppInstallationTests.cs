@@ -39,6 +39,8 @@ public sealed class AppInstallationTests
         Assert.Contains("Mail.app", added, StringComparison.Ordinal);
         Assert.Contains("<key>tilesize</key>", added, StringComparison.Ordinal);
         Assert.StartsWith("<?xml", added, StringComparison.Ordinal);
+        Assert.DoesNotContain("[]", added, StringComparison.Ordinal);
+        Assert.Contains("PropertyList-1.0.dtd\">", added, StringComparison.Ordinal);
 
         var removed = Dock.WithoutApp(added, App);
         Assert.False(Dock.Contains(removed, App));
