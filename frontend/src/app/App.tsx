@@ -28,6 +28,7 @@ export function App() {
               <Route path="fluege" element={<OptionsPage key="Flight" kind="Flight" />} />
               <Route path="hotels" element={<OptionsPage key="Hotel" kind="Hotel" />} />
               <Route path="aktivitaeten" element={<OptionsPage key="Activity" kind="Activity" />} />
+              <Route path="transfers" element={<OptionsPage key="Transport" kind="Transport" />} />
               <Route path="checkliste" element={<ChecklistPage />} />
               <Route path="pdf" element={<PdfPage />} />
             </Route>

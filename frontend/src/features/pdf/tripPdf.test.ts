@@ -46,7 +46,7 @@ describe('buildTripPdf', () => {
   it('kommt mit einer leeren Reise zurecht', () => {
     const empty = { ...sampleTrip, startDate: null, endDate: null, stages: [], options: [], notes: null }
     const text = texts(buildTripPdf(empty, { today: '2026-10-13' }).content).join('\n')
-    expect(text).toContain('Noch kein Flug ausgewählt.')
+    expect(text).toContain('Noch keine Anreise ausgewählt.')
     expect(text).not.toContain('Tag für Tag')
   })
 })

@@ -19,6 +19,12 @@ export const statusLabels: Record<OptionStatus, string> = {
 
 export const isChosen = (o: TripOption) => o.status === 'Selected' || o.status === 'Booked'
 
+/** Gemerkte Bus- & Bahn-Anreise (statt Flug)? */
+export const isTransitAnreise = (o: TripOption) => o.kind === 'Transport' && (o.externalId?.startsWith('anreise|') ?? false)
+
+/** Ist die Anreise geplant – per Flug oder mit Bus & Bahn? */
+export const isArrival = (o: TripOption) => o.kind === 'Flight' || isTransitAnreise(o)
+
 /** Sortierung in Listen: Gebucht/Ausgewählt zuerst, dann Favoriten, dann nach Preis. */
 export function sortOptions(options: TripOption[]): TripOption[] {
   const rank: Record<OptionStatus, number> = { Booked: 0, Selected: 1, Favorite: 2, Idea: 3 }

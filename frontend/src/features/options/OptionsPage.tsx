@@ -1,5 +1,5 @@
 import clsx from 'clsx'
-import { BedDouble, Compass, ExternalLink, List, Map as MapIcon, MapPinOff, Plane, Plus, Search, X } from 'lucide-react'
+import { BedDouble, Compass, ExternalLink, List, Map as MapIcon, MapPinOff, Plane, Plus, Search, TrainFront, X } from 'lucide-react'
 import { useNavigate } from 'react-router'
 import { useCallback, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useTripActions } from '../../api/trips'
@@ -24,6 +24,8 @@ import { FlightRecheck } from '../flights/FlightRecheck'
 import { FlightSearchView } from '../flights/FlightSearchView'
 import { HotelRecheck } from '../hotels/HotelRecheck'
 import { HotelSearchView } from '../hotels/HotelSearchView'
+import { TransfersView } from '../transit/TransfersView'
+import { isTransitAnreise } from '../../lib/transit'
 import { OptionCard } from './OptionCard'
 import { OptionFormDialog } from './OptionFormDialog'
 
@@ -52,7 +54,7 @@ export function OptionsPage({ kind }: { kind: OptionKind }) {
   const [view, setView] = useState<'list' | 'map'>('list')
   // Hotels und Flüge: gespeicherte Einträge oder Live-Suche
   const [mode, setMode] = useState<'saved' | 'search'>('saved')
-  const searchable = kind === 'Hotel' || kind === 'Flight' || kind === 'Activity'
+  const searchable = kind === 'Hotel' || kind === 'Flight' || kind === 'Activity' || kind === 'Transport'
   const searching = searchable && mode === 'search'
   const navigate = useNavigate()
   // Die Suche braucht eine konkrete Etappe: die gewählte, sonst die erste mit Ort.
@@ -64,7 +66,18 @@ export function OptionsPage({ kind }: { kind: OptionKind }) {
     requestAnimationFrame(() => mapRef.current?.scrollIntoView({ block: 'start', behavior: 'smooth' }))
   }
 
-  const ofKind = useMemo(() => trip.options.filter((o) => o.kind === kind), [trip.options, kind])
+  // Anreise mit Bus & Bahn steht bei den Flügen (Anreise), nicht bei den Transfers.
+  const ofKind = useMemo(
+    () =>
+      trip.options.filter((o) =>
+        kind === 'Flight'
+          ? o.kind === 'Flight' || isTransitAnreise(o)
+          : kind === 'Transport'
+            ? o.kind === 'Transport' && !isTransitAnreise(o)
+            : o.kind === kind,
+      ),
+    [trip.options, kind],
+  )
   const stageById = useMemo(() => new Map(trip.stages.map((s) => [s.id, s])), [trip.stages])
 
   const visible = useMemo(
@@ -129,12 +142,28 @@ export function OptionsPage({ kind }: { kind: OptionKind }) {
           <ModeTab
             active={!searching}
             onClick={() => setMode('saved')}
-            icon={kind === 'Flight' ? <Plane size={16} /> : kind === 'Activity' ? <Compass size={16} /> : <BedDouble size={16} />}
+            icon={
+              kind === 'Flight' ? (
+                <Plane size={16} />
+              ) : kind === 'Activity' ? (
+                <Compass size={16} />
+              ) : kind === 'Transport' ? (
+                <TrainFront size={16} />
+              ) : (
+                <BedDouble size={16} />
+              )
+            }
           >
             Gespeichert · {ofKind.length}
           </ModeTab>
           <ModeTab active={searching} onClick={() => setMode('search')} icon={<Search size={16} />}>
-            {kind === 'Flight' ? 'Flüge suchen' : kind === 'Activity' ? 'Vorschläge' : 'Hotels suchen'}
+            {kind === 'Flight'
+              ? 'Anreise suchen'
+              : kind === 'Activity'
+                ? 'Vorschläge'
+                : kind === 'Transport'
+                  ? 'Verbindungen'
+                  : 'Hotels suchen'}
           </ModeTab>
         </div>
       )}
@@ -142,7 +171,10 @@ export function OptionsPage({ kind }: { kind: OptionKind }) {
       <div
         role="tablist"
         aria-label="Etappen"
-        className={clsx('-mx-1 flex gap-2.5 overflow-x-auto px-1 pb-1', searching && kind === 'Flight' && 'hidden')}
+        className={clsx(
+          '-mx-1 flex gap-2.5 overflow-x-auto px-1 pb-1',
+          searching && (kind === 'Flight' || kind === 'Transport') && 'hidden',
+        )}
       >
         {!searching && (
           <StageTab active={stageFilter === ALL} onClick={() => setStageFilter(ALL)} title="Alle" sub={`${ofKind.length} gespeichert`} />
@@ -172,6 +204,8 @@ export function OptionsPage({ kind }: { kind: OptionKind }) {
 
       {searching && kind === 'Flight' ? (
         <FlightSearchView trip={trip} />
+      ) : searching && kind === 'Transport' ? (
+        <TransfersView trip={trip} />
       ) : searching && kind === 'Activity' ? (
         <ActivitySuggestionsView trip={trip} stage={searchStage} onEditStage={() => void navigate(`/trips/${trip.id}`)} />
       ) : searching ? (

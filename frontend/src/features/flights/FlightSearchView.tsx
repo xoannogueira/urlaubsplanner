@@ -1,5 +1,5 @@
 import clsx from 'clsx'
-import { ArrowRight, CalendarSearch, Clock, KeyRound, Search, SearchX, TriangleAlert } from 'lucide-react'
+import { ArrowRight, CalendarSearch, Clock, KeyRound, Plane, Search, SearchX, TrainFront, TriangleAlert } from 'lucide-react'
 import { useCallback, useMemo, useState, type ReactNode } from 'react'
 import { useAirportLookup, useNearbyAirports, type Airport } from '../../api/airports'
 import { ApiError } from '../../api/client'
@@ -45,6 +45,7 @@ import {
 } from '../../lib/flights'
 import { toLatLng } from '../../lib/geo'
 import { stageMarkers } from '../../lib/mapData'
+import { TransitAnreise } from '../transit/TransitAnreise'
 import { AirportPicker } from './AirportPicker'
 import { FlightDatesDialog } from './FlightDatesDialog'
 import { FlightResultCard } from './FlightResultCard'
@@ -88,8 +89,62 @@ const defaultPick = (nearby: Airport[] | undefined) => {
   return pick ? [pick] : []
 }
 
-/** Flugsuche für die ganze Reise: Hinflug zur ersten Etappe, Rückflug von der letzten. */
+/** Anreise suchen: mit dem Flugzeug oder mit Bus & Bahn (wird pro Reise gemerkt). */
 export function FlightSearchView({ trip }: { trip: Trip }) {
+  const [mode, setMode] = useState<'flug' | 'bahn'>(() => storedMode(trip.id))
+  const change = (next: 'flug' | 'bahn') => {
+    setMode(next)
+    try {
+      localStorage.setItem(`${MODE_KEY}.${trip.id}`, next)
+    } catch {
+      // nur für diese Sitzung
+    }
+  }
+  return (
+    <div className="flex flex-col gap-4">
+      <div role="radiogroup" aria-label="Wie reist du an?" className="flex w-fit rounded-xl bg-surface-2 p-1">
+        <ModeButton active={mode === 'flug'} onClick={() => change('flug')} icon={<Plane size={16} />}>
+          Flug
+        </ModeButton>
+        <ModeButton active={mode === 'bahn'} onClick={() => change('bahn')} icon={<TrainFront size={16} />}>
+          Bus & Bahn
+        </ModeButton>
+      </div>
+      {mode === 'flug' ? <FlightSearch trip={trip} /> : <TransitAnreise trip={trip} home={loadHome()} />}
+    </div>
+  )
+}
+
+const MODE_KEY = 'urlaubsplanner.anreise'
+
+function storedMode(tripId: string): 'flug' | 'bahn' {
+  try {
+    return localStorage.getItem(`${MODE_KEY}.${tripId}`) === 'bahn' ? 'bahn' : 'flug'
+  } catch {
+    return 'flug'
+  }
+}
+
+function ModeButton({ active, onClick, icon, children }: { active: boolean; onClick: () => void; icon: ReactNode; children: string }) {
+  return (
+    <button
+      type="button"
+      role="radio"
+      aria-checked={active}
+      onClick={onClick}
+      className={clsx(
+        'flex h-10 cursor-pointer items-center gap-2 rounded-lg px-4 text-sm font-bold transition-colors duration-100',
+        active ? 'bg-accent text-accent-ink' : 'text-muted hover:text-text',
+      )}
+    >
+      {icon}
+      {children}
+    </button>
+  )
+}
+
+/** Flugsuche für die ganze Reise: Hinflug zur ersten Etappe, Rückflug von der letzten. */
+function FlightSearch({ trip }: { trip: Trip }) {
   const status = useFlightSearchStatus()
   if (status.data && !status.data.configured) return <SetupHint provider={status.data.provider} />
   return <SearchArea trip={trip} status={status.data ?? null} />

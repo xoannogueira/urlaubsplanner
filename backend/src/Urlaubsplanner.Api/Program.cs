@@ -103,6 +103,7 @@ app.MapHotelEndpoints();
 app.MapFlightEndpoints();
 app.MapAirportEndpoints();
 app.MapActivityEndpoints();
+app.MapTransitEndpoints();
 
 // Im Produktivbetrieb liefert die API auch das gebaute Frontend aus (frontend/dist → wwwroot).
 // .mjs (z. B. der Web-Worker der Karte) kennt ASP.NET nicht von Haus aus – ohne Eintrag würde er nicht ausgeliefert.

@@ -155,7 +155,7 @@ describe('Offene Punkte', () => {
       }),
     )
     expect(tasks.map((t) => [t.text, t.target])).toEqual([
-      ['Noch kein Flug ausgewählt', 'fluege'],
+      ['Noch keine Anreise ausgewählt', 'fluege'],
       ['Porto: 2 Nächte ohne Hotel', 'hotels'],
       ['Porto: noch keine Aktivitäten', 'aktivitaeten'],
       ['2 Auswahlen noch nicht gebucht', 'checkliste'],

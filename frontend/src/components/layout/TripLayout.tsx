@@ -1,5 +1,18 @@
 import clsx from 'clsx'
-import { BedDouble, CalendarDays, ChartColumn, ClipboardCheck, Compass, FileText, Minus, Plane, Plus, Settings, Users } from 'lucide-react'
+import {
+  BedDouble,
+  CalendarDays,
+  ChartColumn,
+  ClipboardCheck,
+  Compass,
+  FileText,
+  Minus,
+  Plane,
+  Plus,
+  Settings,
+  TrainFront,
+  Users,
+} from 'lucide-react'
 import type { ReactNode } from 'react'
 import { Link, NavLink, Outlet, useParams } from 'react-router'
 import { useTrip, useTripActions, useTrips } from '../../api/trips'
@@ -65,10 +78,13 @@ function Sidebar({ trip }: { trip?: Trip }) {
             Übersicht
           </NavItem>
           <NavItem to={`${base}/fluege`} icon={<Plane size={18} />}>
-            Flüge
+            Anreise
           </NavItem>
           <NavItem to={`${base}/hotels`} icon={<BedDouble size={18} />}>
             Hotels
+          </NavItem>
+          <NavItem to={`${base}/transfers`} icon={<TrainFront size={18} />}>
+            Transfers
           </NavItem>
           <NavItem to={`${base}/aktivitaeten`} icon={<Compass size={18} />}>
             Aktivitäten

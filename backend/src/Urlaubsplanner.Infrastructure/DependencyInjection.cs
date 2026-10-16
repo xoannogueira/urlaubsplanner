@@ -7,7 +7,9 @@ using Urlaubsplanner.Domain.Flights;
 using Urlaubsplanner.Domain.Hotels;
 using Urlaubsplanner.Domain.Places;
 using Urlaubsplanner.Domain.Trips;
+using Urlaubsplanner.Domain.Transit;
 using Urlaubsplanner.Infrastructure.Activities;
+using Urlaubsplanner.Infrastructure.Transit;
 using Urlaubsplanner.Infrastructure.Flights;
 using Urlaubsplanner.Infrastructure.Hotels;
 using Urlaubsplanner.Infrastructure.Persistence;
@@ -98,6 +100,15 @@ public static class DependencyInjection
         {
             http.Timeout = TimeSpan.FromSeconds(35);
             http.DefaultRequestHeaders.UserAgent.ParseAdd("Urlaubsplanner/1.0 (privates Hobbyprojekt; https://github.com/xoannogueira/urlaubsplanner)");
+        });
+
+        // Bus & Bahn: Transitous (frei, ohne Key). Bittet um einen User-Agent mit App-Name und Kontakt.
+        services.Configure<TransitOptions>(configuration.GetSection(TransitOptions.Section));
+        services.AddHttpClient<ITransitPlanner, TransitousPlanner>(http =>
+        {
+            http.BaseAddress = new Uri(configuration[$"{TransitOptions.Section}:BaseUrl"] ?? new TransitOptions().BaseUrl);
+            http.Timeout = TimeSpan.FromSeconds(30);
+            http.DefaultRequestHeaders.UserAgent.ParseAdd("Urlaubsplanner/1.0 (privates Open-Source-Projekt; +https://github.com/xoannogueira/urlaubsplanner)");
         });
 
         return services;
