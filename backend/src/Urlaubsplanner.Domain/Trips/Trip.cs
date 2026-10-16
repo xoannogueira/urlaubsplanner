@@ -45,6 +45,10 @@ public sealed class Trip
 
     public IReadOnlyList<TripOption> Options => _options;
 
+    public PackingList Packing { get; private set; } = PackingList.Empty;
+
+    public TripParty Party { get; private set; } = TripParty.Empty;
+
     public static Trip Create(TripData data, DateTimeOffset now)
     {
         var trip = new Trip(Guid.NewGuid(), now, [], []);
@@ -63,9 +67,13 @@ public sealed class Trip
         DateTimeOffset createdAt,
         DateTimeOffset updatedAt,
         IEnumerable<Stage> stages,
-        IEnumerable<TripOption> options) =>
+        IEnumerable<TripOption> options,
+        PackingList? packing = null,
+        TripParty? party = null) =>
         new(id, createdAt, stages.ToList(), options.ToList())
         {
+            Packing = packing ?? PackingList.Empty,
+            Party = party ?? TripParty.Empty,
             Name = name,
             Travelers = travelers,
             StartDate = startDate,
@@ -79,6 +87,11 @@ public sealed class Trip
     {
         var name = Guard.RequiredText(data.Name, "name", 120);
         var travelers = Guard.InRange(data.Travelers, "travelers", 1, MaxTravelers);
+        if (Party.Members.Count > 0 && travelers != Party.Members.Count)
+        {
+            throw new DomainException("travelers", "Die Personenzahl richtet sich nach den eingetragenen Mitreisenden – dort hinzufügen oder entfernen.");
+        }
+
         Guard.DateOrder(data.StartDate, data.EndDate, "endDate");
 
         Name = name;
@@ -158,6 +171,29 @@ public sealed class Trip
     public void RemoveOption(Guid optionId, DateTimeOffset now)
     {
         _options.Remove(FindOption(optionId));
+        Party = Party.WithoutOption(optionId);
+        Touch(now);
+    }
+
+    /// <summary>Ersetzt die Packliste (die App schickt immer die ganze Liste).</summary>
+    public void SetPacking(PackingList packing, DateTimeOffset now)
+    {
+        Packing = PackingList.Validate(packing);
+        Touch(now);
+    }
+
+    /// <summary>
+    /// Ersetzt Mitreisende, Ausgaben und wer welche Buchung bezahlt hat. Sind Mitreisende eingetragen,
+    /// richtet sich die Personenzahl nach ihnen – so stimmen Preise pro Person und die Aufteilung überein.
+    /// </summary>
+    public void SetParty(TripParty party, DateTimeOffset now)
+    {
+        Party = TripParty.Validate(party, _options.Select(o => o.Id).ToHashSet());
+        if (Party.Members.Count > 0)
+        {
+            Travelers = Party.Members.Count;
+        }
+
         Touch(now);
     }
 

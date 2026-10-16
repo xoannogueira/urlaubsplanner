@@ -52,6 +52,12 @@ public static class TripEndpoints
         trips.MapDelete("/{tripId:guid}/options/{optionId:guid}", (Guid tripId, Guid optionId, ITripRepository repo, TimeProvider clock, CancellationToken ct) =>
             Change(repo, tripId, trip => trip.RemoveOption(optionId, clock.GetUtcNow()), ct));
 
+        // Packliste und Mitreisende/Kosten: die App schickt jeweils den ganzen Stand.
+        trips.MapPut("/{tripId:guid}/packing", (Guid tripId, PackingList request, ITripRepository repo, TimeProvider clock, CancellationToken ct) =>
+            Change(repo, tripId, trip => trip.SetPacking(request, clock.GetUtcNow()), ct));
+        trips.MapPut("/{tripId:guid}/party", (Guid tripId, TripParty request, ITripRepository repo, TimeProvider clock, CancellationToken ct) =>
+            Change(repo, tripId, trip => trip.SetParty(request, clock.GetUtcNow()), ct));
+
         return app;
     }
 

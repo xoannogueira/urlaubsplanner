@@ -45,7 +45,9 @@ public sealed record TripResponse(
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt,
     IReadOnlyList<StageResponse> Stages,
-    IReadOnlyList<OptionResponse> Options)
+    IReadOnlyList<OptionResponse> Options,
+    PackingList Packing,
+    TripParty Party)
 {
     public static TripResponse From(Trip trip) => new(
         trip.Id,
@@ -57,7 +59,9 @@ public sealed record TripResponse(
         trip.CreatedAt,
         trip.UpdatedAt,
         trip.Stages.Select(StageResponse.From).ToList(),
-        trip.Options.OrderBy(o => o.CreatedAt).Select(o => OptionResponse.From(o, trip.Travelers)).ToList());
+        trip.Options.OrderBy(o => o.CreatedAt).Select(o => OptionResponse.From(o, trip.Travelers)).ToList(),
+        trip.Packing,
+        trip.Party);
 }
 
 public sealed record StageResponse(Guid Id, string Name, DateOnly StartDate, DateOnly EndDate, int Nights, double? Latitude, double? Longitude)

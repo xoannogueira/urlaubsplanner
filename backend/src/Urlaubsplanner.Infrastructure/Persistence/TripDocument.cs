@@ -17,7 +17,9 @@ internal sealed record TripDocument(
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt,
     List<StageDocument> Stages,
-    List<OptionDocument> Options)
+    List<OptionDocument> Options,
+    PackingList? Packing = null,
+    TripParty? Party = null)
 {
     public static TripDocument From(Trip trip) => new(
         trip.Id,
@@ -30,7 +32,9 @@ internal sealed record TripDocument(
         trip.CreatedAt,
         trip.UpdatedAt,
         trip.Stages.Select(StageDocument.From).ToList(),
-        trip.Options.Select(OptionDocument.From).ToList());
+        trip.Options.Select(OptionDocument.From).ToList(),
+        trip.Packing.Items.Count + trip.Packing.Dismissed.Count > 0 ? trip.Packing : null,
+        trip.Party.Members.Count + trip.Party.Expenses.Count + trip.Party.OptionShares.Count > 0 ? trip.Party : null);
 
     public Trip ToDomain() => Trip.Restore(
         Id,
@@ -43,7 +47,9 @@ internal sealed record TripDocument(
         CreatedAt,
         UpdatedAt,
         Stages.Select(s => s.ToDomain()),
-        Options.Select(o => o.ToDomain()));
+        Options.Select(o => o.ToDomain()),
+        Packing,
+        Party);
 }
 
 internal sealed record StageDocument(Guid Id, string Name, DateOnly StartDate, DateOnly EndDate, double? Latitude, double? Longitude)
