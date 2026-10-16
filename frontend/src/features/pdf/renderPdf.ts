@@ -1,11 +1,12 @@
 import type { Trip } from '../../api/types'
+import type { TripWeather } from '../../api/weather'
 import { buildTripPdf } from './tripPdf'
 
 /**
  * Erzeugt die PDF im Browser. pdfmake und die Schrift (zusammen gut 2 MB) werden erst beim Klick geladen,
  * damit der Rest der App schnell bleibt.
  */
-export async function renderTripPdf(trip: Trip, today: string): Promise<Blob> {
+export async function renderTripPdf(trip: Trip, today: string, weather?: TripWeather): Promise<Blob> {
   const [pdfMake, fonts] = await Promise.all([import('pdfmake/build/pdfmake'), import('pdfmake/build/vfs_fonts')])
   // Je nach Bundler kommen die Module mit oder ohne „default“-Hülle an.
   const make = ('default' in pdfMake ? pdfMake.default : pdfMake) as typeof import('pdfmake/build/pdfmake')
@@ -19,7 +20,7 @@ export async function renderTripPdf(trip: Trip, today: string): Promise<Blob> {
       bolditalics: 'Roboto-MediumItalic.ttf',
     },
   })
-  return make.createPdf(buildTripPdf(trip, { today })).getBlob()
+  return make.createPdf(buildTripPdf(trip, { today, weather })).getBlob()
 }
 
 /** Dateiname für den Browser-Download (außerhalb der Desktop-App). */

@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest'
+import type { WeatherDay } from '../../api/weather'
+import { tripWeatherByDate } from '../../lib/weather'
 import { sampleTrip } from './sampleTrip'
 import { buildTripPdf, flightLegs } from './tripPdf'
 
@@ -57,5 +59,31 @@ describe('flightLegs', () => {
     expect(legs).toHaveLength(2)
     expect(legs[1]).toMatchObject({ route: 'OPO › STR', time: '13:05–19:20', flights: 'TP566 + LH2177', stops: '1 Umstieg (LIS)' })
     expect(fare).toBe('Light · nur Handgepäck · nicht umbuchbar')
+  })
+
+  it('zeigt Wetter pro Etappe und Tag, typisches Wetter mit Stern', () => {
+    const stage = sampleTrip.stages[0]
+    const day = (date: string, over: Partial<WeatherDay> = {}): WeatherDay => ({
+      date,
+      source: 'Climate',
+      code: 0,
+      tempMax: 23.6,
+      tempMin: 14.1,
+      precipitationMm: 0,
+      rainChance: 20,
+      years: 5,
+      ...over,
+    })
+    const byStage = new Map([[stage.id, [day(stage.startDate), day(stage.endDate, { code: 61, rainChance: 60, precipitationMm: 4 })]]])
+    const withWeather = texts(
+      buildTripPdf(sampleTrip, { today: '2026-10-13', weather: { byStage, byDate: tripWeatherByDate(sampleTrip.stages, byStage) } })
+        .content,
+    ).join('\n')
+    expect(withWeather).toContain('Wetter: meist sonnig')
+    expect(withWeather).toContain('typisch (Ø 5 Jahre)')
+    expect(withWeather).toContain('Sonnig*')
+    expect(withWeather).toContain('24° / 14°')
+    expect(withWeather).toContain('Open-Meteo.com')
+    expect(texts(buildTripPdf(sampleTrip, { today: '2026-10-13' }).content).join('\n')).not.toContain('Open-Meteo.com')
   })
 })

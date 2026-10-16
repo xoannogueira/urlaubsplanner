@@ -76,6 +76,8 @@ Schritt für Schritt erklärt: [Anleitung](packaging/ANLEITUNG.md). Ohne Install
   „Günstig zuerst / Ausgewogen / Schnell zuerst“; Zeitfenster-Filter für Abflug und Ankunft je Strecke
 - **Anreise mit Bus & Bahn** statt Flug (Umschalter im Tab „Anreise“): Hin- und Rückfahrt von zu Hause zur ersten bzw. ab der
   letzten Etappe, mit Umstiegen, Gleisen und Fußwegen; Links zu bahn.de und Google Maps (Preise gibt es dort)
+- **Wetter pro Etappe** in der Übersicht, im Tagesplan und im PDF: echte Vorhersage für die nächsten 16 Tage, sonst
+  typisches Wetter (Durchschnitt der letzten 5 Jahre am selben Kalendertag). Kostenlos über [Open-Meteo](https://open-meteo.com) (CC BY 4.0)
 - **Transfers** (eigener Tab): Vorschläge Flughafen → Unterkunft, Etappe → Etappe und Unterkunft → Flughafen, automatisch mit
   passender Uhrzeit gesucht; beliebige weitere Strecken frei suchbar. Gemerkte Verbindungen erscheinen im Tagesplan und im PDF.
   Fahrplandaten: [Transitous](https://transitous.org) (kostenlos, ohne Key, Community-Projekt)
@@ -91,7 +93,7 @@ Schritt für Schritt erklärt: [Anleitung](packaging/ANLEITUNG.md). Ohne Install
 | 5 ✅ | Aktivitäten-Vorschläge (OpenStreetMap + Wikidata, ohne Key) |
 | 6 ✅ | Dashboard mit Diagrammen, Zeitplan, Countdown und offenen Punkten |
 | 7 ✅ | Desktop-App mit Installer und Auto-Update, PDF-Reiseplan, Flug-Bewertung, Bus & Bahn, Transfers |
-| später | Wetter, Packliste, Mietwagen, Mitreisende & Kostenaufteilung, Preisalarm, Export (.ics) |
+| später | Packliste, Mietwagen, Mitreisende & Kostenaufteilung, Preisalarm, Export (.ics) |
 
 ## Technik
 
@@ -366,6 +368,7 @@ Dieselben Checks laufen bei jedem Push in GitHub Actions.
 | POST | `/api/hotels/nearby` | Alle Hotels im Umkreis, auch ausgebuchte (ohne Preis) |
 | GET | `/api/activities?lat=…&lon=…&radiusMeters=…&offset=0&limit=10` | Aktivitäten-Vorschläge seitenweise (500 m – 50 km), optional `category`, `q`, `sort=Distance` |
 | GET | `/api/transit/plan?fromLat=…&fromLon=…&toLat=…&toLon=…&time=…&arriveBy=false` | Bus-&-Bahn-Verbindungen (Transitous), optional `cursor` für früher/später |
+| GET | `/api/weather?lat=…&lon=…&from=…&to=…` | Wetter pro Tag (Vorhersage bzw. typisch), max. 62 Tage |
 | GET | `/api/airports?q=…` | Flughafensuche (Code, Stadt, Name; sonst über die Ortssuche in der Nähe) |
 | GET | `/api/airports/near?lat=…&lon=…&radiusKm=…` | Flughäfen im Umkreis |
 | GET | `/api/airports/lookup?codes=STR,LIS` | Flughäfen nach Code |

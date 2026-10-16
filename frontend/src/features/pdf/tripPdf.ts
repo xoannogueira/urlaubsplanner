@@ -1,10 +1,12 @@
 import type { Content, ContentTable, TDocumentDefinitions, TableCell } from 'pdfmake/interfaces'
 import type { OptionKind, OptionStatus, Stage, Trip, TripOption } from '../../api/types'
+import type { TripWeather, WeatherDay } from '../../api/weather'
 import { buildTimeline, costByKind, costByStage } from '../../lib/dashboard'
 import { tripRange } from '../../lib/dates'
 import { parseSignature } from '../../lib/flights'
 import { formatDate, formatDateRange, formatEuro, formatShortDate, hostOf, nightsLabel, parseDate, peopleLabel } from '../../lib/format'
 import { isArrival, isChosen, isTransitAnreise, kindLabels } from '../../lib/options'
+import { sourceLabel, summarizeWeather, summaryLine, tempRange, weatherLabel } from '../../lib/weather'
 
 /**
  * Reiseplan als PDF (Beschreibung für pdfmake): Überblick, Flüge, Unterkünfte, gemerkte Aktivitäten,
@@ -57,9 +59,11 @@ const days = (from: string, to: string) => Math.round((parseDate(to).getTime() -
 export interface TripPdfOptions {
   /** Erstellungsdatum "YYYY-MM-DD" */
   today: string
+  /** Wetter pro Etappe und Tag (Open-Meteo); fehlt es, bleibt die Spalte weg. */
+  weather?: TripWeather
 }
 
-export function buildTripPdf(trip: Trip, { today }: TripPdfOptions): TDocumentDefinitions {
+export function buildTripPdf(trip: Trip, { today, weather }: TripPdfOptions): TDocumentDefinitions {
   const range = tripRange(trip)
   const chosen = trip.options.filter(isChosen)
   const flights = chosen.filter((o) => o.kind === 'Flight').sort(byStart)
@@ -75,12 +79,14 @@ export function buildTripPdf(trip: Trip, { today }: TripPdfOptions): TDocumentDe
     section('Anreise', 'Flight'),
     flights.length + trains.length > 0 ? [...flights.map(flightBlock), ...trains.map(extraBlock)] : empty('Noch keine Anreise ausgewählt.'),
     section('Unterkünfte', 'Hotel'),
-    trip.stages.length > 0 ? trip.stages.map((s) => hotelsOfStage(trip, s)) : empty('Noch keine Etappen angelegt.'),
+    trip.stages.length > 0
+      ? trip.stages.map((s) => hotelsOfStage(trip, s, weather?.byStage.get(s.id)))
+      : empty('Noch keine Etappen angelegt.'),
     section('Aktivitäten', 'Activity'),
     activities(trip),
   ]
   if (extras.length > 0) content.push(section('Transfers & weitere Buchungen', 'Transport'), extras.map(extraBlock))
-  if (timeline && timeline.days.length > 0) content.push(section('Tag für Tag', null, true), dayTable(timeline.days))
+  if (timeline && timeline.days.length > 0) content.push(section('Tag für Tag', null, true), dayTable(timeline.days, weather))
   content.push(section('Kosten', null), costTables(trip))
   if (trip.notes?.trim()) content.push(section('Notizen', null), { text: trip.notes.trim(), style: 'body' })
 
@@ -300,12 +306,18 @@ function flightBlock(option: TripOption): Content {
   return card(stack, 'Flight')
 }
 
-function hotelsOfStage(trip: Trip, stage: Stage): Content {
+function hotelsOfStage(trip: Trip, stage: Stage, weatherDays: WeatherDay[] | undefined): Content {
   const hotels = trip.options.filter((o) => o.kind === 'Hotel' && o.stageId === stage.id && isChosen(o)).sort(byStart)
+  const summary = weatherDays ? summarizeWeather(weatherDays) : null
   const heading = {
-    text: [
-      { text: stage.name, bold: true },
-      { text: `   ${formatDateRange(stage.startDate, stage.endDate)} · ${nightsLabel(stage.nights)}`, color: color.muted },
+    stack: [
+      {
+        text: [
+          { text: stage.name, bold: true },
+          { text: `   ${formatDateRange(stage.startDate, stage.endDate)} · ${nightsLabel(stage.nights)}`, color: color.muted },
+        ],
+      },
+      summary ? { text: `Wetter: ${summaryLine(summary)} (${sourceLabel(summary)})`, style: 'small', margin: [0, 1, 0, 0] } : '',
     ],
     margin: [0, 10, 0, 0],
   } satisfies Content
@@ -377,8 +389,10 @@ function extraBlock(option: TripOption): Content {
   )
 }
 
-function dayTable(days: ReturnType<typeof buildTimeline>['days']): Content {
-  const body: TableCell[][] = [['Tag', 'Ort', 'Programm', 'Übernachtung'].map((h) => ({ text: h, style: 'label' }))]
+function dayTable(days: ReturnType<typeof buildTimeline>['days'], weather: TripWeather | undefined): Content {
+  const withWeather = days.some((d) => weather?.byDate.has(d.date))
+  const head = withWeather ? ['Tag', 'Ort', 'Wetter', 'Programm', 'Übernachtung'] : ['Tag', 'Ort', 'Programm', 'Übernachtung']
+  const body: TableCell[][] = [head.map((h) => ({ text: h, style: 'label' }))]
   for (const d of days) {
     const program =
       d.items.length > 0
@@ -390,14 +404,41 @@ function dayTable(days: ReturnType<typeof buildTimeline>['days']): Content {
         : d.night
           ? { text: pdfText(d.night.title) + (d.night.booked ? '' : ' (noch buchen)') }
           : { text: 'Abreise', color: color.muted }
+    const w = weather?.byDate.get(d.date)
+    const weatherCell: TableCell = w
+      ? {
+          text: [
+            `${weatherLabel(w.code)}${w.source === 'Climate' ? '*' : ''}\n`,
+            { text: tempRange(w), color: color.muted },
+            w.rainChance !== null && w.rainChance >= 30 ? { text: `\nRegen ${w.rainChance} %`, color: color.muted } : '',
+          ],
+          fontSize: 8.5,
+        }
+      : { text: '–', color: color.muted }
     body.push([
       { text: formatShortDate(d.date), bold: true, noWrap: true },
       { text: d.stage?.name ?? '–', color: d.stageStart ? color.text : color.muted },
+      ...(withWeather ? [weatherCell] : []),
       { text: program },
       night,
     ])
   }
-  return { table: { headerRows: 1, widths: [62, 70, '*', 150], body, dontBreakRows: true }, layout: zebra } satisfies ContentTable
+  const table = {
+    table: { headerRows: 1, widths: withWeather ? [58, 62, 66, '*', 130] : [62, 70, '*', 150], body, dontBreakRows: true },
+    layout: zebra,
+  } satisfies ContentTable
+  if (!withWeather) return table
+  const typical = days.some((d) => weather?.byDate.get(d.date)?.source === 'Climate')
+  return [
+    table,
+    {
+      text:
+        (typical ? '* typisches Wetter: Durchschnitt der letzten Jahre – die echte Vorhersage gibt es etwa 2 Wochen vorher. ' : '') +
+        'Wetterdaten: Open-Meteo.com (CC BY 4.0).',
+      style: 'small',
+      margin: [0, 6, 0, 0],
+    },
+  ]
 }
 
 function costTables(trip: Trip): Content {
