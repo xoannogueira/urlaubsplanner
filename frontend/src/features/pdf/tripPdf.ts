@@ -322,6 +322,7 @@ function hotelsOfStage(trip: Trip, stage: Stage, weatherDays: WeatherDay[] | und
           { text: `   ${formatDateRange(stage.startDate, stage.endDate)} · ${nightsLabel(stage.nights)}`, color: color.muted },
         ],
       },
+      stage.description ? { text: pdfText(stage.description), margin: [0, 2, 0, 0] } : '',
       summary ? { text: `Wetter: ${summaryLine(summary)} (${sourceLabel(summary)})`, style: 'small', margin: [0, 1, 0, 0] } : '',
     ],
     margin: [0, 10, 0, 0],
@@ -505,7 +506,7 @@ function splitTables(trip: Trip): Content {
   const money = (n: number) => formatEuro(n).replace(/,00(?=\s?€)/, '')
   const exact = (n: number) => new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(n)
   const body: TableCell[][] = [
-    ['Person', 'Anteil', 'Bezahlt', 'Saldo'].map((h, i) => ({ text: h, style: 'label', alignment: i > 0 ? 'right' : 'left' })),
+    ['Person', 'Anteil', 'Gekauft', 'Saldo'].map((h, i) => ({ text: h, style: 'label', alignment: i > 0 ? 'right' : 'left' })),
     ...split.people.map((p): TableCell[] => [
       { text: p.member.name, bold: true },
       { text: money(p.share), alignment: 'right' },
@@ -529,7 +530,10 @@ function splitTables(trip: Trip): Content {
           ],
         }
       : {
-          text: split.total > 0 && split.unpaid < split.total ? 'Alles ausgeglichen.' : 'Noch niemand als Zahler eingetragen.',
+          text:
+            split.total > 0 && split.unpaid < split.total
+              ? 'Alles ausgeglichen.'
+              : 'Noch bei keinem Posten eingetragen, wer ihn gekauft hat.',
           style: 'small',
         }
   return [
@@ -539,9 +543,31 @@ function splitTables(trip: Trip): Content {
         { width: '*', margin: [24, 0, 0, 0], stack: [transfers] },
       ],
     },
+    {
+      stack: [
+        { text: 'RECHENWEG', style: 'label', margin: [0, 12, 0, 3] },
+        {
+          text: 'Jeder Posten wird gleichmäßig auf die Personen verteilt, für die er ist. Saldo = gekauft − Anteil an bereits gekauften Posten. Ausgleich: Wer am meisten schuldet, zahlt an den, der am meisten zurückbekommt.',
+          style: 'small',
+          margin: [0, 0, 0, 4],
+        },
+        ...split.people.map((p): Content => ({
+          margin: [0, 2, 0, 0],
+          text: [
+            { text: `${p.member.name}: `, bold: true },
+            `Anteil ${p.parts.map((x) => `${x.title} ${exact(x.amount)} ÷ ${x.people} = ${exact(x.each)}`).join(' + ')} = ${exact(p.share)}. `,
+            p.purchases.length > 0
+              ? `Gekauft: ${p.purchases.map((x) => `${x.title} ${exact(x.amount)}`).join(', ')}. `
+              : 'Noch nichts gekauft. ',
+            `Saldo ${exact(p.paid)} − ${exact(p.shareOfBought)} = ${p.balance > 0 ? '+' : ''}${exact(p.balance)}.`,
+          ],
+          fontSize: 8.5,
+        })),
+      ],
+    },
     split.unpaid > 0
       ? {
-          text: `${money(split.unpaid)} ohne eingetragenen Zahler – zählen zum Anteil, aber noch nicht zum Ausgleich.`,
+          text: `${money(split.unpaid)} ohne eingetragenen Käufer – zählen zum Anteil, aber noch nicht zum Ausgleich.`,
           style: 'small',
           margin: [0, 6, 0, 0],
         }

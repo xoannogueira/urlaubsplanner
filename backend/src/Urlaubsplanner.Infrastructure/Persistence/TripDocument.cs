@@ -52,11 +52,11 @@ internal sealed record TripDocument(
         Party);
 }
 
-internal sealed record StageDocument(Guid Id, string Name, DateOnly StartDate, DateOnly EndDate, double? Latitude, double? Longitude)
+internal sealed record StageDocument(Guid Id, string Name, DateOnly StartDate, DateOnly EndDate, double? Latitude, double? Longitude, string? Description = null)
 {
-    public static StageDocument From(Stage s) => new(s.Id, s.Name, s.StartDate, s.EndDate, s.Latitude, s.Longitude);
+    public static StageDocument From(Stage s) => new(s.Id, s.Name, s.StartDate, s.EndDate, s.Latitude, s.Longitude, s.Description);
 
-    public Stage ToDomain() => Stage.Restore(Id, Name, StartDate, EndDate, Latitude, Longitude);
+    public Stage ToDomain() => Stage.Restore(Id, Name, StartDate, EndDate, Latitude, Longitude, Description);
 }
 
 internal sealed record OptionDocument(

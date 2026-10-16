@@ -2,7 +2,19 @@ import { describe, expect, it } from 'vitest'
 import type { TransitItinerary } from '../api/transit'
 import type { Trip, TripOption } from '../api/types'
 import { timeRange } from './dashboard'
-import { approximateUtc, bahnUrl, clockAt, legLabel, modeInfo, suggestTransfers, transitOptionInput, visibleLegs } from './transit'
+import {
+  approximateUtc,
+  bahnUrl,
+  clockAt,
+  legLabel,
+  modeInfo,
+  suggestTransfers,
+  transitOptionInput,
+  visibleLegs,
+  exampleSearchDate,
+  tzOffsetMinutes,
+  shiftItinerary,
+} from './transit'
 
 const stop = (name: string, time: string, timeZone = 'Europe/Berlin', track: string | null = null) => ({
   name,
@@ -167,5 +179,54 @@ describe('Transfer-Vorschläge', () => {
 
   it('ohne Flug nur die Etappenwechsel', () => {
     expect(suggestTransfers({ ...trip, options: [] }, airports).map((x) => x.id)).toEqual(['etappe:opo'])
+  })
+})
+
+describe('Beispielsuche bei fehlendem Fahrplan', () => {
+  it('nah: keine Ersatzsuche; weit weg: gleicher Wochentag frühestens in einer Woche', () => {
+    expect(exampleSearchDate('2026-10-30', '2026-10-16')).toBeNull()
+    // 19.02.2027 ist ein Freitag → erster Freitag ab 23.10.2026
+    expect(exampleSearchDate('2027-02-19', '2026-10-16')).toBe('2026-10-23')
+  })
+
+  it('Zeitzonen-Abstand mit Sommer- und Winterzeit', () => {
+    expect(tzOffsetMinutes(new Date('2026-07-01T12:00:00Z'), 'Europe/Berlin')).toBe(120)
+    expect(tzOffsetMinutes(new Date('2027-02-19T12:00:00Z'), 'Europe/Berlin')).toBe(60)
+    expect(tzOffsetMinutes(new Date('2027-02-19T12:00:00Z'), null)).toBe(0)
+  })
+
+  it('verschiebt auf das Reisedatum mit gleicher Uhrzeit vor Ort', () => {
+    const stop = (time: string) => ({ name: 'X', latitude: 50, longitude: 8, time, timeZone: 'Europe/Berlin', track: null })
+    const it = {
+      departure: '2026-10-23T06:00:00Z', // 08:00 Sommerzeit
+      arrival: '2026-10-23T10:00:00Z',
+      durationMinutes: 240,
+      transfers: 0,
+      legs: [
+        {
+          mode: 'HIGHSPEED_RAIL',
+          line: 'ICE 1',
+          headsign: null,
+          agency: null,
+          from: stop('2026-10-23T06:00:00Z'),
+          to: stop('2026-10-23T10:00:00Z'),
+          durationMinutes: 240,
+          distanceMeters: null,
+          stops: 0,
+          color: null,
+        },
+      ],
+    }
+    const moved = shiftItinerary(it, '2026-10-23', '2027-02-19')
+    expect(moved.departure).toBe('2027-02-19T07:00:00.000Z') // 08:00 Winterzeit
+    expect(clockAt(moved.departure, 'Europe/Berlin')).toBe('08:00')
+    expect(moved.legs[0].to.time).toBe('2027-02-19T11:00:00.000Z')
+  })
+
+  it('Sommerzeit nach EU-Regel', () => {
+    const frankfurt = { latitude: 50.11, longitude: 8.68 }
+    expect(approximateUtc('2026-10-24', 8, 0, frankfurt)).toBe('2026-10-24T06:00:00.000Z') // noch Sommerzeit
+    expect(approximateUtc('2026-10-26', 8, 0, frankfurt)).toBe('2026-10-26T07:00:00.000Z') // Winterzeit
+    expect(approximateUtc('2027-03-29', 8, 0, frankfurt)).toBe('2027-03-29T06:00:00.000Z')
   })
 })

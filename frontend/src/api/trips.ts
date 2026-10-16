@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { api, json } from './client'
+import { adjustTripToFlight } from './flightAdjust'
 import type { OptionInput, OptionStatus, PackingList, StageInput, Trip, TripInput, TripListItem, TripParty, TripSummary } from './types'
 
 export const tripKeys = {
@@ -57,6 +58,9 @@ export function useTripActions(tripId: string) {
   const queryClient = useQueryClient()
   const base = `/trips/${tripId}`
   const onSuccess = (trip: Trip) => storeTrip(queryClient, trip)
+  const store = (trip: Trip) => storeTrip(queryClient, trip)
+  // Flug ausgewählt/gebucht → Zeitraum und ggf. erste Etappe automatisch anpassen
+  const afterFlight = (trip: Trip, optionId: string) => void adjustTripToFlight(trip, optionId, store)
   // Bei schnellem Abhaken: nur die Antwort auf die letzte Änderung übernehmen – ältere würden den neueren Stand kurz überschreiben.
   const latestOnly = (key: string[]) => (trip: Trip) => {
     if (queryClient.isMutating({ mutationKey: key }) <= 1) storeTrip(queryClient, trip)
@@ -85,19 +89,32 @@ export function useTripActions(tripId: string) {
 
   const addOption = useMutation({
     mutationFn: (input: OptionInput) => api<Trip>(`${base}/options`, { method: 'POST', ...json(input) }),
-    onSuccess,
+    onSuccess: (trip: Trip, input: OptionInput) => {
+      const known = new Set(queryClient.getQueryData<Trip>(tripKeys.detail(tripId))?.options.map((o) => o.id))
+      storeTrip(queryClient, trip)
+      if (input.kind === 'Flight') {
+        const added = trip.options.filter((o) => !known.has(o.id))
+        if (added.length === 1) afterFlight(trip, added[0].id)
+      }
+    },
   })
 
   const updateOption = useMutation({
     mutationFn: ({ id, input }: { id: string; input: OptionInput }) =>
       api<Trip>(`${base}/options/${id}`, { method: 'PUT', ...json(input) }),
-    onSuccess,
+    onSuccess: (trip: Trip, { id, input }: { id: string; input: OptionInput }) => {
+      storeTrip(queryClient, trip)
+      if (input.kind === 'Flight') afterFlight(trip, id)
+    },
   })
 
   const setStatus = useMutation({
     mutationFn: ({ id, status }: { id: string; status: OptionStatus }) =>
       api<Trip>(`${base}/options/${id}/status`, { method: 'PATCH', ...json({ status }) }),
-    onSuccess,
+    onSuccess: (trip: Trip, { id, status }: { id: string; status: OptionStatus }) => {
+      storeTrip(queryClient, trip)
+      if (status === 'Selected' || status === 'Booked') afterFlight(trip, id)
+    },
     ...optimisticVars<{ id: string; status: OptionStatus }>(queryClient, tripId, (trip, { id, status }) => ({
       ...trip,
       options: trip.options.map((o) => (o.id === id ? { ...o, status } : o)),
@@ -108,6 +125,12 @@ export function useTripActions(tripId: string) {
   const confirmPrice = useMutation({
     mutationFn: ({ id, price }: { id: string; price: number }) =>
       api<Trip>(`${base}/options/${id}/price`, { method: 'PATCH', ...json({ price }) }),
+    onSuccess,
+  })
+
+  /** Neuer Reisezeitraum – erste und letzte Etappe wandern mit. */
+  const changePeriod = useMutation({
+    mutationFn: (period: { startDate: string; endDate: string }) => api<Trip>(`${base}/period`, { method: 'PUT', ...json(period) }),
     onSuccess,
   })
 
@@ -150,6 +173,7 @@ export function useTripActions(tripId: string) {
     setStatus,
     confirmPrice,
     removeOption,
+    changePeriod,
     setPacking,
     setParty,
   }

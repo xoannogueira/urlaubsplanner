@@ -13,6 +13,8 @@ export interface Stage {
   nights: number
   latitude: number | null
   longitude: number | null
+  /** Freie Beschreibung, z. B. was man dort vorhat */
+  description?: string | null
 }
 
 export interface TripOption {
@@ -153,6 +155,7 @@ export interface StageInput {
   endDate: string
   latitude: number | null
   longitude: number | null
+  description?: string | null
 }
 
 export interface OptionInput {

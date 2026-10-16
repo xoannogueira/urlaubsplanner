@@ -122,6 +122,44 @@ public sealed class Trip
     /// Entfernt eine Etappe. Ihre Optionen bleiben erhalten und gelten danach für die ganze Reise,
     /// damit keine gespeicherten Links verloren gehen.
     /// </summary>
+    /// <summary>
+    /// Neuer Reisezeitraum (z. B. weil der gebuchte Flug früher oder später fliegt): Die erste Etappe beginnt am neuen
+    /// Startdatum, die letzte endet am neuen Enddatum. Etappen dazwischen bleiben unverändert.
+    /// </summary>
+    public void ChangePeriod(DateOnly start, DateOnly end, DateTimeOffset now)
+    {
+        Guard.DateOrder(start, end, "endDate");
+        var ordered = Stages;
+        if (ordered.Count > 0)
+        {
+            var first = ordered[0];
+            var last = ordered[^1];
+            if (start >= first.EndDate && ordered.Count > 1)
+            {
+                throw new DomainException("startDate", $"Der neue Beginn liegt nach dem Ende der ersten Etappe ({first.Name}) – diese Etappe zuerst anpassen oder löschen.");
+            }
+
+            if (end <= last.StartDate && ordered.Count > 1)
+            {
+                throw new DomainException("endDate", $"Das neue Ende liegt vor dem Beginn der letzten Etappe ({last.Name}) – diese Etappe zuerst anpassen oder löschen.");
+            }
+
+            if (ordered.Count == 1)
+            {
+                first.ChangeDates(start, end);
+            }
+            else
+            {
+                first.ChangeDates(start, first.EndDate);
+                last.ChangeDates(last.StartDate, end);
+            }
+        }
+
+        StartDate = start;
+        EndDate = end;
+        Touch(now);
+    }
+
     public void RemoveStage(Guid stageId, DateTimeOffset now)
     {
         var stage = FindStage(stageId);

@@ -5,7 +5,7 @@ import { MapHint, PlaceSearchField } from '../../components/PlaceSearchField'
 import { Button } from '../../components/ui/Button'
 import { Dialog } from '../../components/ui/Dialog'
 import { DateField } from '../../components/ui/DateField'
-import { FormError } from '../../components/ui/Field'
+import { FormError, TextAreaField } from '../../components/ui/Field'
 import { newStageDefaults, rangeHint, tripRange } from '../../lib/dates'
 import { toLatLng } from '../../lib/geo'
 
@@ -23,7 +23,7 @@ export function StageFormDialog({ open, onClose, onSubmit, stage, trip }: StageF
     <Dialog
       open={open}
       onClose={onClose}
-      title={stage ? 'Etappe bearbeiten' : 'Etappe hinzufügen'}
+      title={stage ? 'Reise-Etappe bearbeiten' : 'Reise-Etappe hinzufügen'}
       description="Ein Ort mit Zeitraum, z. B. Lissabon vom 12. bis 16. Mai."
       width="sm"
     >
@@ -42,6 +42,7 @@ function StageForm({ stage, trip, onSubmit, onClose }: Omit<StageFormDialogProps
   const [coordinates, setCoordinates] = useState<LatLng | null>(toLatLng(stage))
   const [startDate, setStartDate] = useState(stage?.startDate ?? defaults.start)
   const [endDate, setEndDate] = useState(stage?.endDate ?? defaults.end)
+  const [description, setDescription] = useState(stage?.description ?? '')
   const [error, setError] = useState<ApiError | null>(null)
   const [pending, setPending] = useState(false)
 
@@ -50,7 +51,14 @@ function StageForm({ stage, trip, onSubmit, onClose }: Omit<StageFormDialogProps
     setPending(true)
     setError(null)
     try {
-      await onSubmit({ name, startDate, endDate, latitude: coordinates?.latitude ?? null, longitude: coordinates?.longitude ?? null })
+      await onSubmit({
+        name,
+        startDate,
+        endDate,
+        latitude: coordinates?.latitude ?? null,
+        longitude: coordinates?.longitude ?? null,
+        description: description.trim() || null,
+      })
       onClose()
     } catch (err) {
       setError(err instanceof ApiError ? err : new ApiError(0, 'Unbekannter Fehler'))
@@ -106,6 +114,15 @@ function StageForm({ stage, trip, onSubmit, onClose }: Omit<StageFormDialogProps
           error={fe.endDate}
         />
       </div>
+      <TextAreaField
+        label="Beschreibung (optional)"
+        value={description}
+        onChange={(e) => setDescription(e.target.value)}
+        placeholder="z. B. Altstadt erkunden, Strandtage, Tagesausflug nach Sintra"
+        maxLength={2000}
+        rows={3}
+        error={fe.description}
+      />
       <FormError message={error && Object.keys(fe).length === 0 ? error.message : null} />
       <div className="flex justify-end gap-2 pt-1">
         <Button onClick={onClose}>Abbrechen</Button>

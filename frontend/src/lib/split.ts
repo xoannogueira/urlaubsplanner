@@ -12,8 +12,24 @@ export interface SplitItem {
   for: string[]
 }
 
+/** Ein Posten im Rechenweg einer Person: „Casa Lagos: 840 € ÷ 3 = 280 €“ */
+export interface SharePart {
+  title: string
+  amount: number
+  people: number
+  each: number
+  /** schon gekauft (zählt für den Ausgleich) */
+  bought: boolean
+}
+
 export interface PersonBalance {
   member: TripMember
+  /** Rechenweg: Anteile an den einzelnen Posten */
+  parts: SharePart[]
+  /** Rechenweg: was die Person gekauft hat */
+  purchases: { title: string; amount: number }[]
+  /** Anteil nur an den schon gekauften Posten (Grundlage für den Saldo) */
+  shareOfBought: number
   /** Anteil an allen Kosten */
   share: number
   /** selbst bezahlt */
@@ -78,23 +94,32 @@ export function calculateSplit(trip: Trip): Split {
   const share = zero()
   const paid = zero()
   const owedForPaid = zero()
+  const parts = new Map(members.map((m) => [m.id, [] as SharePart[]]))
+  const purchases = new Map(members.map((m) => [m.id, [] as { title: string; amount: number }[]]))
   let unpaid = 0
   for (const item of items) {
     const people = members.map((m) => m.id).filter((id) => item.for.includes(id))
     if (people.length === 0) continue
     const total = Math.round(item.amount * 100)
     const base = Math.floor(total / people.length)
+    const bought = !!item.paidBy && paid.has(item.paidBy)
     people.forEach((id, index) => {
       const each = base + (index < total - base * people.length ? 1 : 0)
       share.set(id, share.get(id)! + each)
-      if (item.paidBy && paid.has(item.paidBy)) owedForPaid.set(id, owedForPaid.get(id)! + each)
+      if (bought) owedForPaid.set(id, owedForPaid.get(id)! + each)
+      parts.get(id)!.push({ title: item.title, amount: total / 100, people: people.length, each: each / 100, bought })
     })
-    if (item.paidBy && paid.has(item.paidBy)) paid.set(item.paidBy, paid.get(item.paidBy)! + total)
-    else unpaid += total
+    if (bought) {
+      paid.set(item.paidBy!, paid.get(item.paidBy!)! + total)
+      purchases.get(item.paidBy!)!.push({ title: item.title, amount: total / 100 })
+    } else unpaid += total
   }
 
   const people = members.map((member) => ({
     member,
+    parts: parts.get(member.id)!,
+    purchases: purchases.get(member.id)!,
+    shareOfBought: owedForPaid.get(member.id)! / 100,
     share: share.get(member.id)! / 100,
     paid: paid.get(member.id)! / 100,
     balance: (paid.get(member.id)! - owedForPaid.get(member.id)!) / 100,

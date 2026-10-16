@@ -85,21 +85,23 @@ function TripForm({ trip, onSubmit, onSuccess, onClose }: Omit<TripFormDialogPro
           hint={(trip?.party.members.length ?? 0) > 0 ? 'folgt den Mitreisenden' : undefined}
           error={fe.travelers}
         />
-        <InputField
-          label="Von (optional)"
-          type="date"
-          value={startDate}
-          onChange={(e) => setStartDate(e.target.value)}
-          error={fe.startDate}
-        />
-        <DateField
-          label="Bis (optional)"
-          value={endDate}
-          onValue={setEndDate}
-          min={startDate || null}
-          openAt={startDate || null}
-          error={fe.endDate}
-        />
+        {trip && trip.stages.length > 0 ? (
+          <p className="self-end pb-2 text-[13px] text-muted sm:col-span-2">
+            Zeitraum änderst du über das Datum oben in der Kopfzeile – erste und letzte Etappe wandern dann mit.
+          </p>
+        ) : (
+          <>
+            <DateField label="Von (optional)" value={startDate} onValue={setStartDate} error={fe.startDate} />
+            <DateField
+              label="Bis (optional)"
+              value={endDate}
+              onValue={setEndDate}
+              min={startDate || null}
+              openAt={startDate || null}
+              error={fe.endDate}
+            />
+          </>
+        )}
       </div>
       <TextAreaField label="Notizen (optional)" value={notes} onChange={(e) => setNotes(e.target.value)} error={fe.notes} />
       <FormError message={error && Object.keys(fe).length === 0 ? error.message : null} />

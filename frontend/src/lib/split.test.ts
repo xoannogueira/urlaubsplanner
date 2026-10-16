@@ -32,6 +32,14 @@ describe('Kostenaufteilung', () => {
     ])
     expect(split.transfers.map((t) => `${t.from.name}→${t.to.name}:${t.amount}`)).toEqual(['Cara→Anna:330', 'Ben→Anna:270'])
     expect(split.unpaid).toBe(0)
+    // Rechenweg für Ben: Hotel 900 ÷ 3 + Essen 60 ÷ 2
+    const ben = split.people[1]
+    expect(ben.parts.map((p) => [p.title, p.amount, p.people, p.each])).toEqual([
+      ['hotel', 900, 3, 300],
+      ['Essen', 60, 2, 30],
+    ])
+    expect(ben.purchases).toEqual([{ title: 'Essen', amount: 60 }])
+    expect(ben.shareOfBought).toBe(330)
   })
 
   it('noch nicht bezahlte Posten zählen zum Anteil, aber nicht zum Ausgleich', () => {

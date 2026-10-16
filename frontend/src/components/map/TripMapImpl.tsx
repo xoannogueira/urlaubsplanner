@@ -7,7 +7,7 @@ import type { GeoJSONSource, Map as MapLibreMap, Marker } from 'maplibre-gl'
 import { useEffect, useRef, useState } from 'react'
 import { arcPath, boundsOf } from '../../lib/geo'
 import { useThemeValue } from '../../lib/theme'
-import { MAP_STYLES, type MapAirport, type MapPin, type MapStage, type PinTone, type TripMapProps } from './types'
+import { fallbackStyle, MAP_STYLES, type MapAirport, type MapPin, type MapStage, type PinTone, type TripMapProps } from './types'
 
 maplibregl.setWorkerUrl(workerUrl)
 
@@ -21,6 +21,8 @@ const toneClass: Record<PinTone, string> = {
   booked: 'border-accent bg-accent-soft text-accent',
   unavailable: 'border-dashed border-danger bg-surface-2 text-muted',
 }
+
+const toneRank: Record<PinTone, number> = { booked: 0, chosen: 1, favorite: 2, idea: 3, unavailable: 4 }
 
 const selectedClass = 'border-accent bg-accent text-accent-ink scale-110'
 
@@ -69,8 +71,13 @@ export default function TripMapImpl({
   const airportMarkers = useRef<Marker[]>([])
   const fittedKey = useRef<string | null>(null)
   const onSelectRef = useRef(onSelect)
+  const selectedRef = useRef(selectedId)
+  const declutterFrame = useRef(0)
   const theme = useThemeValue()
   const [styleFailed, setStyleFailed] = useState(false)
+  // OpenFreeMap (Vektor) oder die Ersatzkarte von CARTO, wenn OpenFreeMap nicht lädt
+  const [basemap, setBasemap] = useState<'primary' | 'fallback'>('primary')
+  const basemapRef = useRef<'primary' | 'fallback'>('primary')
   // Zählt hoch, wenn die Karte von unsichtbar (0 px) zu sichtbar wechselt – z. B. Umschalten Liste → Karte am Handy.
   const [shownCount, setShownCount] = useState(0)
 
@@ -78,14 +85,40 @@ export default function TripMapImpl({
     onSelectRef.current = onSelect
   }, [onSelect])
 
+  /**
+   * Überlappen sich Pins, werden die weniger wichtigen zu kleinen Punkten (Name beim Drüberfahren).
+   * Reihenfolge: ausgewählt, gebucht, gewählt, Favorit, Idee – sonst wie geliefert (z. B. bekannteste zuerst).
+   */
+  const declutterRef = useRef<() => void>(() => {})
+  useEffect(() => {
+    declutterRef.current = () => {
+      cancelAnimationFrame(declutterFrame.current)
+      declutterFrame.current = requestAnimationFrame(() => {
+        const entries = [...pinEntries.current.values()]
+        const rank = (e: PinEntry) => (e.pin.id === selectedRef.current ? -1 : toneRank[e.pin.tone])
+        const ordered = entries.map((e, i) => ({ e, i })).sort((a, b) => rank(a.e) - rank(b.e) || a.i - b.i)
+        for (const { e } of ordered) e.marker.getElement().classList.remove('pin-compact')
+        const rects = ordered.map(({ e }) => e.button.getBoundingClientRect())
+        const placed: DOMRect[] = []
+        ordered.forEach(({ e }, i) => {
+          const r = rects[i]
+          const hit = placed.some((p) => r.left < p.right + 2 && r.right > p.left - 2 && r.top < p.bottom + 2 && r.bottom > p.top - 2)
+          if (hit && e.pin.id !== selectedRef.current) e.marker.getElement().classList.add('pin-compact')
+          else placed.push(r)
+        })
+      })
+    }
+  }, [])
+
   // Karte einmal anlegen.
   useEffect(() => {
     const container = containerRef.current
     if (!container) return
 
+    const theme = () => (document.documentElement.classList.contains('dark') ? 'dark' : 'light') as 'dark' | 'light'
     const map = new maplibregl.Map({
       container,
-      style: MAP_STYLES[document.documentElement.classList.contains('dark') ? 'dark' : 'light'],
+      style: MAP_STYLES[theme()],
       center: [10, 45],
       zoom: 3,
       attributionControl: { compact: true },
@@ -95,12 +128,35 @@ export default function TripMapImpl({
     })
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right')
     map.on('click', () => onSelectRef.current?.(null))
+    map.on('moveend', () => declutterRef.current())
+
+    // Lädt OpenFreeMap nicht (Stil oder Kacheln), auf die Ersatzkarte umschalten.
+    let tilesLoaded = false
+    let failures = 0
+    const switchToFallback = () => {
+      if (basemapRef.current === 'fallback') {
+        setStyleFailed(true)
+        return
+      }
+      basemapRef.current = 'fallback'
+      tilesLoaded = false
+      failures = 0
+      setBasemap('fallback')
+      map.setStyle(fallbackStyle(theme()), { diff: false })
+    }
+    map.on('data', (e) => {
+      if (e.dataType === 'source' && 'tile' in e && e.tile) tilesLoaded = true
+    })
     map.on('error', (e) => {
-      // Kacheln/Stil nicht erreichbar: Pins funktionieren trotzdem, wir zeigen nur einen Hinweis.
-      if (!map.isStyleLoaded()) setStyleFailed(true)
       console.warn('Karte:', e.error?.message)
+      failures++
+      if (!map.isStyleLoaded() || (!tilesLoaded && failures >= 3)) switchToFallback()
     })
     map.on('style.load', () => setStyleFailed(false))
+    // Hängt der Stil (keine Antwort), nach 12 Sekunden ebenfalls umschalten.
+    const timeout = window.setTimeout(() => {
+      if (!tilesLoaded && container.clientWidth > 0 && basemapRef.current === 'primary') switchToFallback()
+    }, 12_000)
 
     let hidden = container.clientWidth === 0 || container.clientHeight === 0
     const resize = new ResizeObserver(() => {
@@ -117,6 +173,8 @@ export default function TripMapImpl({
     const entries = pinEntries.current
 
     return () => {
+      window.clearTimeout(timeout)
+      cancelAnimationFrame(declutterFrame.current)
       resize.disconnect()
       entries.clear()
       stageMarkers.current = []
@@ -129,7 +187,7 @@ export default function TripMapImpl({
 
   // Dark/Light: nur den Stil tauschen, Marker bleiben stehen.
   useEffect(() => {
-    mapRef.current?.setStyle(MAP_STYLES[theme], { diff: false })
+    mapRef.current?.setStyle(basemapRef.current === 'fallback' ? fallbackStyle(theme) : MAP_STYLES[theme], { diff: false })
   }, [theme])
 
   // Preis-Pins abgleichen: neue anlegen, alte entfernen, bestehende aktualisieren.
@@ -165,11 +223,14 @@ export default function TripMapImpl({
       entry.button.title = pin.title
       entry.button.setAttribute('aria-label', `${pin.title}, ${pin.label}`)
     }
+    declutterRef.current()
   }, [pins])
 
   // Auswahl hervorheben und den gewählten Pin nach vorne holen.
   useEffect(() => {
     const map = mapRef.current
+    selectedRef.current = selectedId
+    declutterRef.current()
     for (const [id, entry] of pinEntries.current) {
       const selected = id === selectedId
       entry.button.setAttribute('class', pinClass(entry.pin.tone, selected))
@@ -321,11 +382,15 @@ export default function TripMapImpl({
     <div className={clsx('relative overflow-hidden rounded-[20px] border border-line bg-surface-2', className)}>
       {/* MapLibre setzt auf diesem Element selbst position: relative – daher volle Größe statt absolute. */}
       <div ref={containerRef} role="region" aria-label={label} className="h-full w-full" />
-      {styleFailed && (
+      {styleFailed ? (
         <p className="pointer-events-none absolute left-3 top-3 rounded-lg bg-surface px-2.5 py-1.5 text-xs text-muted shadow">
-          Kartenhintergrund nicht geladen – Pins funktionieren trotzdem.
+          Kartenhintergrund nicht geladen – Pins funktionieren trotzdem. Internet oder Werbeblocker prüfen.
         </p>
-      )}
+      ) : basemap === 'fallback' ? (
+        <p className="pointer-events-none absolute left-3 top-3 rounded-lg bg-surface/90 px-2.5 py-1.5 text-[11px] text-muted shadow">
+          Ersatzkarte – OpenFreeMap lädt gerade nicht
+        </p>
+      ) : null}
     </div>
   )
 }

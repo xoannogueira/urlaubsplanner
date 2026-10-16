@@ -7,10 +7,13 @@ public sealed record TripRequest(string Name, int Travelers, DateOnly? StartDate
     public TripData ToData() => new(Name, Travelers, StartDate, EndDate, Notes);
 }
 
-public sealed record StageRequest(string Name, DateOnly StartDate, DateOnly EndDate, double? Latitude, double? Longitude)
+public sealed record StageRequest(string Name, DateOnly StartDate, DateOnly EndDate, double? Latitude, double? Longitude, string? Description = null)
 {
-    public StageData ToData() => new(Name, StartDate, EndDate, Latitude, Longitude);
+    public StageData ToData() => new(Name, StartDate, EndDate, Latitude, Longitude, Description);
 }
+
+/// <summary>Neuer Reisezeitraum: erste und letzte Etappe werden mitverschoben.</summary>
+public sealed record PeriodRequest(DateOnly StartDate, DateOnly EndDate);
 
 public sealed record OptionRequest(
     OptionKind Kind,
