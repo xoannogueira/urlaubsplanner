@@ -47,7 +47,17 @@ export function DateField({ label, value, onValue, min, max, openAt, required, e
 }
 
 /** Uhrzeit-Feld (24 Stunden) mit Beschriftung. */
-export function TimeField({ label, value, onValue, className }: { label: string; value: string; onValue: (v: string) => void; className?: string }) {
+export function TimeField({
+  label,
+  value,
+  onValue,
+  className,
+}: {
+  label: string
+  value: string
+  onValue: (v: string) => void
+  className?: string
+}) {
   return (
     <FieldShell label={label} className={className}>
       {(ids) => <TimeInput id={ids.id} describedBy={ids.describedBy} value={value} onValue={onValue} />}

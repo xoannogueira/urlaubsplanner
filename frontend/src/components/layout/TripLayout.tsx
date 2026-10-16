@@ -15,10 +15,13 @@ import {
   Users,
   Wallet,
 } from 'lucide-react'
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
+import { AdjustToast } from './AdjustToast'
+import { PeriodDialog } from './PeriodDialog'
 import { Link, NavLink, Outlet, useParams } from 'react-router'
 import { useTrip, useTripActions, useTrips } from '../../api/trips'
 import type { Trip } from '../../api/types'
+import { shownRange } from '../../lib/dates'
 import { formatDateRange, peopleLabel } from '../../lib/format'
 import { isChosen } from '../../lib/options'
 import { KeyBanner } from '../../features/setup/KeyBanner'
@@ -163,9 +166,8 @@ function NavItem({ to, end, icon, badge, children }: { to: string; end?: boolean
 
 function TripHeader({ trip }: { trip: Trip }) {
   const { updateTrip } = useTripActions(trip.id)
-  const stageStart = trip.stages[0]?.startDate ?? trip.startDate
-  const stageEnd =
-    trip.stages.length > 0 ? trip.stages.reduce((max, s) => (s.endDate > max ? s.endDate : max), trip.stages[0].endDate) : trip.endDate
+  const [periodOpen, setPeriodOpen] = useState(false)
+  const { start: stageStart, end: stageEnd } = shownRange(trip)
 
   const setTravelers = (travelers: number) =>
     updateTrip.mutate({ name: trip.name, travelers, startDate: trip.startDate, endDate: trip.endDate, notes: trip.notes })
@@ -183,10 +185,15 @@ function TripHeader({ trip }: { trip: Trip }) {
         <h1 className="truncate text-[26px] font-extrabold tracking-tight">{trip.name}</h1>
       </div>
       <div className="flex flex-wrap items-center gap-2.5">
-        <span className="flex h-10 items-center gap-2 rounded-[10px] bg-surface-2 px-3.5 text-sm font-semibold">
+        <button
+          type="button"
+          onClick={() => setPeriodOpen(true)}
+          title="Reisezeitraum ändern"
+          className="flex h-10 cursor-pointer items-center gap-2 rounded-[10px] bg-surface-2 px-3.5 text-sm font-semibold hover:bg-surface-3"
+        >
           <CalendarDays size={16} />
-          {formatDateRange(stageStart, stageEnd)}
-        </span>
+          {stageStart && stageEnd ? formatDateRange(stageStart, stageEnd) : 'Zeitraum festlegen'}
+        </button>
         {trip.party.members.length > 0 ? (
           <Link
             to={`/trips/${trip.id}/kosten`}
@@ -224,6 +231,8 @@ function TripHeader({ trip }: { trip: Trip }) {
         )}
         <ThemeToggle />
       </div>
+      <PeriodDialog trip={trip} open={periodOpen} onClose={() => setPeriodOpen(false)} />
+      <AdjustToast tripId={trip.id} />
     </header>
   )
 }

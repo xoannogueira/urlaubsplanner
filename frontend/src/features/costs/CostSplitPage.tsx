@@ -118,7 +118,9 @@ export function CostSplitPage() {
               <h3 className="text-[13px] font-extrabold uppercase tracking-[0.06em] text-muted">Wer schuldet wem</h3>
               {split.transfers.length === 0 ? (
                 <p className="text-sm text-muted">
-                  {split.unpaid > 0 && split.total === split.unpaid ? 'Noch bei keinem Posten eingetragen, wer ihn gekauft hat.' : 'Alles ausgeglichen.'}
+                  {split.unpaid > 0 && split.total === split.unpaid
+                    ? 'Noch bei keinem Posten eingetragen, wer ihn gekauft hat.'
+                    : 'Alles ausgeglichen.'}
                 </p>
               ) : (
                 <ul className="flex flex-col gap-1.5">
@@ -144,7 +146,87 @@ export function CostSplitPage() {
           </aside>
         </div>
       )}
+      {members.length > 0 && split.items.length > 0 && <CalculationCard split={split} />}
     </div>
+  )
+}
+
+/** Rechenweg: wie Anteil, Saldo und Überweisungen zustande kommen – pro Person zum Aufklappen. */
+function CalculationCard({ split }: { split: ReturnType<typeof calculateSplit> }) {
+  return (
+    <section className="flex flex-col gap-3 rounded-[18px] border border-line bg-surface p-5" aria-labelledby="rechenweg">
+      <h2 id="rechenweg" className="text-[17px] font-extrabold">
+        So wird gerechnet
+      </h2>
+      <ol className="flex list-decimal flex-col gap-1 pl-5 text-sm text-muted">
+        <li>
+          <strong className="text-text">Anteil:</strong> Jeder Posten wird gleichmäßig auf die Personen verteilt, für die er ist (Standard:
+          alle). Krumme Beträge werden auf den Cent genau verteilt – ein übriger Cent geht an die ersten in der Liste.
+        </li>
+        <li>
+          <strong className="text-text">Saldo:</strong> Was jemand gekauft hat minus sein Anteil an den Posten, die schon gekauft sind. Plus
+          = bekommt Geld zurück, minus = muss noch zahlen. Posten ohne Käufer zählen erst mit, wenn eingetragen ist, wer sie gekauft hat.
+        </li>
+        <li>
+          <strong className="text-text">Wer schuldet wem:</strong> Wer am meisten schuldet, zahlt an den, der am meisten zurückbekommt – so
+          lange, bis alles auf null steht. Das braucht höchstens eine Überweisung weniger, als es Personen gibt.
+        </li>
+      </ol>
+      <ul className="flex flex-col gap-2">
+        {split.people.map((p) => (
+          <li key={p.member.id}>
+            <details className="group rounded-xl bg-surface-2 px-3.5 py-2.5">
+              <summary className="flex cursor-pointer list-none items-center gap-2 text-sm">
+                <span className="font-bold">{p.member.name}</span>
+                <span className="text-muted">
+                  Anteil {exact(p.share)} · gekauft {exact(p.paid)} · Saldo {p.balance > 0 ? '+' : ''}
+                  {exact(p.balance)}
+                </span>
+                <span className="ml-auto text-xs font-semibold text-accent group-open:hidden">Rechenweg</span>
+              </summary>
+              <div className="mt-2 flex flex-col gap-2 font-mono text-[13px]">
+                <div>
+                  {p.parts.map((part, i) => (
+                    <div key={i} className={clsx('flex gap-3', !part.bought && 'text-muted')}>
+                      <span className="min-w-0 flex-1 truncate font-sans">
+                        {part.title}
+                        {!part.bought && ' (noch ohne Käufer)'}
+                      </span>
+                      <span>
+                        {exact(part.amount)} ÷ {part.people} = {exact(part.each)}
+                      </span>
+                    </div>
+                  ))}
+                  <div className="mt-1 flex gap-3 border-t border-line pt-1 font-semibold">
+                    <span className="flex-1 font-sans">Anteil</span>
+                    <span>{exact(p.share)}</span>
+                  </div>
+                </div>
+                <div>
+                  {p.purchases.length === 0 ? (
+                    <div className="font-sans text-muted">Noch nichts gekauft.</div>
+                  ) : (
+                    p.purchases.map((x, i) => (
+                      <div key={i} className="flex gap-3">
+                        <span className="min-w-0 flex-1 truncate font-sans">Gekauft: {x.title}</span>
+                        <span>{exact(x.amount)}</span>
+                      </div>
+                    ))
+                  )}
+                </div>
+                <div className="flex gap-3 border-t border-line pt-1 font-semibold">
+                  <span className="flex-1 font-sans">Saldo = gekauft − Anteil an Gekauftem</span>
+                  <span>
+                    {exact(p.paid)} − {exact(p.shareOfBought)} = {p.balance > 0 ? '+' : ''}
+                    {exact(p.balance)}
+                  </span>
+                </div>
+              </div>
+            </details>
+          </li>
+        ))}
+      </ul>
+    </section>
   )
 }
 

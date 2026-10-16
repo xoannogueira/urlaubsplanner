@@ -95,6 +95,9 @@ app.UseExceptionHandler();
 app.UseStatusCodePages();
 app.UseResponseCompression();
 
+// Nur Anfragen aus der App selbst dürfen etwas ändern (Schutz vor fremden Webseiten).
+app.UseLocalRequestGuard();
+
 app.MapGet("/api/health", () => TypedResults.Ok(new { status = "ok" }));
 app.MapAppEndpoints();
 app.MapTripEndpoints();

@@ -51,7 +51,10 @@ export function maskGermanDate(previous: string, next: string): string {
 
 /** "8", "8:5", "0830", "8.30", "20 Uhr" → "08:00", "08:05", "08:30", "08:30", "20:00"; ungültig → null. */
 export function parseTime(text: string): string | null {
-  const t = text.trim().toLowerCase().replace(/\s*uhr$/, '')
+  const t = text
+    .trim()
+    .toLowerCase()
+    .replace(/\s*uhr$/, '')
   const m = /^(\d{1,2})(?:[:.](\d{1,2}))?$/.exec(t) ?? /^(\d{2})(\d{2})$/.exec(t)
   if (!m) return null
   const h = Number(m[1])

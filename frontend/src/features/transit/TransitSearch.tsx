@@ -259,7 +259,8 @@ function Results({
         example.plan.isPending ? (
           <p className="flex items-center gap-2 text-sm text-muted">
             <LoaderCircle size={15} className="animate-spin text-accent" />
-            Für den {formatShortDate(example.target)} gibt es noch keinen Fahrplan – suche ein Beispiel vom {formatShortDate(example.date)} …
+            Für den {formatShortDate(example.target)} gibt es noch keinen Fahrplan – suche ein Beispiel vom {formatShortDate(example.date)}{' '}
+            …
           </p>
         ) : (
           <NoConnection places={places} />
@@ -269,9 +270,10 @@ function Results({
           <p role="status" className="flex gap-2.5 rounded-xl border border-star/40 bg-star/10 px-3.5 py-3 text-sm">
             <CalendarClock size={17} className="mt-0.5 shrink-0 text-star" />
             <span>
-              <strong>Fahrplan für den {formatShortDate(example.target)} ist noch nicht veröffentlicht.</strong> Offene Fahrpläne reichen meist
-              nur bis zum nächsten Fahrplanwechsel (Mitte Dezember). So fährt es aktuell am gleichen Wochentag ({formatShortDate(example.date)}) –
-              auf dein Datum übertragen. Die Zeiten ändern sich meist nur wenig; kurz vorher noch einmal prüfen.
+              <strong>Fahrplan für den {formatShortDate(example.target)} ist noch nicht veröffentlicht.</strong> Offene Fahrpläne reichen
+              meist nur bis zum nächsten Fahrplanwechsel (Mitte Dezember). So fährt es aktuell am gleichen Wochentag (
+              {formatShortDate(example.date)}) – auf dein Datum übertragen. Die Zeiten ändern sich meist nur wenig; kurz vorher noch einmal
+              prüfen.
             </span>
           </p>
           {example.plan.data!.itineraries.map((original) => {

@@ -20,6 +20,14 @@ export function tripRange(trip: Pick<Trip, 'startDate' | 'endDate' | 'stages'>):
   return { start: trip.startDate ?? starts[0] ?? null, end: trip.endDate ?? ends.at(-1) ?? null }
 }
 
+/** Zeitraum, wie er oben in der Kopfzeile steht: von der ersten bis zur letzten Etappe, ohne Etappen die Reisedaten. */
+export function shownRange(trip: Pick<Trip, 'startDate' | 'endDate' | 'stages'>): DateRange {
+  if (trip.stages.length === 0) return { start: trip.startDate, end: trip.endDate }
+  const starts = trip.stages.map((s) => s.startDate).sort()
+  const ends = trip.stages.map((s) => s.endDate).sort()
+  return { start: starts[0], end: ends.at(-1)! }
+}
+
 /** Zeitraum für Einträge einer Etappe (Hotel, Aktivität): die Etappe, sonst die ganze Reise. */
 export function rangeFor(trip: Pick<Trip, 'startDate' | 'endDate' | 'stages'>, stage: Stage | null | undefined): DateRange {
   return stage ? { start: stage.startDate, end: stage.endDate } : tripRange(trip)

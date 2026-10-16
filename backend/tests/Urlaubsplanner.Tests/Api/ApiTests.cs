@@ -409,4 +409,28 @@ public sealed class ApiTests : IDisposable
         Assert.Equal(60.5m, trip.GetProperty("party").GetProperty("expenses")[0].GetProperty("amount").GetDecimal());
         Assert.Equal(ben, trip.GetProperty("party").GetProperty("expenses")[0].GetProperty("paidBy").GetGuid());
     }
+
+    [Fact]
+    public async Task Fremde_Webseiten_duerfen_nichts_aendern()
+    {
+        using var evil = new HttpRequestMessage(HttpMethod.Post, "/api/trips") { Content = JsonContent.Create(new { name = "Hack", travelers = 1 }) };
+        evil.Headers.Add("Origin", "https://boese.example");
+        Assert.Equal(HttpStatusCode.Forbidden, (await _client.SendAsync(evil)).StatusCode);
+
+        using var crossSite = new HttpRequestMessage(HttpMethod.Post, "/api/app/update/restart");
+        crossSite.Headers.Add("Sec-Fetch-Site", "cross-site");
+        Assert.Equal(HttpStatusCode.Forbidden, (await _client.SendAsync(crossSite)).StatusCode);
+
+        using var app = new HttpRequestMessage(HttpMethod.Post, "/api/trips") { Content = JsonContent.Create(new { name = "Lissabon", travelers = 2 }) };
+        app.Headers.Add("Origin", "http://localhost:5173");
+        Assert.Equal(HttpStatusCode.Created, (await _client.SendAsync(app)).StatusCode);
+    }
+
+    [Fact]
+    public async Task Fremder_Hostname_wird_abgelehnt()
+    {
+        using var rebinding = new HttpRequestMessage(HttpMethod.Get, "/api/trips");
+        rebinding.Headers.Host = "boese.example";
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.SendAsync(rebinding)).StatusCode);
+    }
 }

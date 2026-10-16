@@ -41,7 +41,7 @@ export function OverviewPage() {
       <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
         <div className="flex min-w-0 flex-col gap-5">
           <Card
-            title="Etappen"
+            title="Reise-Etappen"
             action={
               <Button size="sm" variant="primary" icon={<Plus size={16} strokeWidth={2.5} />} onClick={() => setStageDialog({})}>
                 Etappe
@@ -67,6 +67,9 @@ export function OverviewPage() {
                         {formatDateRange(stage.startDate, stage.endDate)} · {nightsLabel(stage.nights)}
                         {legLabel(stage, trip.stages[index + 1])}
                       </span>
+                      {stage.description && (
+                        <span className="line-clamp-2 whitespace-pre-line text-[13px] text-text/80">{stage.description}</span>
+                      )}
                     </div>
                     <span className="hidden font-mono text-sm font-semibold sm:block">
                       {summary ? formatEuro(summary.costByStage.find((c) => c.stageId === stage.id)?.total ?? 0) : ''}

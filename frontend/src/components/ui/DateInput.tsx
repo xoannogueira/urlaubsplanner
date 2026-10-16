@@ -27,7 +27,20 @@ const DATE_ERROR = 'Bitte als TT.MM.JJJJ eingeben, z. B. 19.02.2027.'
  * Datum im deutschen Format TT.MM.JJJJ – egal, welche Sprache der Browser hat. Tippen geht frei
  * (Punkte werden ergänzt), der Kalender-Knopf öffnet die Auswahl des Browsers.
  */
-export function DateInput({ id, value, onValue, min, max, openAt, required, label, describedBy, invalid, onTextError, className }: DateInputProps) {
+export function DateInput({
+  id,
+  value,
+  onValue,
+  min,
+  max,
+  openAt,
+  required,
+  label,
+  describedBy,
+  invalid,
+  onTextError,
+  className,
+}: DateInputProps) {
   const [text, setText] = useState(isoToGerman(value))
   const [shown, setShown] = useState(value)
   const [error, setError] = useState(false)
@@ -185,7 +198,8 @@ export function TimeInput({ id, value, onValue, label, describedBy, className }:
       onKeyDown={(e) => {
         if (e.key === 'Enter') commit(true)
       }}
-      className={clsx(controlClass, 'font-mono tabular-nums', className)}
+      // Breite bestimmt der Aufrufer (sonst volle Breite wie andere Felder)
+      className={clsx(controlClass.replace('w-full ', ''), 'font-mono tabular-nums', className ?? 'w-full')}
     />
   )
 }

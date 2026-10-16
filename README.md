@@ -109,7 +109,7 @@ Schritt für Schritt erklärt: [Anleitung](packaging/ANLEITUNG.md). Ohne Install
 | Frontend | React 19, TypeScript, Vite, Tailwind CSS 4, TanStack Query, React Router, MapLibre GL |
 | Backend | ASP.NET Core (.NET 10), Minimal APIs |
 | Speicher | JSON-Datei, später PostgreSQL + PostGIS |
-| Karten & Orte | OpenFreeMap (Kartenkacheln), Photon (Ortssuche) – beide kostenlos, ohne API-Key |
+| Karten & Orte | OpenFreeMap (Kartenkacheln), Photon (Ortssuche) – beide kostenlos, ohne API-Key; lädt OpenFreeMap nicht, schaltet die Karte auf CARTO-Kacheln um (kostenlos für nicht-kommerzielle Nutzung) |
 | Hotels | Google Hotels über SerpApi (gleiches Kontingent wie Flüge), alternativ LiteAPI |
 | Flüge | Google Flights über SerpApi (250 Suchen/Monat kostenlos), alternativ LiteAPI |
 | Qualität | xUnit, Vitest, oxlint, Prettier, `dotnet format`, GitHub Actions |
@@ -334,8 +334,18 @@ betriebener Routing-Dienst (MOTIS) auf Basis offener Fahrplandaten. Bedingungen:
 MIT-Lizenz (siehe `LICENSE`). Ergebnisse werden 10 Minuten gecacht.
 
 - Preise liefert Transitous nicht – dafür gibt es pro Verbindung den Link zu bahn.de bzw. Google Maps.
+- Offene Fahrpläne reichen meist nur bis zum nächsten Fahrplanwechsel (Mitte Dezember). Findet die App für ein Datum, das
+  mindestens drei Wochen entfernt ist, nichts, sucht sie am gleichen Wochentag in naher Zukunft und zeigt das Ergebnis als
+  **Beispiel** auf das Reisedatum übertragen (gleiche Uhrzeit vor Ort, auch über die Zeitumstellung). Gemerkte Beispiele sind
+  in der Notiz gekennzeichnet.
 - Abdeckung: Europa sehr gut, in manchen Ländern fehlen Fernbusse oder einzelne Verkehrsverbünde.
 - Anderer Server: `Transit:BaseUrl` in `appsettings.json`.
+
+### Sicherheit
+
+Der Server ist nur für den eigenen Rechner gedacht: Er nimmt nur Anfragen an `localhost`/`127.0.0.1` an (`AllowedHosts`,
+schützt vor DNS-Rebinding), und Änderungen (POST/PUT/PATCH/DELETE) mit fremder Herkunft (`Origin` bzw. `Sec-Fetch-Site`)
+lehnt er ab – eine andere Webseite im Browser kann die App also nicht fernsteuern. API-Keys verlassen das Backend nie.
 
 ### Daten
 
@@ -369,6 +379,7 @@ Dieselben Checks laufen bei jedem Push in GitHub Actions.
 | POST | `/api/trips/{id}/options` | Flug/Hotel/Aktivität speichern |
 | PUT / DELETE | `/api/trips/{id}/options/{optionId}` | Option ändern, löschen |
 | PATCH | `/api/trips/{id}/options/{optionId}/status` | Status setzen |
+| PUT | `/api/trips/{id}/period` | Reisezeitraum ändern: `startDate`, `endDate` – erste und letzte Etappe wandern mit |
 | PUT | `/api/trips/{id}/packing` | Packliste ersetzen: `items` [{`id`, `text`, `category`, `packed`, `suggestionKey`}], `dismissed` |
 | PUT | `/api/trips/{id}/party` | Mitreisende & Kosten: `members`, `expenses` [{`title`, `amount`, `paidBy`, `for`}], `optionShares` |
 | PATCH | `/api/trips/{id}/options/{optionId}/price` | Neu geprüften Preis bestätigen (setzt „geprüft am“) |
