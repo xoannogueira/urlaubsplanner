@@ -69,37 +69,140 @@ export function suggestTripType(stages: Stage[]): TripType {
   return km > 100 ? 'openjaw' : 'roundtrip'
 }
 
+/** Uhrzeit-Fenster in vollen Stunden, z. B. 6–22 = von 06:00 bis 22:00. */
+export interface TimeWindow {
+  from: number
+  to: number
+}
+
+export const anyTime: TimeWindow = { from: 0, to: 24 }
+
 export interface FlightFilters {
   nonstop: boolean
   /** Nur Tarife mit Aufgabegepäck */
   withBag: boolean
+  /** Abflug-Fenster pro Strecke (Index 0 = Hinflug, 1 = Rückflug) */
+  departure: TimeWindow[]
+  /** Ankunfts-Fenster pro Strecke */
+  arrival: TimeWindow[]
 }
 
-export const noFlightFilters: FlightFilters = { nonstop: false, withBag: false }
+export const noFlightFilters: FlightFilters = { nonstop: false, withBag: false, departure: [], arrival: [] }
 
-export type FlightSort = 'price' | 'duration' | 'departure'
+export type FlightSort = 'best' | 'price' | 'duration' | 'departure'
 
 /** Tarif, der zu den Filtern passt: günstigster, bzw. günstigster mit Koffer. */
 export function fareFor(journey: FlightJourney, filters: FlightFilters): FlightFare | null {
   return filters.withBag ? (journey.fares.find((f) => (f.checkedBags ?? 0) > 0) ?? null) : journey.fares[0]
 }
 
+const hourOf = (localTime: string) => {
+  const [h, m] = localTime.slice(11, 16).split(':').map(Number)
+  return h + m / 60
+}
+
+const inWindow = (hour: number, w: TimeWindow | undefined) => !w || (hour >= w.from && hour <= w.to)
+
+/** Passt die Strecke (Index = welche Strecke der Reise) zu den Uhrzeit-Filtern? */
+export function legMatchesTimes(leg: FlightJourneyLeg, index: number, filters: Pick<FlightFilters, 'departure' | 'arrival'>): boolean {
+  return inWindow(hourOf(leg.departure), filters.departure[index]) && inWindow(hourOf(leg.arrival), filters.arrival[index])
+}
+
+/** Sind Uhrzeit-Filter gesetzt? */
+export const hasTimeFilter = (filters: Pick<FlightFilters, 'departure' | 'arrival'>) =>
+  [...filters.departure, ...filters.arrival].some((w) => w && (w.from > 0 || w.to < 24))
+
 export function filterAndSortFlights(
   journeys: FlightJourney[],
   filters: FlightFilters,
   sort: FlightSort,
+  timeValue: TimeValue = 'balanced',
 ): { journey: FlightJourney; fare: FlightFare }[] {
-  return journeys
-    .flatMap((journey) => {
-      if (filters.nonstop && journey.legs.some((l) => l.stops > 0)) return []
-      const fare = fareFor(journey, filters)
-      return fare ? [{ journey, fare }] : []
+  const matching = journeys.flatMap((journey) => {
+    if (filters.nonstop && journey.legs.some((l) => l.stops > 0)) return []
+    if (!journey.legs.every((leg, i) => legMatchesTimes(leg, i, filters))) return []
+    const fare = fareFor(journey, filters)
+    return fare ? [{ journey, fare }] : []
+  })
+  const ratings = sort === 'best' ? rateFlights(matching, timeValue) : null
+  return matching.sort((a, b) => {
+    if (ratings) return ratings.get(a.journey.signature)!.score - ratings.get(b.journey.signature)!.score
+    if (sort === 'duration') return a.journey.totalMinutes - b.journey.totalMinutes || a.fare.totalPrice - b.fare.totalPrice
+    if (sort === 'departure') return a.journey.legs[0].departure.localeCompare(b.journey.legs[0].departure)
+    return a.fare.totalPrice - b.fare.totalPrice || a.journey.totalMinutes - b.journey.totalMinutes
+  })
+}
+
+/** Wie viel Zeit wert ist: „günstig“ nimmt lange Wege eher in Kauf, „schnell“ zahlt lieber mehr. */
+export type TimeValue = 'cheap' | 'balanced' | 'fast'
+
+export const timeValueLabels: Record<TimeValue, string> = { cheap: 'Günstig zuerst', balanced: 'Ausgewogen', fast: 'Schnell zuerst' }
+
+const hourlyRate: Record<TimeValue, number> = { cheap: 3, balanced: 6, fast: 12 }
+
+/** Zuschlag für einen Umstieg (pro Person) – Umsteigen ist lästig, auch wenn es kaum Zeit kostet. */
+const STOP_COST = 10
+
+/**
+ * Was die Zeit gegenüber der schnellsten Verbindung „kostet“ (pro Person, in Euro). Wächst schneller als die Stunden:
+ * 1 Std. länger ist kaum schlimm (≈ 7 €), 3 Std. schon eher (≈ 25 €), 15 Std. Warten in Kopenhagen sehr (≈ 260 €).
+ */
+export function timeCost(extraMinutes: number, timeValue: TimeValue = 'balanced'): number {
+  const hours = Math.max(0, extraMinutes) / 60
+  return hourlyRate[timeValue] * hours * (1 + hours / 8)
+}
+
+export interface FlightRating {
+  /** Preis pro Person + Zeit- und Umstiegszuschlag – kleiner ist besser */
+  score: number
+  best: boolean
+  cheapest: boolean
+  fastest: boolean
+  /** Kurze Begründung bei der besten Wahl */
+  note: string | null
+}
+
+/** Bewertet Verbindungen untereinander: beste Wahl, günstigste, schnellste. */
+export function rateFlights(
+  items: { journey: FlightJourney; fare: FlightFare }[],
+  timeValue: TimeValue = 'balanced',
+): Map<string, FlightRating> {
+  const ratings = new Map<string, FlightRating>()
+  if (items.length === 0) return ratings
+  const minutes = (i: (typeof items)[number]) => i.journey.totalMinutes
+  const price = (i: (typeof items)[number]) => i.fare.pricePerAdult
+  const stops = (i: (typeof items)[number]) => i.journey.legs.reduce((n, l) => n + l.stops, 0)
+  const fastestMinutes = Math.min(...items.map(minutes))
+  const cheapestPrice = Math.min(...items.map(price))
+  const score = (i: (typeof items)[number]) =>
+    price(i) + timeCost(minutes(i) - fastestMinutes, timeValue) + (STOP_COST * stops(i) * hourlyRate[timeValue]) / hourlyRate.balanced
+  const scored = items.map((i) => ({ item: i, score: score(i) }))
+  const bestScore = Math.min(...scored.map((s) => s.score))
+  const cheapest = items.filter((i) => price(i) === cheapestPrice).sort((a, b) => minutes(a) - minutes(b))[0]
+  const fastest = items.filter((i) => minutes(i) === fastestMinutes).sort((a, b) => price(a) - price(b))[0]
+  const best = scored.find((s) => s.score === bestScore)!.item
+
+  for (const { item, score: value } of scored) {
+    const isBest = item === best
+    ratings.set(item.journey.signature, {
+      score: value,
+      best: isBest,
+      cheapest: item === cheapest,
+      fastest: item === fastest,
+      note: isBest && items.length > 1 ? bestNote(item, cheapest, fastest) : null,
     })
-    .sort((a, b) => {
-      if (sort === 'duration') return a.journey.totalMinutes - b.journey.totalMinutes || a.fare.totalPrice - b.fare.totalPrice
-      if (sort === 'departure') return a.journey.legs[0].departure.localeCompare(b.journey.legs[0].departure)
-      return a.fare.totalPrice - b.fare.totalPrice || a.journey.totalMinutes - b.journey.totalMinutes
-    })
+  }
+  return ratings
+
+  function bestNote(b: (typeof items)[number], c: (typeof items)[number], f: (typeof items)[number]): string | null {
+    if (b === c && b === f) return 'Günstigster und schnellster Flug'
+    if (b === c) return `Günstigster – nur ${formatDuration(minutes(b) - minutes(f))} länger als der schnellste`
+    const saved = minutes(c) - minutes(b)
+    const extra = Math.round(price(b) - price(c))
+    return saved > 0
+      ? `${formatEuro(extra)} pro Person mehr als der günstigste, dafür ${formatDuration(saved)} schneller`
+      : `Nur ${formatEuro(extra)} pro Person mehr als der günstigste`
+  }
 }
 
 /** 425 → "7 Std. 5 Min." */

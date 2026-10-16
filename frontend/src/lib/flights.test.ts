@@ -9,8 +9,11 @@ import {
   flightNotes,
   flightOptionInput,
   formatDuration,
+  anyTime,
   noFlightFilters,
   parseSignature,
+  rateFlights,
+  timeCost,
   planLegs,
   planProblem,
   shiftDate,
@@ -150,10 +153,10 @@ describe('Ergebnisse', () => {
   })
 
   it('filtert Direktflüge und nimmt mit Koffer den passenden Tarif', () => {
-    expect(filterAndSortFlights([direct, cheapStops], { nonstop: true, withBag: false }, 'price').map((x) => x.journey.signature)).toEqual([
-      'b',
-    ])
-    const withBag = filterAndSortFlights([direct, cheapStops], { nonstop: false, withBag: true }, 'price')
+    expect(
+      filterAndSortFlights([direct, cheapStops], { ...noFlightFilters, nonstop: true }, 'price').map((x) => x.journey.signature),
+    ).toEqual(['b'])
+    const withBag = filterAndSortFlights([direct, cheapStops], { ...noFlightFilters, withBag: true }, 'price')
     expect(withBag.map((x) => [x.journey.signature, x.fare.family])).toEqual([['b', 'Standard']])
   })
 
@@ -162,7 +165,7 @@ describe('Ergebnisse', () => {
       'Preis laut Google Flights · Gepäck und Bedingungen beim Buchen prüfen',
     )
     const google = journey({ signature: 'g', fares: [fare({ checkedBags: null })] })
-    expect(filterAndSortFlights([google], { nonstop: false, withBag: true }, 'price')).toEqual([])
+    expect(filterAndSortFlights([google], { ...noFlightFilters, withBag: true }, 'price')).toEqual([])
   })
 
   it('beschriftet Dauer und Umstiege', () => {
@@ -217,5 +220,72 @@ describe('Merken und neu prüfen', () => {
   it('verschiebt Daten über Monatsgrenzen', () => {
     expect(shiftDate('2027-05-01', -2)).toBe('2027-04-29')
     expect(shiftDate('2027-12-31', 1)).toBe('2028-01-01')
+  })
+})
+
+describe('Uhrzeit-Filter', () => {
+  const a = journey({ signature: 'direkt-nachmittags' }) // Hin 14:25–16:25, Rück 22:15–01:50
+  const b = journey({ signature: 'frueh-mit-umstieg', stops: true }) // Hin 06:00–11:30
+
+  it('filtert nach Abflug des Hinflugs', () => {
+    const result = filterAndSortFlights([a, b], { ...noFlightFilters, departure: [{ from: 8, to: 24 }] }, 'price')
+    expect(result.map((r) => r.journey.signature)).toEqual(['direkt-nachmittags'])
+  })
+
+  it('filtert nach Ankunft des Rückflugs (Uhrzeit am Ankunftstag)', () => {
+    const result = filterAndSortFlights([a], { ...noFlightFilters, arrival: [anyTime, { from: 6, to: 23 }] }, 'price')
+    expect(result).toHaveLength(0)
+  })
+})
+
+describe('Beste Wahl', () => {
+  // Nur der Hinflug zählt hier; Preis pro Person
+  const offer = (signature: string, pricePerAdult: number, hours: number, stops = 0): { journey: FlightJourney; fare: FlightFare } => {
+    const base = journey({ signature })
+    const leg = { ...base.legs[0], stops, durationMinutes: hours * 60 }
+    const j = { ...base, legs: [leg], totalMinutes: hours * 60 }
+    return { journey: j, fare: fare({ pricePerAdult, totalPrice: pricePerAdult * 2 }) }
+  }
+  const best = (items: ReturnType<typeof offer>[], value?: 'cheap' | 'balanced' | 'fast') =>
+    [...rateFlights(items, value)].find(([, r]) => r.best)![0]
+
+  it('Zeitzuschlag wächst schneller als die Stunden', () => {
+    expect(timeCost(60)).toBeLessThan(10)
+    expect(timeCost(15 * 60)).toBeGreaterThan(200)
+    expect(timeCost(15 * 60) / timeCost(60)).toBeGreaterThan(25)
+  })
+
+  it('16 Std. in Kopenhagen warten lohnt sich nicht für 100 € weniger', () => {
+    expect(best([offer('direkt', 450, 5), offer('kopenhagen', 350, 20, 1)])).toBe('direkt')
+  })
+
+  it('… für 300 € weniger schon', () => {
+    expect(best([offer('direkt', 450, 5), offer('kopenhagen', 150, 20, 1)])).toBe('kopenhagen')
+  })
+
+  it('1 Std. länger mit Umstieg für 40 € weniger ist die bessere Wahl', () => {
+    expect(best([offer('direkt', 240, 5), offer('umstieg', 200, 6, 1)])).toBe('umstieg')
+  })
+
+  it('Bei „Schnell zuerst“ gewinnt eher der schnelle Flug', () => {
+    const items = [offer('direkt', 240, 5), offer('umstieg', 215, 7, 1)]
+    expect(best(items, 'cheap')).toBe('umstieg')
+    expect(best(items, 'fast')).toBe('direkt')
+  })
+
+  it('markiert günstigsten und schnellsten und begründet die beste Wahl', () => {
+    const ratings = rateFlights([offer('direkt', 260, 5), offer('umstieg', 220, 9, 1), offer('mitte', 235, 6, 1)])
+    expect(ratings.get('umstieg')!.cheapest).toBe(true)
+    expect(ratings.get('direkt')!.fastest).toBe(true)
+    const [sig, rating] = [...ratings].find(([, r]) => r.best)!
+    expect(sig).toBe('mitte')
+    expect(rating.note?.replace(/\s/g, ' ')).toBe('15 € pro Person mehr als der günstigste, dafür 3 Std. schneller')
+  })
+
+  it('sortiert nach bester Wahl', () => {
+    const items = [offer('kopenhagen', 350, 20, 1), offer('direkt', 450, 5)].map((i) => i.journey)
+    items[0].fares = [fare({ pricePerAdult: 350 })]
+    items[1].fares = [fare({ pricePerAdult: 450 })]
+    expect(filterAndSortFlights(items, noFlightFilters, 'best').map((r) => r.journey.signature)).toEqual(['direkt', 'kopenhagen'])
   })
 })
