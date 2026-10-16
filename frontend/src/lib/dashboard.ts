@@ -1,7 +1,8 @@
 import type { OptionKind, Stage, Trip, TripOption, TripSummary } from '../api/types'
 import { parseDate } from './format'
 import { parseSignature } from './flights'
-import { isArrival, isChosen } from './options'
+import { isArrival, isChosen, isRentalCar } from './options'
+import { rentalTimelineEntries } from './rental'
 
 /**
  * Diagrammfarbe einer Kategorie (CSS-Variable, hell/dunkel getrennt). Fest zugeordnet, nicht nach Rang –
@@ -137,6 +138,9 @@ export function buildTimeline(
           add(o.endDate, { id: `${o.id}:back`, kind: 'Flight', title: `${o.title} (Rückflug)`, time: null, booked })
         }
       }
+    } else if (isRentalCar(o)) {
+      for (const e of rentalTimelineEntries(o))
+        add(e.date, { id: `${o.id}:${e.suffix}`, kind: 'Transport', title: e.title, time: e.time, booked })
     } else if (o.kind !== 'Hotel' && o.startDate) {
       add(o.startDate, { id: o.id, kind: o.kind, title: o.title, time: o.kind === 'Transport' ? timeRange(o.notes) : null, booked })
     }

@@ -1,5 +1,6 @@
 import clsx from 'clsx'
 import {
+  Backpack,
   BedDouble,
   CalendarDays,
   ChartColumn,
@@ -12,6 +13,7 @@ import {
   Settings,
   TrainFront,
   Users,
+  Wallet,
 } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { Link, NavLink, Outlet, useParams } from 'react-router'
@@ -92,6 +94,20 @@ function Sidebar({ trip }: { trip?: Trip }) {
           <NavItem to={`${base}/checkliste`} icon={<ClipboardCheck size={18} />} badge={`${booked}/${chosen.length}`}>
             Checkliste
           </NavItem>
+          <NavItem
+            to={`${base}/packliste`}
+            icon={<Backpack size={18} />}
+            badge={
+              trip.packing.items.length > 0
+                ? `${trip.packing.items.filter((i) => i.packed).length}/${trip.packing.items.length}`
+                : undefined
+            }
+          >
+            Packliste
+          </NavItem>
+          <NavItem to={`${base}/kosten`} icon={<Wallet size={18} />}>
+            Mitreisende & Kosten
+          </NavItem>
           <NavItem to={`${base}/pdf`} icon={<FileText size={18} />}>
             PDF
           </NavItem>
@@ -171,32 +187,48 @@ function TripHeader({ trip }: { trip: Trip }) {
           <CalendarDays size={16} />
           {formatDateRange(stageStart, stageEnd)}
         </span>
-        <div className="flex h-10 items-center gap-1 rounded-[10px] bg-surface-2 px-1" aria-label="Anzahl Personen">
-          <button
-            type="button"
-            aria-label="Eine Person weniger"
-            disabled={trip.travelers <= 1}
-            onClick={() => setTravelers(trip.travelers - 1)}
-            className="flex size-8 cursor-pointer items-center justify-center rounded-lg hover:bg-surface-3 disabled:cursor-not-allowed disabled:opacity-40"
+        {trip.party.members.length > 0 ? (
+          <Link
+            to={`/trips/${trip.id}/kosten`}
+            title={trip.party.members.map((m) => m.name).join(', ')}
+            className="flex h-10 items-center gap-1.5 rounded-[10px] bg-surface-2 px-3.5 text-sm font-bold hover:bg-surface-3"
           >
-            <Minus size={16} />
-          </button>
-          <span className="flex items-center gap-1.5 px-1 text-sm font-bold" aria-live="polite">
             <Users size={16} />
-            {peopleLabel(trip.travelers)}
-          </span>
-          <button
-            type="button"
-            aria-label="Eine Person mehr"
-            disabled={trip.travelers >= 50}
-            onClick={() => setTravelers(trip.travelers + 1)}
-            className="flex size-8 cursor-pointer items-center justify-center rounded-lg hover:bg-surface-3 disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            <Plus size={16} />
-          </button>
-        </div>
+            {membersLabel(trip.party.members.map((m) => m.name))}
+          </Link>
+        ) : (
+          <div className="flex h-10 items-center gap-1 rounded-[10px] bg-surface-2 px-1" aria-label="Anzahl Personen">
+            <button
+              type="button"
+              aria-label="Eine Person weniger"
+              disabled={trip.travelers <= 1}
+              onClick={() => setTravelers(trip.travelers - 1)}
+              className="flex size-8 cursor-pointer items-center justify-center rounded-lg hover:bg-surface-3 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <Minus size={16} />
+            </button>
+            <span className="flex items-center gap-1.5 px-1 text-sm font-bold" aria-live="polite">
+              <Users size={16} />
+              {peopleLabel(trip.travelers)}
+            </span>
+            <button
+              type="button"
+              aria-label="Eine Person mehr"
+              disabled={trip.travelers >= 50}
+              onClick={() => setTravelers(trip.travelers + 1)}
+              className="flex size-8 cursor-pointer items-center justify-center rounded-lg hover:bg-surface-3 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <Plus size={16} />
+            </button>
+          </div>
+        )}
         <ThemeToggle />
       </div>
     </header>
   )
+}
+
+/** "Anna, Ben" · "Anna, Ben +2" */
+function membersLabel(names: string[]): string {
+  return names.length <= 2 ? names.join(', ') : `${names.slice(0, 2).join(', ')} +${names.length - 2}`
 }

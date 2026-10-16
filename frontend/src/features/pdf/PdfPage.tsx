@@ -1,5 +1,6 @@
 import clsx from 'clsx'
 import {
+  Backpack,
   BedDouble,
   CalendarDays,
   CircleCheck,
@@ -11,6 +12,7 @@ import {
   StickyNote,
   TrainFront,
   TriangleAlert,
+  Users,
 } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useState, type ReactNode } from 'react'
@@ -203,7 +205,7 @@ function contents(trip: Trip): Part[] {
       ? [
           {
             title: 'Transfers & weitere Buchungen',
-            detail: count(extras, 'Eintrag', 'Einträge') + ' (Bus, Bahn, Mietwagen & Sonstiges)',
+            detail: count(extras, 'Eintrag', 'Einträge') + ' (Bus, Bahn, Mietwagen mit Abholung & Rückgabe, Sonstiges)',
             icon: <TrainFront size={16} />,
             empty: false,
           },
@@ -223,6 +225,24 @@ function contents(trip: Trip): Part[] {
       detail: 'Nach Kategorie und Etappe, gebucht und gesamt',
       icon: <ReceiptText size={16} />,
       empty: chosen.length === 0,
+    },
+    {
+      title: 'Wer zahlt was',
+      detail:
+        trip.party.members.length > 0
+          ? `${trip.party.members.map((m) => m.name).join(', ')} – Anteile und wer wem was schuldet`
+          : 'Unter „Mitreisende & Kosten“ Namen eintragen',
+      icon: <Users size={16} />,
+      empty: trip.party.members.length === 0,
+    },
+    {
+      title: 'Packliste',
+      detail:
+        trip.packing.items.length > 0
+          ? `${count(trip.packing.items.length, 'Punkt', 'Punkte')} zum Abhaken, ${trip.packing.items.filter((i) => i.packed).length} schon gepackt`
+          : 'Noch leer – Vorschläge im Tab „Packliste“',
+      icon: <Backpack size={16} />,
+      empty: trip.packing.items.length === 0,
     },
     ...(trip.notes?.trim() ? [{ title: 'Notizen', detail: 'Deine Notizen zur Reise', icon: <StickyNote size={16} />, empty: false }] : []),
   ]

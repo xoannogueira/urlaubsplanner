@@ -7,6 +7,8 @@ import { parseSignature } from '../../lib/flights'
 import { formatDate, formatDateRange, formatEuro, formatShortDate, hostOf, nightsLabel, parseDate, peopleLabel } from '../../lib/format'
 import { isArrival, isChosen, isTransitAnreise, kindLabels } from '../../lib/options'
 import { sourceLabel, summarizeWeather, summaryLine, tempRange, weatherLabel } from '../../lib/weather'
+import { groupPacking } from '../../lib/packing'
+import { calculateSplit } from '../../lib/split'
 
 /**
  * Reiseplan als PDF (Beschreibung für pdfmake): Überblick, Flüge, Unterkünfte, gemerkte Aktivitäten,
@@ -88,6 +90,8 @@ export function buildTripPdf(trip: Trip, { today, weather }: TripPdfOptions): TD
   if (extras.length > 0) content.push(section('Transfers & weitere Buchungen', 'Transport'), extras.map(extraBlock))
   if (timeline && timeline.days.length > 0) content.push(section('Tag für Tag', null, true), dayTable(timeline.days, weather))
   content.push(section('Kosten', null), costTables(trip))
+  if (trip.party.members.length > 0) content.push(section('Wer zahlt was', null), splitTables(trip))
+  if (trip.packing.items.length > 0) content.push(section('Packliste', null, true), packingColumns(trip))
   if (trip.notes?.trim()) content.push(section('Notizen', null), { text: trip.notes.trim(), style: 'body' })
 
   return {
@@ -116,7 +120,8 @@ export function buildTripPdf(trip: Trip, { today, weather }: TripPdfOptions): TD
 
 function header(trip: Trip, dateText: string, range: { start: string | null; end: string | null }): Content {
   const nights = range.start && range.end ? days(range.start, range.end) : null
-  const facts = [dateText, nights ? nightsLabel(nights) : null, peopleLabel(trip.travelers)].filter(Boolean).join('  ·  ')
+  const people = trip.party.members.length > 0 ? trip.party.members.map((m) => m.name).join(', ') : peopleLabel(trip.travelers)
+  const facts = [dateText, nights ? nightsLabel(nights) : null, people].filter(Boolean).join('  ·  ')
   const route = trip.stages.map((s) => `${s.name} (${nightsLabel(s.nights)})`).join('  ›  ')
   return {
     stack: [
@@ -492,6 +497,94 @@ function costTables(trip: Trip): Content {
       },
     ],
   }
+}
+
+/** Anteil, bezahlt und Saldo pro Person, darunter „wer schuldet wem“. */
+function splitTables(trip: Trip): Content {
+  const split = calculateSplit(trip)
+  const money = (n: number) => formatEuro(n).replace(/,00(?=\s?€)/, '')
+  const exact = (n: number) => new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(n)
+  const body: TableCell[][] = [
+    ['Person', 'Anteil', 'Bezahlt', 'Saldo'].map((h, i) => ({ text: h, style: 'label', alignment: i > 0 ? 'right' : 'left' })),
+    ...split.people.map((p): TableCell[] => [
+      { text: p.member.name, bold: true },
+      { text: money(p.share), alignment: 'right' },
+      { text: money(p.paid), alignment: 'right' },
+      {
+        text: `${p.balance > 0 ? '+' : ''}${money(p.balance)}`,
+        alignment: 'right',
+        bold: true,
+        color: p.balance > 0 ? color.accent : p.balance < 0 ? color.warn : color.muted,
+      },
+    ]),
+  ]
+  const transfers: Content =
+    split.transfers.length > 0
+      ? {
+          stack: [
+            { text: 'WER SCHULDET WEM', style: 'label', margin: [0, 0, 0, 4] },
+            ...split.transfers.map((t) => ({
+              text: [{ text: t.from.name, bold: true }, '  ›  ', { text: t.to.name, bold: true }, `   ${exact(t.amount)}`],
+            })),
+          ],
+        }
+      : {
+          text: split.total > 0 && split.unpaid < split.total ? 'Alles ausgeglichen.' : 'Noch niemand als Zahler eingetragen.',
+          style: 'small',
+        }
+  return [
+    {
+      columns: [
+        { width: 290, table: { headerRows: 1, widths: ['*', 60, 60, 66], body }, layout: thinRows },
+        { width: '*', margin: [24, 0, 0, 0], stack: [transfers] },
+      ],
+    },
+    split.unpaid > 0
+      ? {
+          text: `${money(split.unpaid)} ohne eingetragenen Zahler – zählen zum Anteil, aber noch nicht zum Ausgleich.`,
+          style: 'small',
+          margin: [0, 6, 0, 0],
+        }
+      : '',
+  ]
+}
+
+/** Packliste zum Abhaken: Kästchen, zwei Spalten, nach Kategorie. */
+function packingColumns(trip: Trip): Content {
+  const box = (checked: boolean) => ({
+    canvas: [
+      { type: 'rect', x: 0, y: 1.5, w: 8, h: 8, r: 1.5, lineWidth: 0.8, lineColor: color.muted },
+      ...(checked
+        ? [
+            {
+              type: 'polyline' as const,
+              points: [
+                { x: 1.8, y: 5.6 },
+                { x: 3.6, y: 7.6 },
+                { x: 6.6, y: 3.2 },
+              ],
+              lineWidth: 1.2,
+              lineColor: color.accent,
+            },
+          ]
+        : []),
+    ],
+    width: 13,
+  })
+  const blocks = groupPacking(trip.packing.items).map((g) => ({
+    stack: [
+      { text: g.category.toUpperCase(), style: 'label', margin: [0, 0, 0, 3] },
+      ...g.items.map((i) => ({
+        columns: [box(i.packed), { text: i.text, color: i.packed ? color.muted : color.text }],
+        columnGap: 2,
+        margin: [0, 1.5, 0, 0],
+      })),
+    ],
+    margin: [0, 0, 0, 10],
+    unbreakable: g.items.length <= 12,
+  }))
+  const half = Math.ceil(blocks.length / 2)
+  return { columns: [{ stack: blocks.slice(0, half) }, { stack: blocks.slice(half) }], columnGap: 28 } as Content
 }
 
 const thinRows = {

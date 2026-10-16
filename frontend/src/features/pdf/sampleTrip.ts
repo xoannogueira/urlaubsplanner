@@ -31,6 +31,8 @@ export const sampleTrip: Trip = {
   notes: 'Mietwagen für den Tagesausflug nach Sintra eventuell vor Ort buchen. Bargeld für Trinkgeld und kleine Cafés mitnehmen.',
   createdAt: '2026-10-01T10:00:00Z',
   updatedAt: '2026-10-13T10:00:00Z',
+  packing: { items: [], dismissed: [] },
+  party: { members: [], expenses: [], optionShares: [] },
   stages: [
     { id: 'lis', name: 'Lissabon', startDate: '2027-05-12', endDate: '2027-05-17', nights: 5, latitude: 38.7223, longitude: -9.1393 },
     { id: 'opo', name: 'Porto', startDate: '2027-05-17', endDate: '2027-05-20', nights: 3, latitude: 41.1579, longitude: -8.6291 },

@@ -50,6 +50,51 @@ export interface Trip {
   updatedAt: string
   stages: Stage[]
   options: TripOption[]
+  packing: PackingList
+  party: TripParty
+}
+
+export interface PackingItem {
+  id: string
+  text: string
+  category: string
+  packed: boolean
+  /** gesetzt, wenn der Eintrag aus einem Vorschlag stammt */
+  suggestionKey: string | null
+}
+
+export interface PackingList {
+  items: PackingItem[]
+  /** weggeklickte Vorschläge */
+  dismissed: string[]
+}
+
+export interface TripMember {
+  id: string
+  name: string
+}
+
+export interface Expense {
+  id: string
+  title: string
+  amount: number
+  /** null = noch nicht bezahlt */
+  paidBy: string | null
+  /** leer = für alle */
+  for: string[]
+  date: string | null
+}
+
+export interface OptionShare {
+  optionId: string
+  paidBy: string | null
+  for: string[]
+}
+
+export interface TripParty {
+  members: TripMember[]
+  expenses: Expense[]
+  optionShares: OptionShare[]
 }
 
 export interface TripListItem {

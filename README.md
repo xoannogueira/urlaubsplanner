@@ -78,6 +78,12 @@ Schritt für Schritt erklärt: [Anleitung](packaging/ANLEITUNG.md). Ohne Install
   letzten Etappe, mit Umstiegen, Gleisen und Fußwegen; Links zu bahn.de und Google Maps (Preise gibt es dort)
 - **Wetter pro Etappe** in der Übersicht, im Tagesplan und im PDF: echte Vorhersage für die nächsten 16 Tage, sonst
   typisches Wetter (Durchschnitt der letzten 5 Jahre am selben Kalendertag). Kostenlos über [Open-Meteo](https://open-meteo.com) (CC BY 4.0)
+- **Packliste** (eigener Tab): Vorschläge aus Reisedauer, Wetter, Anreise, Mietwagen und geplanten Aktivitäten (z. B. Badesachen bei
+  Strand, Regenjacke bei Regentagen) – übernehmen, abhaken, eigene Punkte ergänzen, löschen; weggeklickte Vorschläge kommen nicht wieder
+- **Mietwagen** (im Tab „Transfers“): Abholung und Rückgabe mit Ort und Uhrzeit (vorausgefüllt aus der Reise), Links zu
+  Vergleichsportalen, Preis von Hand; erscheint im Tagesplan, in den Kosten und in der PDF
+- **Mitreisende & Kosten**: Namen eintragen (die Personenzahl folgt ihnen), pro Buchung und eigener Ausgabe festhalten, wer bezahlt hat
+  und für wen – daraus Anteil pro Person und „wer schuldet wem“ mit möglichst wenigen Überweisungen (auf den Cent genau)
 - **Transfers** (eigener Tab): Vorschläge Flughafen → Unterkunft, Etappe → Etappe und Unterkunft → Flughafen, automatisch mit
   passender Uhrzeit gesucht; beliebige weitere Strecken frei suchbar. Gemerkte Verbindungen erscheinen im Tagesplan und im PDF.
   Fahrplandaten: [Transitous](https://transitous.org) (kostenlos, ohne Key, Community-Projekt)
@@ -93,7 +99,8 @@ Schritt für Schritt erklärt: [Anleitung](packaging/ANLEITUNG.md). Ohne Install
 | 5 ✅ | Aktivitäten-Vorschläge (OpenStreetMap + Wikidata, ohne Key) |
 | 6 ✅ | Dashboard mit Diagrammen, Zeitplan, Countdown und offenen Punkten |
 | 7 ✅ | Desktop-App mit Installer und Auto-Update, PDF-Reiseplan, Flug-Bewertung, Bus & Bahn, Transfers |
-| später | Packliste, Mietwagen, Mitreisende & Kostenaufteilung, Preisalarm, Export (.ics) |
+| 8 ✅ | Wetter, Packliste, Mietwagen, Mitreisende & Kostenaufteilung (alles auch in der PDF) |
+| später | Preisalarm, Export (.ics), Accounts für Freunde |
 
 ## Technik
 
@@ -362,6 +369,8 @@ Dieselben Checks laufen bei jedem Push in GitHub Actions.
 | POST | `/api/trips/{id}/options` | Flug/Hotel/Aktivität speichern |
 | PUT / DELETE | `/api/trips/{id}/options/{optionId}` | Option ändern, löschen |
 | PATCH | `/api/trips/{id}/options/{optionId}/status` | Status setzen |
+| PUT | `/api/trips/{id}/packing` | Packliste ersetzen: `items` [{`id`, `text`, `category`, `packed`, `suggestionKey`}], `dismissed` |
+| PUT | `/api/trips/{id}/party` | Mitreisende & Kosten: `members`, `expenses` [{`title`, `amount`, `paidBy`, `for`}], `optionShares` |
 | PATCH | `/api/trips/{id}/options/{optionId}/price` | Neu geprüften Preis bestätigen (setzt „geprüft am“) |
 | GET | `/api/places?q=…&lat=…&lon=…` | Ortssuche (lat/lon optional: Treffer in der Nähe bevorzugen) |
 | POST | `/api/hotels/search` | Hotelsuche: `latitude`, `longitude`, `checkin`, `checkout`, `adults`, optional `rooms`, `radiusMeters` – oder statt Ort `hotelIds`; optional `place` (Ortsname, für Google Hotels) |

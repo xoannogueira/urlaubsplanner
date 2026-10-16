@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { api, json } from './client'
-import type { OptionInput, OptionStatus, StageInput, Trip, TripInput, TripListItem, TripSummary } from './types'
+import type { OptionInput, OptionStatus, PackingList, StageInput, Trip, TripInput, TripListItem, TripParty, TripSummary } from './types'
 
 export const tripKeys = {
   all: ['trips'] as const,
@@ -57,6 +57,10 @@ export function useTripActions(tripId: string) {
   const queryClient = useQueryClient()
   const base = `/trips/${tripId}`
   const onSuccess = (trip: Trip) => storeTrip(queryClient, trip)
+  // Bei schnellem Abhaken: nur die Antwort auf die letzte Änderung übernehmen – ältere würden den neueren Stand kurz überschreiben.
+  const latestOnly = (key: string[]) => (trip: Trip) => {
+    if (queryClient.isMutating({ mutationKey: key }) <= 1) storeTrip(queryClient, trip)
+  }
 
   const updateTrip = useMutation({
     mutationFn: (input: TripInput) => api<Trip>(base, { method: 'PUT', ...json(input) }),
@@ -116,7 +120,39 @@ export function useTripActions(tripId: string) {
     })),
   })
 
-  return { updateTrip, addStage, updateStage, removeStage, addOption, updateOption, setStatus, confirmPrice, removeOption }
+  /** Packliste: immer die ganze Liste – sofort angezeigt, damit Abhaken ohne Verzögerung wirkt. */
+  const setPacking = useMutation({
+    mutationKey: ['packing', tripId],
+    mutationFn: (packing: PackingList) => api<Trip>(`${base}/packing`, { method: 'PUT', ...json(packing) }),
+    onSuccess: latestOnly(['packing', tripId]),
+    ...optimisticVars<PackingList>(queryClient, tripId, (trip, packing) => ({ ...trip, packing })),
+  })
+
+  /** Mitreisende und Ausgaben: die Personenzahl folgt den Mitreisenden. */
+  const setParty = useMutation({
+    mutationKey: ['party', tripId],
+    mutationFn: (party: TripParty) => api<Trip>(`${base}/party`, { method: 'PUT', ...json(party) }),
+    onSuccess: latestOnly(['party', tripId]),
+    ...optimisticVars<TripParty>(queryClient, tripId, (trip, party) => ({
+      ...trip,
+      party,
+      travelers: party.members.length > 0 ? party.members.length : trip.travelers,
+    })),
+  })
+
+  return {
+    updateTrip,
+    addStage,
+    updateStage,
+    removeStage,
+    addOption,
+    updateOption,
+    setStatus,
+    confirmPrice,
+    removeOption,
+    setPacking,
+    setParty,
+  }
 }
 
 /** Zeigt eine Änderung sofort an und rollt sie zurück, falls der Server ablehnt. */
