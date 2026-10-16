@@ -1,5 +1,7 @@
 import type { ActivityCategory, ActivitySuggestion } from '../api/activities'
-import type { OptionInput } from '../api/types'
+import type { OptionInput, Trip, TripOption } from '../api/types'
+import { distanceKm, toLatLng } from './geo'
+import { isChosen } from './options'
 
 export const categoryLabels: Record<ActivityCategory, { plural: string; singular: string }> = {
   Sight: { plural: 'Sehenswürdigkeiten', singular: 'Sehenswürdigkeit' },
@@ -73,4 +75,28 @@ export function activityOptionInput(a: ActivitySuggestion, stageId: string | nul
     provider: 'osm',
     externalId: a.id,
   }
+}
+
+/** Ausgewähltes bzw. gebuchtes Hotel einer Etappe (gebucht zuerst) – Startpunkt für den Weg zu einer Aktivität. */
+export function stageHotel(trip: Pick<Trip, 'options'>, stageId: string | null | undefined): TripOption | null {
+  if (!stageId) return null
+  const hotels = trip.options.filter((o) => o.kind === 'Hotel' && o.stageId === stageId && isChosen(o))
+  return hotels.find((h) => h.status === 'Booked') ?? hotels[0] ?? null
+}
+
+/**
+ * Google-Maps-Route vom Hotel zum Ziel. Bis 1,5 km zu Fuß, sonst mit Bus & Bahn – in Google Maps lässt sich das
+ * Verkehrsmittel jederzeit umstellen.
+ */
+export function routeFromHotelUrl(hotel: TripOption, target: { latitude: number; longitude: number }): string {
+  const from = toLatLng(hotel)
+  const origin = from ? `${from.latitude},${from.longitude}` : [hotel.title, hotel.locationName].filter(Boolean).join(', ')
+  const mode = from && distanceKm(from, target) <= 1.5 ? 'walking' : 'transit'
+  const params = new URLSearchParams({
+    api: '1',
+    origin,
+    destination: `${target.latitude},${target.longitude}`,
+    travelmode: mode,
+  })
+  return `https://www.google.com/maps/dir/?${params}`
 }

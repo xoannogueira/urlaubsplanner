@@ -33,7 +33,7 @@ public static class ActivityEndpoints
                 title: "Eingabe ungültig");
         }
 
-        var request = ActivitySearchRequest.Create(lat.Value, lon.Value, radiusMeters ?? 5000);
+        var request = ActivitySearchRequest.Create(lat.Value, lon.Value, radiusMeters ?? ActivitySearchRequest.DefaultRadiusMeters);
         var result = await search.SearchAsync(request, ct);
         var page = ActivityPaging.Page(
             result.Activities,

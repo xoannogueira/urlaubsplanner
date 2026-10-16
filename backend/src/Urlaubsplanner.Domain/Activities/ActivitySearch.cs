@@ -21,6 +21,9 @@ public sealed record ActivitySearchRequest
     public const int MinRadiusMeters = 500;
     public const int MaxRadiusMeters = 50_000;
 
+    /// <summary>Umkreis, mit dem die Vorschläge zuerst angezeigt (und im Hintergrund vorgeladen) werden.</summary>
+    public const int DefaultRadiusMeters = 5000;
+
     private ActivitySearchRequest(Coordinates center, int radiusMeters)
     {
         Center = center;
@@ -65,6 +68,9 @@ public sealed record ActivitySearchResult(IReadOnlyList<ActivitySuggestion> Acti
 public interface IActivitySearch
 {
     Task<ActivitySearchResult> SearchAsync(ActivitySearchRequest request, CancellationToken cancellationToken);
+
+    /// <summary>Liegt das Ergebnis schon bereit (dann muss nicht vorgeladen werden)?</summary>
+    bool IsCached(ActivitySearchRequest request) => false;
 }
 
 /// <summary>OpenStreetMap ist gerade nicht erreichbar.</summary>

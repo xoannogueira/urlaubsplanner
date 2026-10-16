@@ -82,6 +82,7 @@ public sealed class FlightApiTests : IDisposable
         _factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
         {
             builder.UseSetting("Storage:FilePath", _dataFile);
+            builder.UseSetting("Activities:Prefetch", "false");
             builder.ConfigureTestServices(services => services.AddSingleton<IFlightSearch>(_flights).AddSingleton<IPlaceSearch>(new FakePlaceSearch()).AddSingleton<IActivitySearch>(_activities));
         });
         _client = _factory.CreateClient();

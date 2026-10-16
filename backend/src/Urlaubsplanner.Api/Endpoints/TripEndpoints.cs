@@ -1,3 +1,4 @@
+using Urlaubsplanner.Api.Activities;
 using Urlaubsplanner.Api.Contracts;
 using Urlaubsplanner.Domain.Trips;
 
@@ -13,6 +14,18 @@ public static class TripEndpoints
     public static IEndpointRouteBuilder MapTripEndpoints(this IEndpointRouteBuilder app)
     {
         var trips = app.MapGroup("/api/trips").WithTags("Reisen");
+
+        // Sobald eine Reise mit Etappen geöffnet oder geändert wird: Aktivitäten im Hintergrund vorladen.
+        trips.AddEndpointFilter(async (context, next) =>
+        {
+            var result = await next(context).ConfigureAwait(false);
+            if (result is IValueHttpResult { Value: TripResponse trip })
+            {
+                context.HttpContext.RequestServices.GetService<ActivityPrefetcher>()?.Enqueue(trip);
+            }
+
+            return result;
+        });
 
         trips.MapGet("/", ListTrips);
         trips.MapPost("/", CreateTrip);

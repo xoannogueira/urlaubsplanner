@@ -10,7 +10,7 @@ import { TripMap } from '../../components/map/TripMap'
 import type { MapPin } from '../../components/map/types'
 import { Button } from '../../components/ui/Button'
 import { EmptyState, ErrorState, Skeleton } from '../../components/ui/Feedback'
-import { activityOptionInput, categoryLabels } from '../../lib/activities'
+import { activityOptionInput, categoryLabels, routeFromHotelUrl, stageHotel } from '../../lib/activities'
 import { toLatLng } from '../../lib/geo'
 import { stageMarkers } from '../../lib/mapData'
 import { ActivityCard } from './ActivityCard'
@@ -57,6 +57,7 @@ export function ActivitySuggestionsView({ trip, stage, onEditStage }: ActivitySu
 
 function Suggestions({ trip, stage, center }: { trip: Trip; stage: Stage; center: LatLng }) {
   const actions = useTripActions(trip.id)
+  const hotel = stageHotel(trip, stage.id)
   const [radius, setRadius] = useState(5000)
   const [category, setCategory] = useState<ActivityCategory | null>(null)
   const [query, setQuery] = useState('')
@@ -170,7 +171,11 @@ function Suggestions({ trip, stage, center }: { trip: Trip; stage: Stage; center
         <ErrorState message={error.message} onRetry={() => void suggestions.refetch()} />
       ) : suggestions.isPending ? (
         <div className="grid gap-3" aria-busy="true">
-          <p className="text-sm text-muted">Suche Vorschläge in OpenStreetMap und Wikipedia …</p>
+          <p className="flex items-center gap-2 text-sm text-muted">
+            <LoaderCircle size={15} className="shrink-0 animate-spin text-accent" />
+            Suche Vorschläge in OpenStreetMap und Wikipedia … beim ersten Mal kann das bis zu 30 Sekunden dauern, danach sind sie
+            gespeichert.
+          </p>
           {[0, 1, 2].map((i) => (
             <Skeleton key={i} className="h-36" />
           ))}
@@ -253,6 +258,7 @@ function Suggestions({ trip, stage, center }: { trip: Trip; stage: Stage; center
                     selected={selectedId === a.id}
                     onSelect={() => setSelectedId(a.id)}
                     onSave={() => save(a)}
+                    routeFromHotel={hotel ? { url: routeFromHotelUrl(hotel, a), hotel: hotel.title } : null}
                   />
                 ))
               )}

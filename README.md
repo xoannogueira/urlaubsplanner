@@ -59,7 +59,9 @@ Schritt für Schritt erklärt: [Anleitung](packaging/ANLEITUNG.md). Ohne Install
   Kirchen & Klöster, Natur & Parks, Strände, Zoos und Freizeitparks aus **OpenStreetMap**, ergänzt um deutsche Beschreibung, Foto und
   Wikipedia-Link aus **Wikidata**. Bekannteste zuerst (Anzahl Wikipedia-Sprachversionen), Öffnungszeiten auf Deutsch, „Eintritt frei“,
   Filter nach Kategorie, Suche, Umkreis 2–50 km, Karte mit Pins. Links zu Wikipedia, Google Maps und Tickets/Führungen (GetYourGuide);
-  „Merken“ speichert den Ort mit Foto als Favorit der Etappe
+  „Merken“ speichert den Ort mit Foto als Favorit der Etappe. Vorschläge werden im Hintergrund vorgeladen, sobald eine Etappe
+  einen Ort hat, und 30 Tage im Datenordner gespeichert (`aktivitaeten/`). Mit ausgewähltem Hotel gibt es pro Aktivität
+  „Route vom Hotel“ (Google Maps, zu Fuß bis 1,5 km, sonst Bus & Bahn)
 - **Dashboard** in der Übersicht: Gesamtkosten, **Countdown** bis zur Abreise, Reisedauer, Buchungsfortschritt;
   **Kosten nach Kategorie** (gestapelter Balken + Tabelle, „schon gebucht“ vs. offen) und **Kosten pro Etappe**
   (inkl. pro Nacht); **Zeitplan Tag für Tag** mit Flügen (inkl. Uhrzeit), Aktivitäten, Transport und der Übernachtung

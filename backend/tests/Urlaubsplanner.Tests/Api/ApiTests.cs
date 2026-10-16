@@ -82,6 +82,7 @@ public sealed class ApiTests : IDisposable
         _factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
         {
             builder.UseSetting("Storage:FilePath", _dataFile);
+            builder.UseSetting("Activities:Prefetch", "false");
             builder.ConfigureTestServices(services => services.AddSingleton<IPlaceSearch>(_places).AddSingleton<IHotelSearch>(_hotels));
         });
         _client = _factory.CreateClient();

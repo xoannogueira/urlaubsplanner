@@ -2,6 +2,7 @@ using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.Extensions.Options;
 using Urlaubsplanner.Api;
+using Urlaubsplanner.Api.Activities;
 using Urlaubsplanner.Api.Desktop;
 using Urlaubsplanner.Api.Endpoints;
 using Urlaubsplanner.Infrastructure;
@@ -59,6 +60,18 @@ if (desktop)
 }
 
 builder.Services.AddSingleton(paths);
+
+// Aktivitäten-Vorschläge dauerhaft im Datenordner speichern und im Hintergrund vorladen.
+if (string.IsNullOrWhiteSpace(builder.Configuration["Activities:CacheDirectory"]))
+{
+    builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
+    {
+        ["Activities:CacheDirectory"] = Path.Combine(paths.DataDirectory, "aktivitaeten"),
+    });
+}
+
+builder.Services.AddSingleton<ActivityPrefetcher>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<ActivityPrefetcher>());
 builder.Services.AddSingleton<AppSettingsStore>();
 builder.Services.AddSingleton<AppInstallation>();
 

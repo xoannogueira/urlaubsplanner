@@ -30,13 +30,23 @@ public sealed class ActivityOptions
 
     /// <summary>So viele Vorschläge werden höchstens vorgehalten (die bekanntesten zuerst); angezeigt wird seitenweise.</summary>
     public int MaxResults { get; set; } = 200;
+
+    /// <summary>
+    /// Ordner, in dem Ergebnisse dauerhaft gespeichert werden (null = nur im Speicher). Sehenswürdigkeiten ändern sich
+    /// kaum – so sind Vorschläge auch nach einem Neustart sofort da.
+    /// </summary>
+    public string? CacheDirectory { get; set; }
+
+    /// <summary>So lange gelten gespeicherte Ergebnisse.</summary>
+    public int CacheDays { get; set; } = 30;
 }
 
 /// <summary>
 /// Vorschläge aus freien Daten, ohne API-Key:
 /// OpenStreetMap (Overpass) liefert Orte mit Art, Öffnungszeiten, Eintritt und Website;
 /// Wikidata ergänzt deutsche Beschreibung, Foto (Wikimedia Commons), Wikipedia-Link und wie bekannt ein Ort ist.
-/// Ergebnisse werden einen Tag gecacht – beide Dienste sind freiwillig betrieben und sollen geschont werden.
+/// Ergebnisse werden im Speicher und (wenn eingestellt) 30 Tage auf der Festplatte gehalten – beide Dienste sind
+/// freiwillig betrieben und sollen geschont werden, und Overpass braucht oft 5–30 Sekunden.
 /// </summary>
 public sealed partial class OsmActivitySearch(
     HttpClient http,
@@ -54,12 +64,16 @@ public sealed partial class OsmActivitySearch(
     {
         ArgumentNullException.ThrowIfNull(request);
         // Auf ~100 m runden: kleine Verschiebungen derselben Etappe nutzen denselben Cache.
-        var cacheKey = string.Create(
-            CultureInfo.InvariantCulture,
-            $"activities:{request.Center.Latitude:F3},{request.Center.Longitude:F3}:{request.RadiusMeters}");
+        var cacheKey = CacheKey(request);
         if (cache.TryGetValue(cacheKey, out ActivitySearchResult? cached) && cached is not null)
         {
             return cached;
+        }
+
+        if (ReadFromDisk(request) is { } stored)
+        {
+            cache.Set(cacheKey, stored, CacheDuration);
+            return stored;
         }
 
         // Läuft dieselbe Suche schon (z. B. weil im Frontend Filter oder Seiten gewechselt wurden, während sie lädt),
@@ -94,12 +108,76 @@ public sealed partial class OsmActivitySearch(
 
             var result = new ActivitySearchResult(Rank(candidates, wikidata, _options.MaxResults), clock.GetUtcNow());
             cache.Set(cacheKey, result, CacheDuration);
+            if (result.Activities.Count > 0)
+            {
+                WriteToDisk(request, result);
+            }
+
             return result;
         }
         finally
         {
             // Fertig oder fehlgeschlagen: Nächste Anfrage liest den Cache bzw. versucht es neu.
             cache.Remove(pendingKey);
+        }
+    }
+
+    /// <summary>Gibt es für diese Suche schon ein Ergebnis (Speicher oder Festplatte)? Für das Vorladen im Hintergrund.</summary>
+    public bool IsCached(ActivitySearchRequest request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        return cache.TryGetValue(CacheKey(request), out ActivitySearchResult? _) || CacheFile(request) is { } file && IsFresh(file);
+    }
+
+    private static string CacheKey(ActivitySearchRequest request) => string.Create(
+        CultureInfo.InvariantCulture,
+        $"activities:{request.Center.Latitude:F3},{request.Center.Longitude:F3}:{request.RadiusMeters}");
+
+    private string? CacheFile(ActivitySearchRequest request) => string.IsNullOrWhiteSpace(_options.CacheDirectory)
+        ? null
+        : Path.Combine(
+            _options.CacheDirectory,
+            string.Create(CultureInfo.InvariantCulture, $"{request.Center.Latitude:F3}_{request.Center.Longitude:F3}_{request.RadiusMeters}.json"));
+
+    private bool IsFresh(string file) =>
+        File.Exists(file) && clock.GetUtcNow() - File.GetLastWriteTimeUtc(file) < TimeSpan.FromDays(_options.CacheDays);
+
+    private ActivitySearchResult? ReadFromDisk(ActivitySearchRequest request)
+    {
+        if (CacheFile(request) is not { } file || !IsFresh(file))
+        {
+            return null;
+        }
+
+        try
+        {
+            using var stream = File.OpenRead(file);
+            return JsonSerializer.Deserialize<ActivitySearchResult>(stream, Json);
+        }
+        catch (Exception e) when (e is IOException or JsonException or UnauthorizedAccessException)
+        {
+            LogFailed("Aktivitäten-Speicher", e);
+            return null;
+        }
+    }
+
+    private void WriteToDisk(ActivitySearchRequest request, ActivitySearchResult result)
+    {
+        if (CacheFile(request) is not { } file)
+        {
+            return;
+        }
+
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(file)!);
+            var temp = file + ".tmp";
+            File.WriteAllText(temp, JsonSerializer.Serialize(result, Json));
+            File.Move(temp, file, overwrite: true);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            LogFailed("Aktivitäten-Speicher", e);
         }
     }
 
