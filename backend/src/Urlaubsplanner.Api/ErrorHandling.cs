@@ -53,6 +53,10 @@ internal sealed class DomainExceptionHandler : IExceptionHandler
                 statusCode: StatusCodes.Status502BadGateway,
                 title: "Vorschläge nicht verfügbar",
                 detail: e.Message),
+            Domain.Transit.TransitUnavailableException e => TypedResults.Problem(
+                statusCode: StatusCodes.Status502BadGateway,
+                title: "Fahrplanauskunft nicht erreichbar",
+                detail: e.Message),
             BadHttpRequestException e => TypedResults.Problem(
                 statusCode: e.StatusCode,
                 title: "Anfrage ungültig",

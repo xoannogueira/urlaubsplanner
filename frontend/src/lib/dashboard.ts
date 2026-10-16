@@ -1,7 +1,7 @@
 import type { OptionKind, Stage, Trip, TripOption, TripSummary } from '../api/types'
 import { parseDate } from './format'
 import { parseSignature } from './flights'
-import { isChosen } from './options'
+import { isArrival, isChosen } from './options'
 
 /**
  * Diagrammfarbe einer Kategorie (CSS-Variable, hell/dunkel getrennt). Fest zugeordnet, nicht nach Rang –
@@ -138,7 +138,7 @@ export function buildTimeline(
         }
       }
     } else if (o.kind !== 'Hotel' && o.startDate) {
-      add(o.startDate, { id: o.id, kind: o.kind, title: o.title, time: null, booked })
+      add(o.startDate, { id: o.id, kind: o.kind, title: o.title, time: o.kind === 'Transport' ? timeRange(o.notes) : null, booked })
     }
   }
 
@@ -169,6 +169,12 @@ export function buildTimeline(
   return { days, stages }
 }
 
+/** Erste Zeitspanne in der Notiz („…, 09:39–12:28, …“) – z. B. bei gemerkten Bus- & Bahn-Verbindungen. */
+export function timeRange(notes: string | null): string | null {
+  const match = notes ? /(\d{2}:\d{2})–(\d{2}:\d{2})/.exec(notes.split('\n')[0]) : null
+  return match ? `${match[1]}–${match[2]}` : null
+}
+
 /** Uhrzeit aus der Notiz eines gemerkten Flugs: "STR → LIS: Mi., 12. Mai, 09:14–14:31, …" → "09:14–14:31" */
 export function flightTime(notes: string | null, origin: string, destination: string): string | null {
   const line = notes?.split('\n').find((l) => l.startsWith(`${origin} → ${destination}:`))
@@ -191,8 +197,8 @@ export function openTasks(trip: Trip, summary: TripSummary): OpenTask[] {
   const tasks: OpenTask[] = []
   const chosen = trip.options.filter(isChosen)
 
-  if (!chosen.some((o) => o.kind === 'Flight') && trip.stages.length > 0) {
-    tasks.push({ id: 'flight', text: 'Noch kein Flug ausgewählt', target: 'fluege', level: 'warn' })
+  if (!chosen.some(isArrival) && trip.stages.length > 0) {
+    tasks.push({ id: 'flight', text: 'Noch keine Anreise ausgewählt', target: 'fluege', level: 'warn' })
   }
   for (const gap of summary.gaps.filter((g) => g.kind === 'MissingHotel')) {
     const nights = Math.round((parseDate(gap.to).getTime() - parseDate(gap.from).getTime()) / 86_400_000)

@@ -72,6 +72,13 @@ Schritt für Schritt erklärt: [Anleitung](packaging/ANLEITUNG.md). Ohne Install
   Aktivitäten, Tag-für-Tag-Plan und Kosten. Erzeugt im Browser ([pdfmake](https://pdfmake.github.io), erst beim Klick geladen);
   die Desktop-App speichert sie im Downloads-Ordner (eine Datei pro Reise, neue Fassung ersetzt die alte) und öffnet sie
 - Buchen über **Kayak** (Strecken, Daten, Personen und Klasse vorausgefüllt, auch Gabelflüge) oder **Google Flights**
+- **Flug-Bewertung „Beste Wahl“**: Preis plus Zeitaufwand (lange Umstiege zählen überproportional), umschaltbar
+  „Günstig zuerst / Ausgewogen / Schnell zuerst“; Zeitfenster-Filter für Abflug und Ankunft je Strecke
+- **Anreise mit Bus & Bahn** statt Flug (Umschalter im Tab „Anreise“): Hin- und Rückfahrt von zu Hause zur ersten bzw. ab der
+  letzten Etappe, mit Umstiegen, Gleisen und Fußwegen; Links zu bahn.de und Google Maps (Preise gibt es dort)
+- **Transfers** (eigener Tab): Vorschläge Flughafen → Unterkunft, Etappe → Etappe und Unterkunft → Flughafen, automatisch mit
+  passender Uhrzeit gesucht; beliebige weitere Strecken frei suchbar. Gemerkte Verbindungen erscheinen im Tagesplan und im PDF.
+  Fahrplandaten: [Transitous](https://transitous.org) (kostenlos, ohne Key, Community-Projekt)
 
 ## Roadmap
 
@@ -83,7 +90,8 @@ Schritt für Schritt erklärt: [Anleitung](packaging/ANLEITUNG.md). Ohne Install
 | 4 ✅ | Flugsuche (LiteAPI) – exakte Flughäfen oder Umkreis, Gabelflüge, Tarife, Flugbögen auf der Karte |
 | 5 ✅ | Aktivitäten-Vorschläge (OpenStreetMap + Wikidata, ohne Key) |
 | 6 ✅ | Dashboard mit Diagrammen, Zeitplan, Countdown und offenen Punkten |
-| später | Accounts für Freunde, Kostenaufteilung, Preisalarm, Abstimmung, Export (.ics/PDF) |
+| 7 ✅ | Desktop-App mit Installer und Auto-Update, PDF-Reiseplan, Flug-Bewertung, Bus & Bahn, Transfers |
+| später | Wetter, Packliste, Mietwagen, Mitreisende & Kostenaufteilung, Preisalarm, Export (.ics) |
 
 ## Technik
 
@@ -300,13 +308,25 @@ SerpApi-Key entfernen (`dotnet user-secrets remove "SerpApi:ApiKey"`). Danach da
 
 Funktionieren ohne Einrichtung. Daten: © [OpenStreetMap](https://www.openstreetmap.org/copyright)-Mitwirkende (ODbL) über die
 Overpass API, Beschreibungen und Fotos von Wikidata / Wikimedia Commons. Beide Dienste werden ehrenamtlich betrieben – die App
-cacht Ergebnisse deshalb einen Tag.
+cacht Ergebnisse deshalb 30 Tage im Datenordner und lädt sie im Hintergrund vor, sobald eine Etappe einen Ort hat
+(abschaltbar mit `Activities:Prefetch=false`).
 
 - Gesucht wird in einem Rechteck um die Etappe (schnell für den Server), danach wird auf den Kreis zugeschnitten.
 - Ist ein Overpass-Server überlastet oder bricht ab, probiert die App automatisch den nächsten
   (overpass-api.de → overpass.private.coffee → maps.mail.ru). Weitere Server lassen sich unter `Activities:OverpassUrls`
   in `appsettings.json` ergänzen. Was schiefging, steht im Backend-Terminal („Overpass (…) antwortete mit …“).
 - Angezeigt werden erst 10 Vorschläge, beim Scrollen ans Listenende kommen jeweils 10 weitere – ohne neue Abfrage bei OpenStreetMap.
+
+### Bus & Bahn (Transitous)
+
+Funktioniert ohne Einrichtung. Fahrplandaten: [Transitous](https://transitous.org) – ein kostenloser, gemeinschaftlich
+betriebener Routing-Dienst (MOTIS) auf Basis offener Fahrplandaten. Bedingungen: nur nicht-kommerzielle Nutzung, Quellenangabe
+(steht unter jedem Ergebnis) und ein User-Agent mit Kontakt (setzt die App automatisch). Das Projekt steht deshalb unter der
+MIT-Lizenz (siehe `LICENSE`). Ergebnisse werden 10 Minuten gecacht.
+
+- Preise liefert Transitous nicht – dafür gibt es pro Verbindung den Link zu bahn.de bzw. Google Maps.
+- Abdeckung: Europa sehr gut, in manchen Ländern fehlen Fernbusse oder einzelne Verkehrsverbünde.
+- Anderer Server: `Transit:BaseUrl` in `appsettings.json`.
 
 ### Daten
 
@@ -345,6 +365,7 @@ Dieselben Checks laufen bei jedem Push in GitHub Actions.
 | POST | `/api/hotels/search` | Hotelsuche: `latitude`, `longitude`, `checkin`, `checkout`, `adults`, optional `rooms`, `radiusMeters` – oder statt Ort `hotelIds`; optional `place` (Ortsname, für Google Hotels) |
 | POST | `/api/hotels/nearby` | Alle Hotels im Umkreis, auch ausgebuchte (ohne Preis) |
 | GET | `/api/activities?lat=…&lon=…&radiusMeters=…&offset=0&limit=10` | Aktivitäten-Vorschläge seitenweise (500 m – 50 km), optional `category`, `q`, `sort=Distance` |
+| GET | `/api/transit/plan?fromLat=…&fromLon=…&toLat=…&toLon=…&time=…&arriveBy=false` | Bus-&-Bahn-Verbindungen (Transitous), optional `cursor` für früher/später |
 | GET | `/api/airports?q=…` | Flughafensuche (Code, Stadt, Name; sonst über die Ortssuche in der Nähe) |
 | GET | `/api/airports/near?lat=…&lon=…&radiusKm=…` | Flughäfen im Umkreis |
 | GET | `/api/airports/lookup?codes=STR,LIS` | Flughäfen nach Code |
@@ -359,3 +380,7 @@ Dieselben Checks laufen bei jedem Push in GitHub Actions.
 
 Fehler kommen als Problem Details (RFC 9457), Eingabefehler mit dem betroffenen Feld, z. B.
 `{"errors": {"url": ["Muss ein gültiger http- oder https-Link sein."]}}`.
+
+## Lizenz
+
+MIT – siehe [LICENSE](LICENSE).

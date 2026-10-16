@@ -19,7 +19,7 @@ import { useTripContext } from '../../components/layout/tripContext'
 import { Button } from '../../components/ui/Button'
 import { tripRange } from '../../lib/dates'
 import { nightsLabel, todayIso } from '../../lib/format'
-import { isChosen } from '../../lib/options'
+import { isChosen, isTransitAnreise } from '../../lib/options'
 import { pdfFileName, renderTripPdf } from './renderPdf'
 
 type Result = { kind: 'saved'; saved: PdfSaved } | { kind: 'downloaded'; fileName: string } | { kind: 'error'; message: string }
@@ -147,10 +147,11 @@ function contents(trip: Trip): Part[] {
   const chosen = trip.options.filter(isChosen)
   const count = (n: number, one: string, many: string) => (n === 1 ? `1 ${one}` : `${n} ${many}`)
   const flights = chosen.filter((o) => o.kind === 'Flight').length
+  const trains = chosen.filter(isTransitAnreise).length
   const hotels = chosen.filter((o) => o.kind === 'Hotel')
   const withoutHotel = trip.stages.filter((s) => !hotels.some((h) => h.stageId === s.id))
   const activities = trip.options.filter((o) => o.kind === 'Activity' && o.status !== 'Idea').length
-  const extras = chosen.filter((o) => o.kind === 'Transport' || o.kind === 'Other').length
+  const extras = chosen.filter((o) => (o.kind === 'Transport' && !isTransitAnreise(o)) || o.kind === 'Other').length
   const range = tripRange(trip)
   const days = range.start && range.end ? Math.round((Date.parse(range.end) - Date.parse(range.start)) / 86_400_000) + 1 : 0
 
@@ -162,10 +163,18 @@ function contents(trip: Trip): Part[] {
       empty: false,
     },
     {
-      title: 'Flüge',
-      detail: flights > 0 ? `${count(flights, 'Flug', 'Flüge')} mit Datum, Uhrzeiten, Flugnummern und Tarif` : 'Noch kein Flug ausgewählt',
+      title: 'Anreise',
+      detail:
+        flights + trains > 0
+          ? [
+              flights > 0 && `${count(flights, 'Flug', 'Flüge')} mit Uhrzeiten, Flugnummern und Tarif`,
+              trains > 0 && `${count(trains, 'Bahn-/Busverbindung', 'Bahn-/Busverbindungen')}`,
+            ]
+              .filter(Boolean)
+              .join(' · ')
+          : 'Noch keine Anreise ausgewählt',
       icon: <Plane size={16} />,
-      empty: flights === 0,
+      empty: flights + trains === 0,
     },
     {
       title: 'Unterkünfte',
@@ -189,8 +198,8 @@ function contents(trip: Trip): Part[] {
     ...(extras > 0
       ? [
           {
-            title: 'Weitere Buchungen',
-            detail: count(extras, 'Eintrag', 'Einträge') + ' (Transport & Sonstiges)',
+            title: 'Transfers & weitere Buchungen',
+            detail: count(extras, 'Eintrag', 'Einträge') + ' (Bus, Bahn, Mietwagen & Sonstiges)',
             icon: <TrainFront size={16} />,
             empty: false,
           },

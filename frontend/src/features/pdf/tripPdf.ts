@@ -4,7 +4,7 @@ import { buildTimeline, costByKind, costByStage } from '../../lib/dashboard'
 import { tripRange } from '../../lib/dates'
 import { parseSignature } from '../../lib/flights'
 import { formatDate, formatDateRange, formatEuro, formatShortDate, hostOf, nightsLabel, parseDate, peopleLabel } from '../../lib/format'
-import { isChosen, kindLabels } from '../../lib/options'
+import { isArrival, isChosen, isTransitAnreise, kindLabels } from '../../lib/options'
 
 /**
  * Reiseplan als PDF (Beschreibung für pdfmake): Überblick, Flüge, Unterkünfte, gemerkte Aktivitäten,
@@ -63,7 +63,8 @@ export function buildTripPdf(trip: Trip, { today }: TripPdfOptions): TDocumentDe
   const range = tripRange(trip)
   const chosen = trip.options.filter(isChosen)
   const flights = chosen.filter((o) => o.kind === 'Flight').sort(byStart)
-  const extras = chosen.filter((o) => o.kind === 'Transport' || o.kind === 'Other').sort(byStart)
+  const trains = chosen.filter(isTransitAnreise).sort(byStart)
+  const extras = chosen.filter((o) => (o.kind === 'Transport' && !isTransitAnreise(o)) || o.kind === 'Other').sort(byStart)
   const timeline = range.start && range.end ? buildTimeline(trip, { startDate: range.start, endDate: range.end }) : null
   const dateText = formatDateRange(range.start, range.end)
 
@@ -71,14 +72,14 @@ export function buildTripPdf(trip: Trip, { today }: TripPdfOptions): TDocumentDe
     header(trip, dateText, range),
     keyFigures(trip),
     openPoints(trip, timeline?.days.filter((d) => d.night === 'missing').length ?? 0),
-    section('Flüge', 'Flight'),
-    flights.length > 0 ? flights.map(flightBlock) : empty('Noch kein Flug ausgewählt.'),
+    section('Anreise', 'Flight'),
+    flights.length + trains.length > 0 ? [...flights.map(flightBlock), ...trains.map(extraBlock)] : empty('Noch keine Anreise ausgewählt.'),
     section('Unterkünfte', 'Hotel'),
     trip.stages.length > 0 ? trip.stages.map((s) => hotelsOfStage(trip, s)) : empty('Noch keine Etappen angelegt.'),
     section('Aktivitäten', 'Activity'),
     activities(trip),
   ]
-  if (extras.length > 0) content.push(section('Weitere Buchungen', 'Transport'), extras.map(extraBlock))
+  if (extras.length > 0) content.push(section('Transfers & weitere Buchungen', 'Transport'), extras.map(extraBlock))
   if (timeline && timeline.days.length > 0) content.push(section('Tag für Tag', null, true), dayTable(timeline.days))
   content.push(section('Kosten', null), costTables(trip))
   if (trip.notes?.trim()) content.push(section('Notizen', null), { text: trip.notes.trim(), style: 'body' })
@@ -155,7 +156,7 @@ function keyFigures(trip: Trip): Content {
 function openPoints(trip: Trip, missingNights: number): Content {
   const chosen = trip.options.filter(isChosen)
   const points = [
-    trip.stages.length > 0 && !chosen.some((o) => o.kind === 'Flight') ? 'Noch kein Flug ausgewählt' : null,
+    trip.stages.length > 0 && !chosen.some(isArrival) ? 'Noch keine Anreise ausgewählt' : null,
     missingNights > 0 ? `${nightsLabel(missingNights)} ohne Unterkunft` : null,
     chosen.some((o) => o.totalPrice === null) ? 'Nicht alle Auswahlen haben einen Preis' : null,
   ].filter((p): p is string => p !== null)
