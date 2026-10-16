@@ -64,9 +64,9 @@ public sealed record TripResponse(
         trip.Party);
 }
 
-public sealed record StageResponse(Guid Id, string Name, DateOnly StartDate, DateOnly EndDate, int Nights, double? Latitude, double? Longitude)
+public sealed record StageResponse(Guid Id, string Name, DateOnly StartDate, DateOnly EndDate, int Nights, double? Latitude, double? Longitude, string? Description)
 {
-    public static StageResponse From(Stage s) => new(s.Id, s.Name, s.StartDate, s.EndDate, s.Nights, s.Latitude, s.Longitude);
+    public static StageResponse From(Stage s) => new(s.Id, s.Name, s.StartDate, s.EndDate, s.Nights, s.Latitude, s.Longitude, s.Description);
 }
 
 public sealed record OptionResponse(

@@ -141,3 +141,24 @@
 .dark .maplibregl-ctrl-attrib-button {
   filter: invert(1);
 }
+
+/* Überlappende Karten-Pins: als kleiner Punkt, Name beim Drüberfahren oder mit der Tastatur */
+.pin-compact > button {
+  width: 14px;
+  min-width: 0;
+  height: 14px;
+  padding: 0;
+  overflow: hidden;
+  font-size: 0;
+}
+.pin-compact:hover,
+.pin-compact:focus-within {
+  z-index: 20 !important;
+}
+.pin-compact:hover > button,
+.pin-compact:focus-within > button {
+  width: auto;
+  height: 30px;
+  padding: 0 10px;
+  font-size: 13px;
+}

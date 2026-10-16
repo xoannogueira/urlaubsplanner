@@ -2,6 +2,7 @@ import clsx from 'clsx'
 import {
   ArrowRight,
   Bus,
+  CalendarClock,
   ChevronDown,
   ChevronUp,
   Footprints,
@@ -26,12 +27,14 @@ import { PlaceSearchField } from '../../components/PlaceSearchField'
 import { Button } from '../../components/ui/Button'
 import { buttonClass } from '../../components/ui/buttonStyles'
 import { EmptyState, ErrorState, Skeleton } from '../../components/ui/Feedback'
-import { controlClass } from '../../components/ui/fieldStyles'
-import { formatShortDate } from '../../lib/format'
+import { DateInput, TimeInput } from '../../components/ui/DateInput'
+import { formatShortDate, todayIso } from '../../lib/format'
 import { formatDuration } from '../../lib/flights'
 import {
   approximateUtc,
   bahnUrl,
+  exampleSearchDate,
+  shiftItinerary,
   clockAt,
   dateAt,
   googleTransitUrl,
@@ -76,9 +79,19 @@ export function TransitSearch({ trip, scope, stageId, defaults, autoSearch = fal
   const [time, setTime] = useState(`${pad(defaults.hour)}:${pad(defaults.minute)}`)
   const [arriveBy, setArriveBy] = useState(defaults.arriveBy)
   const [query, setQuery] = useState<TransitQuery | null>(() => (autoSearch ? build() : null))
+  // Wofür zuletzt gesucht wurde – für die Ersatzsuche, wenn der Fahrplan für das Datum noch fehlt.
+  const [searched, setSearched] = useState(() => (autoSearch ? { date, time, arriveBy } : null))
   const [savingId, setSavingId] = useState<string | null>(null)
   const [saveError, setSaveError] = useState<string | null>(null)
   const plan = useTransitPlan(query)
+  const noResult = !!query && !query.cursor && plan.data?.itineraries.length === 0
+  const exampleDate = noResult && searched ? exampleSearchDate(searched.date, todayIso()) : null
+  const exampleQuery = useMemo<TransitQuery | null>(() => {
+    if (!exampleDate || !query || !searched) return null
+    const [h, m] = searched.time.split(':').map(Number)
+    return { ...query, time: approximateUtc(exampleDate, h, m, searched.arriveBy ? query.to : query.from), cursor: null }
+  }, [exampleDate, query, searched])
+  const example = useTransitPlan(exampleQuery)
 
   function build(): TransitQuery | null {
     if (!from || !to || !date || !time) return null
@@ -90,9 +103,9 @@ export function TransitSearch({ trip, scope, stageId, defaults, autoSearch = fal
   const savedIds = useMemo(() => new Set(trip.options.filter((o) => o.provider === 'transitous').map((o) => o.externalId)), [trip.options])
   const places = from && to ? { fromName: fromText, toName: toText, from, to } : null
 
-  const save = (itinerary: TransitItinerary) => {
+  const save = (itinerary: TransitItinerary, isExample = false) => {
     if (!places) return
-    const input = transitOptionInput(itinerary, places, scope, stageId)
+    const input = transitOptionInput(itinerary, places, scope, stageId, isExample)
     setSavingId(input.externalId ?? null)
     setSaveError(null)
     actions.addOption.mutate(input, {
@@ -108,6 +121,7 @@ export function TransitSearch({ trip, scope, stageId, defaults, autoSearch = fal
         onSubmit={(e) => {
           e.preventDefault()
           setQuery(build())
+          setSearched({ date, time, arriveBy })
         }}
       >
         <div className="grid gap-3 md:grid-cols-2">
@@ -145,7 +159,7 @@ export function TransitSearch({ trip, scope, stageId, defaults, autoSearch = fal
         <div className="flex flex-wrap items-end gap-3">
           <label className="flex flex-col gap-1.5">
             <span className="text-[13px] font-bold text-muted">Datum</span>
-            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={clsx(controlClass, 'w-40')} />
+            <DateInput label="Datum" value={date} onValue={setDate} className="w-44" />
           </label>
           <div className="flex flex-col gap-1.5">
             <span className="text-[13px] font-bold text-muted">Uhrzeit</span>
@@ -158,13 +172,7 @@ export function TransitSearch({ trip, scope, stageId, defaults, autoSearch = fal
                   Ankunft bis
                 </Toggle>
               </div>
-              <input
-                type="time"
-                aria-label="Uhrzeit"
-                value={time}
-                onChange={(e) => setTime(e.target.value)}
-                className={clsx(controlClass, 'w-28')}
-              />
+              <TimeInput label="Uhrzeit" value={time} onValue={setTime} className="w-24" />
             </div>
           </div>
           <Button type="submit" variant="primary" icon={<Search size={17} />} disabled={!!problem}>
@@ -191,6 +199,7 @@ export function TransitSearch({ trip, scope, stageId, defaults, autoSearch = fal
           scope={scope}
           onSave={save}
           onPage={(cursor) => setQuery({ ...query, cursor })}
+          example={exampleDate && searched ? { date: exampleDate, target: searched.date, plan: example } : null}
         />
       )}
     </div>
@@ -205,6 +214,7 @@ function Results({
   scope,
   onSave,
   onPage,
+  example,
 }: {
   query: TransitQuery
   plan: ReturnType<typeof useTransitPlan>
@@ -212,9 +222,16 @@ function Results({
   savedIds: Set<string | null>
   savingId: string | null
   scope: TransitScope
-  onSave: (i: TransitItinerary) => void
+  onSave: (i: TransitItinerary, example?: boolean) => void
   onPage: (cursor: string) => void
+  /** Ersatzsuche am gleichen Wochentag, wenn der Fahrplan für das Reisedatum noch nicht veröffentlicht ist */
+  example: { date: string; target: string; plan: ReturnType<typeof useTransitPlan> } | null
 }) {
+  const idOf = (it: TransitItinerary) =>
+    `${scope}|${it.departure}|${it.legs
+      .filter((l) => l.mode !== 'WALK')
+      .map(legLabel)
+      .join('+')}`
   if (plan.isPending) {
     return (
       <div className="flex flex-col gap-3" aria-busy="true">
@@ -238,25 +255,42 @@ function Results({
   const data = plan.data!
   return (
     <section aria-label="Verbindungen" className="flex flex-col gap-3">
-      {data.itineraries.length === 0 ? (
-        <EmptyState
-          icon={<TrainFront size={22} />}
-          title="Keine Verbindung gefunden"
-          text="Für diese Strecke gibt es in den offenen Fahrplandaten nichts – probier eine andere Uhrzeit oder einen Bahnhof in der Nähe. In manchen Ländern sind die Daten lückenhaft."
-          action={
-            places ? (
-              <a
-                href={googleTransitUrl(places.from, places.to)}
-                target="_blank"
-                rel="noopener noreferrer"
-                className={buttonClass('secondary')}
-              >
-                In Google Maps suchen
-                <ExternalLink size={14} />
-              </a>
-            ) : undefined
-          }
-        />
+      {data.itineraries.length === 0 && example && !example.plan.data?.itineraries.length ? (
+        example.plan.isPending ? (
+          <p className="flex items-center gap-2 text-sm text-muted">
+            <LoaderCircle size={15} className="animate-spin text-accent" />
+            Für den {formatShortDate(example.target)} gibt es noch keinen Fahrplan – suche ein Beispiel vom {formatShortDate(example.date)} …
+          </p>
+        ) : (
+          <NoConnection places={places} />
+        )
+      ) : data.itineraries.length === 0 && example ? (
+        <>
+          <p role="status" className="flex gap-2.5 rounded-xl border border-star/40 bg-star/10 px-3.5 py-3 text-sm">
+            <CalendarClock size={17} className="mt-0.5 shrink-0 text-star" />
+            <span>
+              <strong>Fahrplan für den {formatShortDate(example.target)} ist noch nicht veröffentlicht.</strong> Offene Fahrpläne reichen meist
+              nur bis zum nächsten Fahrplanwechsel (Mitte Dezember). So fährt es aktuell am gleichen Wochentag ({formatShortDate(example.date)}) –
+              auf dein Datum übertragen. Die Zeiten ändern sich meist nur wenig; kurz vorher noch einmal prüfen.
+            </span>
+          </p>
+          {example.plan.data!.itineraries.map((original) => {
+            const it = shiftItinerary(original, example.date, example.target)
+            const id = idOf(it)
+            return (
+              <ItineraryCard
+                key={`beispiel-${id}`}
+                itinerary={it}
+                places={places}
+                saved={savedIds.has(id)}
+                saving={savingId === id}
+                onSave={() => onSave(it, true)}
+              />
+            )
+          })}
+        </>
+      ) : data.itineraries.length === 0 ? (
+        <NoConnection places={places} />
       ) : (
         <>
           {data.earlierCursor && (
@@ -271,10 +305,7 @@ function Results({
             </Button>
           )}
           {data.itineraries.map((it) => {
-            const id = `${scope}|${it.departure}|${it.legs
-              .filter((l) => l.mode !== 'WALK')
-              .map(legLabel)
-              .join('+')}`
+            const id = idOf(it)
             return (
               <ItineraryCard
                 key={`${it.departure}-${id}`}
@@ -306,6 +337,24 @@ function Results({
         und OpenStreetMap. Preise und Tickets beim Anbieter, z. B. über bahn.de.
       </p>
     </section>
+  )
+}
+
+function NoConnection({ places }: { places: { from: LatLng; to: LatLng } | null }) {
+  return (
+    <EmptyState
+      icon={<TrainFront size={22} />}
+      title="Keine Verbindung gefunden"
+      text="Für diese Strecke gibt es in den offenen Fahrplandaten nichts – probier eine andere Uhrzeit oder einen Bahnhof in der Nähe. In manchen Ländern sind die Daten lückenhaft."
+      action={
+        places ? (
+          <a href={googleTransitUrl(places.from, places.to)} target="_blank" rel="noopener noreferrer" className={buttonClass('secondary')}>
+            In Google Maps suchen
+            <ExternalLink size={14} />
+          </a>
+        ) : undefined
+      }
+    />
   )
 }
 

@@ -4,7 +4,7 @@ import { ApiError } from '../../api/client'
 import type { LatLng, OptionInput, OptionStatus, Trip, TripOption } from '../../api/types'
 import { PlaceSearchField } from '../../components/PlaceSearchField'
 import { Button } from '../../components/ui/Button'
-import { DateField } from '../../components/ui/DateField'
+import { DateField, TimeField } from '../../components/ui/DateField'
 import { Dialog } from '../../components/ui/Dialog'
 import { FormError, InputField, SelectField, TextAreaField } from '../../components/ui/Field'
 import { tripRange } from '../../lib/dates'
@@ -118,7 +118,7 @@ function RentalForm({ trip, option, onClose, onSubmit }: RentalDialogProps) {
             required
             error={fe.startDate}
           />
-          <InputField label="Uhrzeit" type="time" value={d.pickupTime} onChange={(e) => set({ pickupTime: e.target.value })} />
+          <TimeField label="Uhrzeit" value={d.pickupTime} onValue={(v) => set({ pickupTime: v })} />
         </div>
       </div>
 
@@ -146,7 +146,7 @@ function RentalForm({ trip, option, onClose, onSubmit }: RentalDialogProps) {
             required
             error={fe.endDate}
           />
-          <InputField label="Uhrzeit" type="time" value={d.returnTime} onChange={(e) => set({ returnTime: e.target.value })} />
+          <TimeField label="Uhrzeit" value={d.returnTime} onValue={(v) => set({ returnTime: v })} />
         </div>
       </div>
 

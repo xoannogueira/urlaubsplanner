@@ -83,7 +83,12 @@ function zone(timeZone: string | null): { timeZone?: string } {
  */
 export function approximateUtc(date: string, hour: number, minute: number, at: LatLng): string {
   const [y, m, d] = date.split('-').map(Number)
-  const summer = m >= 4 && m <= 10
+  // EU-Sommerzeit: letzter Sonntag im März bis letzter Sonntag im Oktober
+  const lastSunday = (month: number) => {
+    const last = new Date(Date.UTC(y, month, 0))
+    return last.getUTCDate() - last.getUTCDay()
+  }
+  const summer = (m > 3 && m < 10) || (m === 3 && d >= lastSunday(3)) || (m === 10 && d < lastSunday(10))
   const europe = at.latitude > 34 && at.longitude > -11 && at.longitude < 32
   const offset = europe ? (at.longitude < -5 ? 0 : at.longitude > 21 ? 2 : 1) + (summer ? 1 : 0) : Math.round(at.longitude / 15)
   return new Date(Date.UTC(y, m - 1, d, hour - offset, minute)).toISOString()
@@ -151,6 +156,8 @@ export function transitOptionInput(
   places: { fromName: string; toName: string; from: LatLng; to: LatLng },
   scope: TransitScope,
   stageId: string | null,
+  /** Beispiel aus einem anderen Fahrplan (siehe exampleSearchDate) – wird in der Notiz vermerkt. */
+  example = false,
 ): OptionInput {
   const first = itinerary.legs[0]
   const last = itinerary.legs[itinerary.legs.length - 1]
@@ -168,13 +175,67 @@ export function transitOptionInput(
     locationName: places.toName,
     latitude: places.to.latitude,
     longitude: places.to.longitude,
-    notes: transitNotes(itinerary, places.fromName, places.toName),
+    notes:
+      transitNotes(itinerary, places.fromName, places.toName) +
+      (example ? '\nBeispiel: Fahrplan für dieses Datum war noch nicht veröffentlicht – Zeiten kurz vorher prüfen.' : ''),
     provider: 'transitous',
     externalId: `${scope}|${itinerary.departure}|${lines.join('+')}`,
   }
 }
 
 export { isTransitAnreise } from './options'
+
+const DAY = 86_400_000
+
+/**
+ * Offene Fahrpläne reichen meist nur bis zum nächsten Fahrplanwechsel (Mitte Dezember). Für ein Datum, das
+ * mindestens drei Wochen entfernt ist, sucht die App deshalb ersatzweise am gleichen Wochentag in naher Zukunft.
+ * Liefert dieses Ersatzdatum (frühestens in einer Woche) oder null, wenn das Datum nah genug ist.
+ */
+export function exampleSearchDate(target: string, today: string): string | null {
+  const days = Math.round((Date.parse(target) - Date.parse(today)) / DAY)
+  if (days < 21) return null
+  const weekday = new Date(Date.parse(target)).getUTCDay()
+  let date = new Date(Date.parse(today) + 7 * DAY)
+  while (date.getUTCDay() !== weekday) date = new Date(date.getTime() + DAY)
+  return date.toISOString().slice(0, 10)
+}
+
+/** Abstand einer Zeitzone zu UTC in Minuten zu einem Zeitpunkt, z. B. Europe/Berlin im Juli = 120. */
+export function tzOffsetMinutes(at: Date, timeZone: string | null): number {
+  if (!timeZone) return 0
+  try {
+    const name = new Intl.DateTimeFormat('en-US', { timeZone, timeZoneName: 'longOffset' })
+      .formatToParts(at)
+      .find((p) => p.type === 'timeZoneName')?.value
+    const match = name ? /GMT([+-])(\d{2}):?(\d{2})?/.exec(name) : null
+    return match ? (match[1] === '-' ? -1 : 1) * (Number(match[2]) * 60 + Number(match[3] ?? 0)) : 0
+  } catch {
+    return 0
+  }
+}
+
+/** Verschiebt eine Beispielverbindung auf das Reisedatum – gleiche Uhrzeit vor Ort, auch über die Zeitumstellung hinweg. */
+export function shiftItinerary(it: TransitItinerary, fromDate: string, toDate: string): TransitItinerary {
+  const days = Math.round((Date.parse(toDate) - Date.parse(fromDate)) / DAY)
+  const shift = (iso: string, tz: string | null) => {
+    const t = new Date(iso)
+    const moved = new Date(t.getTime() + days * DAY)
+    return new Date(moved.getTime() - (tzOffsetMinutes(moved, tz) - tzOffsetMinutes(t, tz)) * 60_000).toISOString()
+  }
+  const first = it.legs[0]
+  const last = it.legs[it.legs.length - 1]
+  return {
+    ...it,
+    departure: shift(it.departure, first?.from.timeZone ?? null),
+    arrival: shift(it.arrival, last?.to.timeZone ?? null),
+    legs: it.legs.map((l) => ({
+      ...l,
+      from: { ...l.from, time: shift(l.from.time, l.from.timeZone) },
+      to: { ...l.to, time: shift(l.to.time, l.to.timeZone) },
+    })),
+  }
+}
 
 export interface TransitPoint {
   name: string

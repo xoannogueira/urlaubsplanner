@@ -505,7 +505,7 @@ function splitTables(trip: Trip): Content {
   const money = (n: number) => formatEuro(n).replace(/,00(?=\s?€)/, '')
   const exact = (n: number) => new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(n)
   const body: TableCell[][] = [
-    ['Person', 'Anteil', 'Bezahlt', 'Saldo'].map((h, i) => ({ text: h, style: 'label', alignment: i > 0 ? 'right' : 'left' })),
+    ['Person', 'Anteil', 'Gekauft', 'Saldo'].map((h, i) => ({ text: h, style: 'label', alignment: i > 0 ? 'right' : 'left' })),
     ...split.people.map((p): TableCell[] => [
       { text: p.member.name, bold: true },
       { text: money(p.share), alignment: 'right' },
@@ -529,7 +529,7 @@ function splitTables(trip: Trip): Content {
           ],
         }
       : {
-          text: split.total > 0 && split.unpaid < split.total ? 'Alles ausgeglichen.' : 'Noch niemand als Zahler eingetragen.',
+          text: split.total > 0 && split.unpaid < split.total ? 'Alles ausgeglichen.' : 'Noch bei keinem Posten eingetragen, wer ihn gekauft hat.',
           style: 'small',
         }
   return [
@@ -541,7 +541,7 @@ function splitTables(trip: Trip): Content {
     },
     split.unpaid > 0
       ? {
-          text: `${money(split.unpaid)} ohne eingetragenen Zahler – zählen zum Anteil, aber noch nicht zum Ausgleich.`,
+          text: `${money(split.unpaid)} ohne eingetragenen Käufer – zählen zum Anteil, aber noch nicht zum Ausgleich.`,
           style: 'small',
           margin: [0, 6, 0, 0],
         }

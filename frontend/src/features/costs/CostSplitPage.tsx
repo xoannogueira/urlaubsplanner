@@ -51,7 +51,7 @@ export function CostSplitPage() {
         <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_380px]">
           <section className="flex min-w-0 flex-col gap-4 rounded-[18px] border border-line bg-surface p-5">
             <div className="flex flex-col gap-1">
-              <h2 className="text-[17px] font-extrabold">Wer hat was bezahlt?</h2>
+              <h2 className="text-[17px] font-extrabold">Wer hat was gekauft?</h2>
               <p className="text-[13px] text-muted">
                 Ausgewählte und gebuchte Flüge, Hotels & Co. mit Preis stehen automatisch hier. Standard: für alle.
               </p>
@@ -91,7 +91,7 @@ export function CostSplitPage() {
                 <tr className="text-left text-xs text-muted">
                   <th className="pb-2 font-bold">Person</th>
                   <th className="pb-2 text-right font-bold">Anteil</th>
-                  <th className="pb-2 text-right font-bold">Bezahlt</th>
+                  <th className="pb-2 text-right font-bold">Gekauft</th>
                   <th className="pb-2 text-right font-bold">Saldo</th>
                 </tr>
               </thead>
@@ -118,7 +118,7 @@ export function CostSplitPage() {
               <h3 className="text-[13px] font-extrabold uppercase tracking-[0.06em] text-muted">Wer schuldet wem</h3>
               {split.transfers.length === 0 ? (
                 <p className="text-sm text-muted">
-                  {split.unpaid > 0 && split.total === split.unpaid ? 'Noch niemand als Zahler eingetragen.' : 'Alles ausgeglichen.'}
+                  {split.unpaid > 0 && split.total === split.unpaid ? 'Noch bei keinem Posten eingetragen, wer ihn gekauft hat.' : 'Alles ausgeglichen.'}
                 </p>
               ) : (
                 <ul className="flex flex-col gap-1.5">
@@ -134,7 +134,7 @@ export function CostSplitPage() {
               )}
               {split.unpaid > 0 && (
                 <p className="text-xs text-muted">
-                  {euro(split.unpaid)} ohne Zahler – zählen zum Anteil, aber erst zum Ausgleich, wenn eingetragen ist, wer bezahlt hat.
+                  {euro(split.unpaid)} ohne Käufer – zählen zum Anteil, aber erst zum Ausgleich, wenn eingetragen ist, wer sie gekauft hat.
                 </p>
               )}
             </div>
@@ -262,7 +262,7 @@ function ItemRow({
       </div>
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
         <label className="flex items-center gap-2">
-          <span className="text-muted">Bezahlt von</span>
+          <span className="text-muted">Gekauft von</span>
           <select
             value={item.paidBy ?? ''}
             onChange={(e) => onPaidBy(e.target.value || null)}
@@ -362,7 +362,7 @@ function AddExpenseForm({
         placeholder="€"
         className={clsx(control, 'w-24')}
       />
-      <select aria-label="Bezahlt von" value={paidBy} onChange={(e) => setPaidBy(e.target.value)} className={control}>
+      <select aria-label="Gekauft von" value={paidBy} onChange={(e) => setPaidBy(e.target.value)} className={control}>
         <option value="">noch offen</option>
         {members.map((m) => (
           <option key={m.id} value={m.id}>

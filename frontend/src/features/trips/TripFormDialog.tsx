@@ -85,13 +85,7 @@ function TripForm({ trip, onSubmit, onSuccess, onClose }: Omit<TripFormDialogPro
           hint={(trip?.party.members.length ?? 0) > 0 ? 'folgt den Mitreisenden' : undefined}
           error={fe.travelers}
         />
-        <InputField
-          label="Von (optional)"
-          type="date"
-          value={startDate}
-          onChange={(e) => setStartDate(e.target.value)}
-          error={fe.startDate}
-        />
+        <DateField label="Von (optional)" value={startDate} onValue={setStartDate} error={fe.startDate} />
         <DateField
           label="Bis (optional)"
           value={endDate}

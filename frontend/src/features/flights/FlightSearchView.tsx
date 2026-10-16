@@ -20,7 +20,7 @@ import { Button } from '../../components/ui/Button'
 import { EmptyState, ErrorState, Skeleton } from '../../components/ui/Feedback'
 import { QuotaBadge } from '../../components/ui/QuotaBadge'
 import { GoogleSetupHint } from '../setup/GoogleSetupHint'
-import { controlClass } from '../../components/ui/fieldStyles'
+import { DateInput } from '../../components/ui/DateInput'
 import { addDays } from '../../lib/dates'
 import { formatShortDate, peopleLabel, todayIso } from '../../lib/format'
 import {
@@ -687,14 +687,7 @@ function DateAndRadius({
     <div className="flex items-start gap-3">
       <label className="flex flex-col gap-1.5">
         <span className="text-[13px] font-bold text-muted">{label}</span>
-        <input
-          type="date"
-          value={date}
-          min={min}
-          max={max}
-          onChange={(e) => onDate(e.target.value)}
-          className={clsx(controlClass, 'w-40')}
-        />
+        <DateInput label={label} value={date} min={min} max={max} openAt={min} onValue={onDate} className="w-44" />
         {date && <span className="text-xs text-muted">{formatShortDate(date)}</span>}
       </label>
       {radius != null && (

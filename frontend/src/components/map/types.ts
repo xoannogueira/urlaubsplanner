@@ -1,3 +1,4 @@
+import type { StyleSpecification } from 'maplibre-gl'
 import type { LatLng } from '../../api/types'
 
 /** 'unavailable' = für den Zeitraum ausgebucht (rot gestrichelt). */
@@ -61,3 +62,25 @@ export const MAP_STYLES = {
   dark: 'https://tiles.openfreemap.org/styles/dark',
   light: 'https://tiles.openfreemap.org/styles/positron',
 } as const
+
+/**
+ * Ersatzkarte, wenn OpenFreeMap nicht lädt (Ausfall, Werbeblocker, Firmennetz): Rasterkacheln von CARTO –
+ * kostenlos für nicht-kommerzielle Nutzung, mit Quellenangabe.
+ */
+export function fallbackStyle(theme: 'dark' | 'light'): StyleSpecification {
+  const variant = theme === 'dark' ? 'dark_all' : 'light_all'
+  return {
+    version: 8,
+    sources: {
+      carto: {
+        type: 'raster',
+        tiles: ['a', 'b', 'c', 'd'].map((s) => `https://${s}.basemaps.cartocdn.com/${variant}/{z}/{x}/{y}@2x.png`),
+        tileSize: 256,
+        maxzoom: 20,
+        attribution:
+          '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>-Mitwirkende © <a href="https://carto.com/attributions">CARTO</a>',
+      },
+    },
+    layers: [{ id: 'carto', type: 'raster', source: 'carto' }],
+  }
+}
