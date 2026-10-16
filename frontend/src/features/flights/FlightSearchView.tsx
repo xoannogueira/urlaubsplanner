@@ -293,9 +293,7 @@ function SearchArea({ trip, status }: { trip: Trip; status: FlightSearchStatus |
 
         {type === 'roundtrip' && (
           <LegForm title="Rückflug">
-            <p className="flex items-center gap-2 self-end pb-3 text-sm text-muted">
-              {destinations.map((a) => a.code).join('/') || '…'} <ArrowRight size={14} /> {origins.map((a) => a.code).join('/') || '…'}
-            </p>
+            <ReturnRoute from={destinations} to={origins} />
             <DateAndRadius
               label="Rückflug am"
               date={inDate}
@@ -308,7 +306,7 @@ function SearchArea({ trip, status }: { trip: Trip; status: FlightSearchStatus |
           </LegForm>
         )}
         {type === 'openjaw' && (
-          <LegForm title="Rückflug (von woanders)">
+          <LegForm title="Rückflug (über andere Flughäfen)">
             <AirportPicker
               label="Von"
               value={returnFrom}
@@ -524,6 +522,32 @@ function flightMap(journeys: FlightJourney[], selected: FlightJourney | null, ai
     return a ? [{ code, position: { latitude: a.latitude, longitude: a.longitude }, title: `${a.code} – ${a.name}` }] : []
   })
   return { arcs: [...pairs.values()], mapAirports }
+}
+
+/** Hin & zurück: die Rückflug-Strecke ist der Hinflug umgedreht – als ruhiges Feld im selben Stil wie die Flughafen-Auswahl. */
+function ReturnRoute({ from, to }: { from: Airport[]; to: Airport[] }) {
+  const chips = (airports: Airport[]) =>
+    airports.length > 0 ? (
+      airports.map((a) => (
+        <span key={a.code} className="flex items-center gap-1 rounded-lg bg-accent-soft px-2 py-0.5 text-sm font-semibold text-accent">
+          <span className="font-mono">{a.code}</span>
+          <span className="max-w-32 truncate font-normal text-text">{a.city || a.name}</span>
+        </span>
+      ))
+    ) : (
+      <span className="px-1 text-[15px] text-muted">…</span>
+    )
+  return (
+    <div className="flex min-w-0 flex-col gap-1.5 md:col-span-2">
+      <span className="text-[13px] font-bold text-muted">Strecke</span>
+      <div className="flex min-h-11 flex-wrap items-center gap-1.5 rounded-xl border border-dashed border-line px-2 py-1.5">
+        {chips(from)}
+        <ArrowRight size={16} className="mx-1 shrink-0 text-muted" aria-label="nach" />
+        {chips(to)}
+      </div>
+      <span className="text-xs text-muted">Wie der Hinflug, nur umgekehrt</span>
+    </div>
+  )
 }
 
 function LegForm({ title, children }: { title: string; children: ReactNode }) {
