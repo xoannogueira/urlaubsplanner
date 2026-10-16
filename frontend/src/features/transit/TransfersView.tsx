@@ -9,6 +9,7 @@ import { parseSignature } from '../../lib/flights'
 import { isChosen } from '../../lib/options'
 import { suggestTransfers, type TransferSuggestion } from '../../lib/transit'
 import { TransitSearch } from './TransitSearch'
+import { RentalSection } from '../rental/RentalSection'
 
 /**
  * Transfers vor Ort: Die App schlägt die Wege vor, die die Reise braucht (Flughafen → Unterkunft, zwischen den
@@ -30,6 +31,7 @@ export function TransfersView({ trip }: { trip: Trip }) {
 
   return (
     <div className="flex flex-col gap-4">
+      <RentalSection trip={trip} />
       {suggestions.length === 0 ? (
         <EmptyState
           icon={<Route size={22} />}

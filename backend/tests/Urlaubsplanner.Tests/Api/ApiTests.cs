@@ -377,4 +377,36 @@ public sealed class ApiTests : IDisposable
         var response = await _client.GetAsync("/api/gibt-es-nicht");
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
+
+    [Fact]
+    public async Task Packliste_und_Mitreisende_werden_gespeichert()
+    {
+        var id = await CreateTrip(travelers: 3);
+        var anna = Guid.NewGuid();
+        var ben = Guid.NewGuid();
+
+        var packed = await _client.PutAsJsonAsync($"/api/trips/{id}/packing", new
+        {
+            items = new[] { new { id = Guid.NewGuid(), text = "Reisepass", category = "Dokumente", packed = true, suggestionKey = "pass" } },
+            dismissed = new[] { "regenschirm" },
+        });
+        Assert.Equal(HttpStatusCode.OK, packed.StatusCode);
+
+        var party = await _client.PutAsJsonAsync($"/api/trips/{id}/party", new
+        {
+            members = new[] { new { id = anna, name = "Anna" }, new { id = ben, name = "Ben" } },
+            expenses = new[] { new { id = Guid.NewGuid(), title = "Tanken", amount = 60.5m, paidBy = ben, @for = Array.Empty<Guid>(), date = "2027-05-13" } },
+            optionShares = Array.Empty<object>(),
+        });
+        Assert.Equal(HttpStatusCode.OK, party.StatusCode);
+
+        var trip = await ReadJson(await _client.GetAsync($"/api/trips/{id}"));
+        Assert.Equal(2, trip.GetProperty("travelers").GetInt32());
+        Assert.Equal("Reisepass", trip.GetProperty("packing").GetProperty("items")[0].GetProperty("text").GetString());
+        Assert.True(trip.GetProperty("packing").GetProperty("items")[0].GetProperty("packed").GetBoolean());
+        Assert.Equal("regenschirm", trip.GetProperty("packing").GetProperty("dismissed")[0].GetString());
+        Assert.Equal("Ben", trip.GetProperty("party").GetProperty("members")[1].GetProperty("name").GetString());
+        Assert.Equal(60.5m, trip.GetProperty("party").GetProperty("expenses")[0].GetProperty("amount").GetDecimal());
+        Assert.Equal(ben, trip.GetProperty("party").GetProperty("expenses")[0].GetProperty("paidBy").GetGuid());
+    }
 }

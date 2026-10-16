@@ -52,6 +52,8 @@ const trip = (options: TripOption[]): Trip => ({
   updatedAt: '',
   stages: [lisboa, porto],
   options,
+  packing: { items: [], dismissed: [] },
+  party: { members: [], expenses: [], optionShares: [] },
 })
 
 const summary = (patch: Partial<TripSummary> = {}): TripSummary => ({

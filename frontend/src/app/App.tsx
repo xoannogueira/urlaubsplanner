@@ -5,6 +5,8 @@ import { ChecklistPage } from '../features/checklist/ChecklistPage'
 import { OptionsPage } from '../features/options/OptionsPage'
 import { OverviewPage } from '../features/overview/OverviewPage'
 import { PdfPage } from '../features/pdf/PdfPage'
+import { PackingPage } from '../features/packing/PackingPage'
+import { CostSplitPage } from '../features/costs/CostSplitPage'
 import { SettingsPage } from '../features/settings/SettingsPage'
 import { SetupProvider } from '../features/setup/SetupProvider'
 import { TripsPage } from '../features/trips/TripsPage'
@@ -30,6 +32,8 @@ export function App() {
               <Route path="aktivitaeten" element={<OptionsPage key="Activity" kind="Activity" />} />
               <Route path="transfers" element={<OptionsPage key="Transport" kind="Transport" />} />
               <Route path="checkliste" element={<ChecklistPage />} />
+              <Route path="packliste" element={<PackingPage />} />
+              <Route path="kosten" element={<CostSplitPage />} />
               <Route path="pdf" element={<PdfPage />} />
             </Route>
             <Route path="*" element={<NotFound />} />

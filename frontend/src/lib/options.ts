@@ -88,3 +88,6 @@ export function optionToInput(option: TripOption): OptionInput {
     imageUrl: option.imageUrl,
   }
 }
+
+/** Mietwagen: Transport mit Herkunft „rental“ (Abholung = startDate, Rückgabe = endDate). */
+export const isRentalCar = (o: TripOption) => o.kind === 'Transport' && o.provider === 'rental'

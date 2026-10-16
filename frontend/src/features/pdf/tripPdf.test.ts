@@ -86,4 +86,33 @@ describe('flightLegs', () => {
     expect(withWeather).toContain('Open-Meteo.com')
     expect(texts(buildTripPdf(sampleTrip, { today: '2026-10-13' }).content).join('\n')).not.toContain('Open-Meteo.com')
   })
+
+  it('Mitreisende, wer schuldet wem und die Packliste', () => {
+    const hotel = sampleTrip.options.find((o) => o.kind === 'Hotel' && o.status !== 'Idea')!
+    const trip = {
+      ...sampleTrip,
+      party: {
+        members: [
+          { id: 'a', name: 'Anna' },
+          { id: 'b', name: 'Ben' },
+        ],
+        expenses: [],
+        optionShares: [{ optionId: hotel.id, paidBy: 'a', for: [] }],
+      },
+      packing: {
+        items: [
+          { id: '1', text: 'Reisepass', category: 'Dokumente', packed: true, suggestionKey: 'ausweis' },
+          { id: '2', text: 'Kamera', category: 'Technik', packed: false, suggestionKey: null },
+        ],
+        dismissed: [],
+      },
+    }
+    const text = texts(buildTripPdf(trip, { today: '2026-10-13' }).content).join('\n')
+    expect(text).toContain('Anna, Ben')
+    expect(text).toContain('Wer zahlt was')
+    expect(text).toContain('WER SCHULDET WEM')
+    expect(text).toContain('Packliste')
+    expect(text).toContain('Kamera')
+    expect(text).not.toContain('2 Personen')
+  })
 })

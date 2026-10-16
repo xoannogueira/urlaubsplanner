@@ -14,7 +14,8 @@ import { formatDateRange, formatEuro, hostOf, nightsLabel } from '../../lib/form
 import { routeFromHotelUrl, stageHotel } from '../../lib/activities'
 import { toLatLng } from '../../lib/geo'
 import { optionPins, stageMarkers } from '../../lib/mapData'
-import { kindLabels, sortOptions } from '../../lib/options'
+import { isRentalCar, kindLabels, sortOptions } from '../../lib/options'
+import { RentalDialog } from '../rental/RentalDialog'
 import { canRecheck } from '../../lib/hotels'
 import { useHotelSearchStatus } from '../../api/hotels'
 import { canRecheckFlight, parseSignature, savedFlightArcs } from '../../lib/flights'
@@ -49,6 +50,7 @@ export function OptionsPage({ kind }: { kind: OptionKind }) {
   const [stageFilter, setStageFilter] = useState<string>(ALL)
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
   const [dialog, setDialog] = useState<{ option?: TripOption } | null>(null)
+  const [rentalDialog, setRentalDialog] = useState<{ option?: TripOption } | null>(null)
   const [toDelete, setToDelete] = useState<TripOption | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [view, setView] = useState<'list' | 'map'>('list')
@@ -233,6 +235,11 @@ export function OptionsPage({ kind }: { kind: OptionKind }) {
                 </ViewButton>
               </div>
             )}
+            {kind === 'Transport' && (
+              <Button icon={<Plus size={16} strokeWidth={2.5} />} onClick={() => setRentalDialog({})}>
+                Mietwagen
+              </Button>
+            )}
             <Button variant="primary" icon={<Plus size={16} strokeWidth={2.5} />} onClick={() => setDialog({})}>
               {labels.singular} speichern
             </Button>
@@ -266,7 +273,7 @@ export function OptionsPage({ kind }: { kind: OptionKind }) {
                       stage={option.stageId ? stageById.get(option.stageId) : undefined}
                       travelers={trip.travelers}
                       onStatus={(status) => setStatus(option, status)}
-                      onEdit={() => setDialog({ option })}
+                      onEdit={() => (isRentalCar(option) ? setRentalDialog({ option }) : setDialog({ option }))}
                       onDelete={() => setToDelete(option)}
                       selected={showMap && option.id === selectedId}
                       routeFromHotel={activityRoute(trip, option)}
@@ -326,6 +333,17 @@ export function OptionsPage({ kind }: { kind: OptionKind }) {
         </>
       )}
 
+      <RentalDialog
+        open={rentalDialog !== null}
+        trip={trip}
+        option={rentalDialog?.option}
+        onClose={() => setRentalDialog(null)}
+        onSubmit={(input) =>
+          rentalDialog?.option
+            ? actions.updateOption.mutateAsync({ id: rentalDialog.option.id, input })
+            : actions.addOption.mutateAsync(input)
+        }
+      />
       <OptionFormDialog
         open={dialog !== null}
         kind={kind}

@@ -81,6 +81,8 @@ function TripForm({ trip, onSubmit, onSuccess, onClose }: Omit<TripFormDialogPro
           value={travelers}
           onChange={(e) => setTravelers(e.target.value)}
           required
+          disabled={(trip?.party.members.length ?? 0) > 0}
+          hint={(trip?.party.members.length ?? 0) > 0 ? 'folgt den Mitreisenden' : undefined}
           error={fe.travelers}
         />
         <InputField
