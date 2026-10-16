@@ -17,6 +17,7 @@ import { CostByKindCard, CostByStageCard } from './CostCards'
 import { OpenTasks } from './OpenTasks'
 import { StageFormDialog } from './StageFormDialog'
 import { TripTimeline } from './TripTimeline'
+import { WeatherCard } from '../weather/WeatherCard'
 
 export function OverviewPage() {
   const { trip } = useTripContext()
@@ -120,6 +121,11 @@ export function OverviewPage() {
 
         <div className="flex min-w-0 flex-col gap-5">
           <Card title="Offene Punkte">{summary ? <OpenTasks trip={trip} summary={summary} /> : <Skeleton className="h-24" />}</Card>
+          {trip.stages.length > 0 && (
+            <Card title="Wetter">
+              <WeatherCard trip={trip} />
+            </Card>
+          )}
           <Card title="Kosten nach Kategorie">
             {summary ? <CostByKindCard trip={trip} summary={summary} /> : <Skeleton className="h-40" />}
           </Card>

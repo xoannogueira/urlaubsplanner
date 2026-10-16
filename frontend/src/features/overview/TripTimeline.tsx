@@ -3,7 +3,11 @@ import { BedDouble, Bus, CalendarPlus, Check, Compass, MoreHorizontal, Plane, Tr
 import { useMemo, type ReactNode } from 'react'
 import { Link } from 'react-router'
 import type { OptionKind, Trip, TripSummary } from '../../api/types'
+import type { WeatherDay } from '../../api/weather'
+import { useTripWeather } from '../../api/weather'
 import { buildTimeline, kindColor, type TimelineDay } from '../../lib/dashboard'
+import { tempRange, weatherLine } from '../../lib/weather'
+import { WeatherIcon } from '../weather/WeatherIcon'
 import { formatShortDate, nightsLabel, todayIso } from '../../lib/format'
 
 const kindIcons: Record<OptionKind, ReactNode> = {
@@ -21,6 +25,7 @@ const kindIcons: Record<OptionKind, ReactNode> = {
 export function TripTimeline({ trip, summary }: { trip: Trip; summary: TripSummary }) {
   const { days, stages } = useMemo(() => buildTimeline(trip, summary), [trip, summary])
   const today = todayIso()
+  const weather = useTripWeather(trip)
 
   if (days.length === 0) {
     return <p className="text-sm text-muted">Leg Etappen mit Zeitraum an – dann entsteht hier der Zeitplan Tag für Tag.</p>
@@ -48,7 +53,13 @@ export function TripTimeline({ trip, summary }: { trip: Trip; summary: TripSumma
                 )}
               </div>
             )}
-            <DayRow day={day} isToday={day.date === today} isLast={i === days.length - 1} tripId={trip.id} />
+            <DayRow
+              day={day}
+              weather={weather.byDate.get(day.date)}
+              isToday={day.date === today}
+              isLast={i === days.length - 1}
+              tripId={trip.id}
+            />
           </li>
         )
       })}
@@ -56,7 +67,19 @@ export function TripTimeline({ trip, summary }: { trip: Trip; summary: TripSumma
   )
 }
 
-function DayRow({ day, isToday, isLast, tripId }: { day: TimelineDay; isToday: boolean; isLast: boolean; tripId: string }) {
+function DayRow({
+  day,
+  weather,
+  isToday,
+  isLast,
+  tripId,
+}: {
+  day: TimelineDay
+  weather: WeatherDay | undefined
+  isToday: boolean
+  isLast: boolean
+  tripId: string
+}) {
   const [weekday, ...rest] = formatShortDate(day.date).split(' ')
   return (
     <div className={clsx('grid grid-cols-[64px_1fr] gap-3 border-l-2 py-2 pl-3', isToday ? 'border-accent' : 'border-line')}>
@@ -64,6 +87,15 @@ function DayRow({ day, isToday, isLast, tripId }: { day: TimelineDay; isToday: b
         <span className="text-xs font-bold uppercase text-muted">{weekday.replace(',', '')}</span>
         <span className="text-sm font-semibold">{rest.join(' ')}</span>
         {isToday && <span className="text-[11px] font-bold text-accent">heute</span>}
+        {weather && (
+          <span
+            className="mt-1 flex items-center gap-1 font-mono text-[11px] text-muted"
+            title={`${weatherLine(weather)}${weather.source === 'Climate' ? ' (typisch für diese Zeit)' : ' (Vorhersage)'}`}
+          >
+            <WeatherIcon code={weather.code} size={13} />
+            {tempRange(weather).split(' / ')[0]}
+          </span>
+        )}
       </div>
       <div className="flex min-w-0 flex-col gap-1.5">
         {day.items.map((item) => (

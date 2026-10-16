@@ -57,6 +57,10 @@ internal sealed class DomainExceptionHandler : IExceptionHandler
                 statusCode: StatusCodes.Status502BadGateway,
                 title: "Fahrplanauskunft nicht erreichbar",
                 detail: e.Message),
+            Domain.Weather.WeatherUnavailableException e => TypedResults.Problem(
+                statusCode: StatusCodes.Status502BadGateway,
+                title: "Wetter nicht erreichbar",
+                detail: e.Message),
             BadHttpRequestException e => TypedResults.Problem(
                 statusCode: e.StatusCode,
                 title: "Anfrage ungültig",

@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 using Urlaubsplanner.Domain;
 using Urlaubsplanner.Domain.Activities;
@@ -8,6 +9,7 @@ using Urlaubsplanner.Domain.Hotels;
 using Urlaubsplanner.Domain.Places;
 using Urlaubsplanner.Domain.Transit;
 using Urlaubsplanner.Domain.Trips;
+using Urlaubsplanner.Domain.Weather;
 using Urlaubsplanner.Infrastructure.Activities;
 using Urlaubsplanner.Infrastructure.Flights;
 using Urlaubsplanner.Infrastructure.Hotels;
@@ -15,6 +17,7 @@ using Urlaubsplanner.Infrastructure.Persistence;
 using Urlaubsplanner.Infrastructure.Places;
 using Urlaubsplanner.Infrastructure.SerpApi;
 using Urlaubsplanner.Infrastructure.Transit;
+using Urlaubsplanner.Infrastructure.Weather;
 
 namespace Urlaubsplanner.Infrastructure;
 
@@ -108,6 +111,15 @@ public static class DependencyInjection
         {
             http.BaseAddress = new Uri(configuration[$"{TransitOptions.Section}:BaseUrl"] ?? new TransitOptions().BaseUrl);
             http.Timeout = TimeSpan.FromSeconds(30);
+            http.DefaultRequestHeaders.UserAgent.ParseAdd("Urlaubsplanner/1.0 (privates Open-Source-Projekt; +https://github.com/xoannogueira/urlaubsplanner)");
+        });
+
+        // Wetter: Open-Meteo (frei, ohne Key, nicht-kommerziell). TimeProvider kommt aus der App (sonst Systemzeit).
+        services.Configure<WeatherOptions>(configuration.GetSection(WeatherOptions.Section));
+        services.TryAddSingleton(TimeProvider.System);
+        services.AddHttpClient<IWeatherService, OpenMeteoWeather>(http =>
+        {
+            http.Timeout = TimeSpan.FromSeconds(20);
             http.DefaultRequestHeaders.UserAgent.ParseAdd("Urlaubsplanner/1.0 (privates Open-Source-Projekt; +https://github.com/xoannogueira/urlaubsplanner)");
         });
 

@@ -12,9 +12,11 @@ import {
   TrainFront,
   TriangleAlert,
 } from 'lucide-react'
+import { useQueryClient } from '@tanstack/react-query'
 import { useState, type ReactNode } from 'react'
 import { savePdf, useAppInfo, type PdfSaved } from '../../api/app'
 import type { Trip } from '../../api/types'
+import { loadTripWeather } from '../../api/weather'
 import { useTripContext } from '../../components/layout/tripContext'
 import { Button } from '../../components/ui/Button'
 import { tripRange } from '../../lib/dates'
@@ -29,6 +31,7 @@ export function PdfPage() {
   const { trip } = useTripContext()
   const info = useAppInfo()
   const desktop = info.data?.desktop ?? false
+  const queryClient = useQueryClient()
   const [busy, setBusy] = useState(false)
   const [result, setResult] = useState<Result | null>(null)
   const parts = contents(trip)
@@ -37,7 +40,8 @@ export function PdfPage() {
     setBusy(true)
     setResult(null)
     try {
-      const pdf = await renderTripPdf(trip, todayIso())
+      const weather = await loadTripWeather(queryClient, trip)
+      const pdf = await renderTripPdf(trip, todayIso(), weather)
       if (desktop) {
         setResult({ kind: 'saved', saved: await savePdf(pdf, trip.name) })
       } else {
@@ -209,7 +213,7 @@ function contents(trip: Trip): Part[] {
       title: 'Tag für Tag',
       detail:
         days > 0
-          ? `${count(days, 'Tag', 'Tage')} · ${nightsLabel(Math.max(0, days - 1))} mit Programm und Übernachtung`
+          ? `${count(days, 'Tag', 'Tage')} · ${nightsLabel(Math.max(0, days - 1))} mit Programm, Übernachtung und Wetter`
           : 'Braucht einen Reisezeitraum',
       icon: <CalendarDays size={16} />,
       empty: days === 0,
