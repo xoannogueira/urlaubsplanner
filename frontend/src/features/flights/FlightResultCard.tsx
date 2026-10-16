@@ -1,12 +1,23 @@
 import clsx from 'clsx'
-import { Backpack, Briefcase, Check, ChevronDown, ChevronUp, ExternalLink, Heart, Plane, RefreshCcw } from 'lucide-react'
+import { Backpack, Briefcase, Check, ChevronDown, ChevronUp, ExternalLink, Heart, Plane, RefreshCcw, Sparkles } from 'lucide-react'
 import { useState } from 'react'
 import { ApiError } from '../../api/client'
 import { useFlightContinue, type FlightFare, type FlightJourney, type FlightJourneyLeg } from '../../api/flights'
 import { buttonClass } from '../../components/ui/buttonStyles'
 import { ErrorState, Skeleton } from '../../components/ui/Feedback'
 import { formatEuro, formatShortDate } from '../../lib/format'
-import { fareSummary, formatClock, formatDuration, stopsLabel } from '../../lib/flights'
+import {
+  fareSummary,
+  formatClock,
+  formatDuration,
+  legMatchesTimes,
+  rateFlights,
+  stopsLabel,
+  type FlightFilters,
+  type FlightRating,
+  type FlightSort,
+  type TimeValue,
+} from '../../lib/flights'
 
 interface SaveProps {
   adults: number
@@ -15,6 +26,10 @@ interface SaveProps {
   savedSignatures: Set<string>
   savingId: string | null
   onSave: (journey: FlightJourney, fare: FlightFare) => void
+  /** Filter, Sortierung und Zeitwert – gelten auch für die nachgeladenen Rückflüge */
+  filters?: FlightFilters
+  sort?: FlightSort
+  timeValue?: TimeValue
 }
 
 interface FlightResultCardProps extends SaveProps {
@@ -23,6 +38,8 @@ interface FlightResultCardProps extends SaveProps {
   initialFare: FlightFare
   selected: boolean
   onSelect: () => void
+  /** Bewertung im Vergleich zu den anderen Treffern (Beste Wahl, Günstigster, Schnellster) */
+  rating?: FlightRating | null
 }
 
 export function FlightResultCard(props: FlightResultCardProps) {
@@ -39,6 +56,7 @@ function FullCard({
   selected,
   onSelect,
   onSave,
+  rating,
 }: FlightResultCardProps) {
   const [fare, setFare] = useState(initialFare)
   const saved = savedSignatures.has(journey.signature)
@@ -56,6 +74,7 @@ function FullCard({
         selected ? 'border-accent shadow-[0_0_0_3px_var(--accent)]' : 'border-line hover:border-muted/50',
       )}
     >
+      <RatingBadges rating={rating} />
       <div className="flex flex-col gap-3">
         {journey.legs.map((leg, i) => (
           <LegRow key={i} leg={leg} name={legNames[i] ?? `Strecke ${i + 1}`} />
@@ -131,6 +150,10 @@ function PartialCard({
   selected,
   onSelect,
   onSave,
+  rating,
+  filters,
+  sort,
+  timeValue,
 }: FlightResultCardProps & { continuation: string }) {
   const [open, setOpen] = useState(false)
   const nextName = legNames[journey.legs.length] ?? `Strecke ${journey.legs.length + 1}`
@@ -147,6 +170,7 @@ function PartialCard({
         selected ? 'border-accent shadow-[0_0_0_3px_var(--accent)]' : 'border-line hover:border-muted/50',
       )}
     >
+      <RatingBadges rating={rating} />
       <div className="flex flex-col gap-3">
         {journey.legs.map((leg, i) => (
           <LegRow key={i} leg={leg} name={legNames[i] ?? `Strecke ${i + 1}`} />
@@ -189,6 +213,9 @@ function PartialCard({
           savedSignatures={savedSignatures}
           savingId={savingId}
           onSave={onSave}
+          filters={filters}
+          sort={sort}
+          timeValue={timeValue}
         />
       )}
     </article>
@@ -220,11 +247,19 @@ function NextLegs({ continuation, known, ...save }: SaveProps & { continuation: 
       </div>
     )
   }
-  const journeys = next.data.journeys
+  const all = next.data.journeys
+  const journeys = all.filter(
+    (j) => (!save.filters || legMatchesTimes(j.legs[known], known, save.filters)) && !(save.filters?.nonstop && j.legs[known].stops > 0),
+  )
+  const items = journeys.map((j) => ({ journey: j, fare: j.fares[0] }))
+  const ratings = rateFlights(items, save.timeValue)
+  if (save.sort === 'best') journeys.sort((a, b) => ratings.get(a.signature)!.score - ratings.get(b.signature)!.score)
   if (journeys.length === 0) {
     return (
       <p data-next-legs className="rounded-xl bg-surface-2 px-3 py-2.5 text-sm text-muted">
-        Keine passenden {plural} gefunden – probier einen anderen Hinflug.
+        {all.length > 0
+          ? `${all.length} ${plural} passen nicht zu deinen Filtern (Uhrzeiten, Direktflug).`
+          : `Keine passenden ${plural} gefunden – probier einen anderen Hinflug.`}
       </p>
     )
   }
@@ -233,6 +268,7 @@ function NextLegs({ continuation, known, ...save }: SaveProps & { continuation: 
     <ul data-next-legs className="flex flex-col gap-2" aria-label={plural}>
       {journeys.map((j) => (
         <li key={j.signature} className="flex flex-col gap-3 rounded-xl bg-surface-2 p-3.5">
+          {journeys.length > 1 && <RatingBadges rating={ratings.get(j.signature)} />}
           <LegRow leg={j.legs[known]} name={name} />
           {j.continuation ? (
             <NextStep journey={j} known={known + 1} {...save} />
@@ -377,5 +413,23 @@ function AirlineLogo({ url, name }: { url: string | null | undefined; name: stri
         <Plane size={18} className="text-slate-500" />
       )}
     </span>
+  )
+}
+
+/** „Beste Wahl“, „Günstigster“, „Schnellster“ – mit kurzer Begründung bei der besten Wahl. */
+function RatingBadges({ rating }: { rating?: FlightRating | null }) {
+  if (!rating || !(rating.best || rating.cheapest || rating.fastest)) return null
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      {rating.best && (
+        <span className="flex items-center gap-1 rounded-full bg-accent px-2.5 py-0.5 text-xs font-bold text-accent-ink">
+          <Sparkles size={12} />
+          Beste Wahl
+        </span>
+      )}
+      {rating.cheapest && <span className="rounded-full border border-line px-2.5 py-0.5 text-xs font-bold">Günstigster</span>}
+      {rating.fastest && <span className="rounded-full border border-line px-2.5 py-0.5 text-xs font-bold">Schnellster</span>}
+      {rating.note && <span className="text-xs text-muted">{rating.note}</span>}
+    </div>
   )
 }

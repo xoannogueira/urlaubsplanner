@@ -1,5 +1,5 @@
 import clsx from 'clsx'
-import { ArrowRight, CalendarSearch, KeyRound, Search, SearchX, TriangleAlert } from 'lucide-react'
+import { ArrowRight, CalendarSearch, Clock, KeyRound, Search, SearchX, TriangleAlert } from 'lucide-react'
 import { useCallback, useMemo, useState, type ReactNode } from 'react'
 import { useAirportLookup, useNearbyAirports, type Airport } from '../../api/airports'
 import { ApiError } from '../../api/client'
@@ -27,7 +27,13 @@ import {
   combinationCount,
   filterAndSortFlights,
   flightOptionInput,
+  anyTime,
+  hasTimeFilter,
   noFlightFilters,
+  rateFlights,
+  timeValueLabels,
+  type TimeValue,
+  type TimeWindow,
   planLegs,
   planProblem,
   shiftDate,
@@ -113,7 +119,9 @@ function SearchArea({ trip, status }: { trip: Trip; status: FlightSearchStatus |
 
   const [params, setParams] = useState<FlightSearchParams | null>(null)
   const [filters, setFilters] = useState<FlightFilters>(noFlightFilters)
-  const [sort, setSort] = useState<FlightSort>('price')
+  const [sort, setSort] = useState<FlightSort>('best')
+  const [timeValue, setTimeValue] = useState<TimeValue>(storedTimeValue)
+  const [timesOpen, setTimesOpen] = useState(false)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [savingId, setSavingId] = useState<string | null>(null)
   const [datesOpen, setDatesOpen] = useState(false)
@@ -144,7 +152,16 @@ function SearchArea({ trip, status }: { trip: Trip; status: FlightSearchStatus |
   const result = search.data
   const legNames = (params?.legs.length ?? legs.length) === 1 ? ['Hinflug'] : ['Hinflug', 'Rückflug']
 
-  const flights = useMemo(() => filterAndSortFlights(result?.journeys ?? [], filters, sort), [result, filters, sort])
+  const flights = useMemo(() => filterAndSortFlights(result?.journeys ?? [], filters, sort, timeValue), [result, filters, sort, timeValue])
+  const ratings = useMemo(() => rateFlights(flights, timeValue), [flights, timeValue])
+  const changeTimeValue = (value: TimeValue) => {
+    setTimeValue(value)
+    try {
+      localStorage.setItem(TIME_VALUE_KEY, value)
+    } catch {
+      // egal – gilt dann nur bis zum Neuladen
+    }
+  }
   const savedSignatures = useMemo(
     () => new Set(trip.options.filter((o) => o.kind === 'Flight' && o.externalId).map((o) => o.externalId!.split('#')[0])),
     [trip.options],
@@ -390,6 +407,12 @@ function SearchArea({ trip, status }: { trip: Trip; status: FlightSearchStatus |
             <Chip active={filters.nonstop} onClick={() => setFilters((f) => ({ ...f, nonstop: !f.nonstop }))}>
               Nur Direktflüge
             </Chip>
+            <Chip active={hasTimeFilter(filters) || timesOpen} onClick={() => setTimesOpen((o) => !o)}>
+              <span className="flex items-center gap-1.5">
+                <Clock size={14} />
+                Uhrzeiten
+              </span>
+            </Chip>
             {!google && (
               <Chip active={filters.withBag} onClick={() => setFilters((f) => ({ ...f, withBag: !f.withBag }))}>
                 Mit Koffer
@@ -420,12 +443,36 @@ function SearchArea({ trip, status }: { trip: Trip; status: FlightSearchStatus |
                 onChange={(e) => setSort(e.target.value as FlightSort)}
                 className="h-10 rounded-xl border border-line bg-surface px-3 font-semibold text-text"
               >
+                <option value="best">Beste Wahl</option>
                 <option value="price">Preis</option>
                 <option value="duration">Flugzeit</option>
                 <option value="departure">Abflug</option>
               </select>
             </label>
           </div>
+
+          {timesOpen && (
+            <TimeFilters
+              legNames={legNames}
+              filters={filters}
+              onChange={(departure, arrival) => setFilters((f) => ({ ...f, departure, arrival }))}
+            />
+          )}
+          {sort === 'best' && (
+            <div className="flex flex-wrap items-center gap-3 text-sm">
+              <span className="text-muted">Wie wichtig ist dir Zeit?</span>
+              <div role="radiogroup" aria-label="Wie wichtig ist dir Zeit?" className="flex rounded-xl bg-surface-2 p-1">
+                {(Object.keys(timeValueLabels) as TimeValue[]).map((v) => (
+                  <ViewButton key={v} active={timeValue === v} onClick={() => changeTimeValue(v)}>
+                    {timeValueLabels[v]}
+                  </ViewButton>
+                ))}
+              </div>
+              <span className="text-xs text-muted">
+                „Beste Wahl“ wiegt Preis gegen Reisezeit ab – lange Umwege zählen überproportional.
+              </span>
+            </div>
+          )}
 
           <div className="flex flex-wrap items-start gap-6">
             <section
@@ -456,6 +503,10 @@ function SearchArea({ trip, status }: { trip: Trip; status: FlightSearchStatus |
                       selected={selectedId === journey.signature}
                       onSelect={() => setSelectedId(journey.signature)}
                       onSave={save}
+                      rating={flights.length > 1 ? ratings.get(journey.signature) : null}
+                      filters={filters}
+                      sort={sort}
+                      timeValue={timeValue}
                     />
                   ))}
                   {flights.length > shown.length && (
@@ -628,6 +679,99 @@ function SetupHint({ provider }: { provider: FlightSearchStatus['provider'] }) {
         dotnet user-secrets set "LiteApi:ApiKey" "sand_…"
       </pre>
     </section>
+  )
+}
+
+const TIME_VALUE_KEY = 'urlaubsplanner.timeValue'
+
+function storedTimeValue(): TimeValue {
+  try {
+    const value = localStorage.getItem(TIME_VALUE_KEY)
+    return value === 'cheap' || value === 'fast' ? value : 'balanced'
+  } catch {
+    return 'balanced'
+  }
+}
+
+const hours = Array.from({ length: 25 }, (_, h) => h)
+const hourLabel = (h: number) => `${String(h).padStart(2, '0')}:00`
+
+/** Abflug- und Ankunftsfenster pro Strecke. */
+function TimeFilters({
+  legNames,
+  filters,
+  onChange,
+}: {
+  legNames: string[]
+  filters: FlightFilters
+  onChange: (departure: TimeWindow[], arrival: TimeWindow[]) => void
+}) {
+  const set = (kind: 'departure' | 'arrival', index: number, window: TimeWindow) => {
+    const next = { departure: [...filters.departure], arrival: [...filters.arrival] }
+    for (let i = 0; i <= index; i++) {
+      next.departure[i] ??= anyTime
+      next.arrival[i] ??= anyTime
+    }
+    next[kind][index] = window
+    onChange(next.departure, next.arrival)
+  }
+  return (
+    <section aria-label="Uhrzeiten" className="flex flex-col gap-3 rounded-2xl border border-line bg-surface p-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="font-bold">Uhrzeiten</span>
+        {hasTimeFilter(filters) && (
+          <button
+            type="button"
+            onClick={() => onChange([], [])}
+            className="cursor-pointer text-sm font-semibold text-accent hover:underline"
+          >
+            Zurücksetzen
+          </button>
+        )}
+      </div>
+      {legNames.map((name, i) => (
+        <div key={name} className="grid items-center gap-x-6 gap-y-2 sm:grid-cols-[90px_max-content_max-content]">
+          <span className="text-sm font-semibold">{name}</span>
+          <WindowSelect label="Abflug" window={filters.departure[i] ?? anyTime} onChange={(w) => set('departure', i, w)} />
+          <WindowSelect label="Ankunft" window={filters.arrival[i] ?? anyTime} onChange={(w) => set('arrival', i, w)} />
+        </div>
+      ))}
+      <p className="text-xs text-muted">Ortszeit am jeweiligen Flughafen. Kostet keine Suche – gefiltert wird in der App.</p>
+    </section>
+  )
+}
+
+function WindowSelect({ label, window, onChange }: { label: string; window: TimeWindow; onChange: (w: TimeWindow) => void }) {
+  const select = 'h-9 rounded-lg border border-line bg-surface-2 px-2 text-sm font-semibold'
+  return (
+    <span className="flex items-center gap-2 text-sm text-muted">
+      <span className="w-14">{label}</span>
+      <select
+        aria-label={`${label} frühestens`}
+        value={window.from}
+        onChange={(e) => onChange({ from: Number(e.target.value), to: Math.max(Number(e.target.value), window.to) })}
+        className={select}
+      >
+        {hours.slice(0, 24).map((h) => (
+          <option key={h} value={h}>
+            {hourLabel(h)}
+          </option>
+        ))}
+      </select>
+      bis
+      <select
+        aria-label={`${label} spätestens`}
+        value={window.to}
+        onChange={(e) => onChange({ from: Math.min(window.from, Number(e.target.value)), to: Number(e.target.value) })}
+        className={select}
+      >
+        {hours.slice(1).map((h) => (
+          <option key={h} value={h}>
+            {h === 24 ? '24:00' : hourLabel(h)}
+          </option>
+        ))}
+      </select>
+    </span>
   )
 }
 
