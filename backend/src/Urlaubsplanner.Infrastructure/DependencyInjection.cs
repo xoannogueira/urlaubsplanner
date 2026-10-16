@@ -6,15 +6,15 @@ using Urlaubsplanner.Domain.Activities;
 using Urlaubsplanner.Domain.Flights;
 using Urlaubsplanner.Domain.Hotels;
 using Urlaubsplanner.Domain.Places;
-using Urlaubsplanner.Domain.Trips;
 using Urlaubsplanner.Domain.Transit;
+using Urlaubsplanner.Domain.Trips;
 using Urlaubsplanner.Infrastructure.Activities;
-using Urlaubsplanner.Infrastructure.Transit;
 using Urlaubsplanner.Infrastructure.Flights;
 using Urlaubsplanner.Infrastructure.Hotels;
 using Urlaubsplanner.Infrastructure.Persistence;
 using Urlaubsplanner.Infrastructure.Places;
 using Urlaubsplanner.Infrastructure.SerpApi;
+using Urlaubsplanner.Infrastructure.Transit;
 
 namespace Urlaubsplanner.Infrastructure;
 
