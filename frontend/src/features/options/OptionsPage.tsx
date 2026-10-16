@@ -3,7 +3,7 @@ import { BedDouble, Compass, ExternalLink, List, Map as MapIcon, MapPinOff, Plan
 import { useNavigate } from 'react-router'
 import { useCallback, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useTripActions } from '../../api/trips'
-import type { OptionKind, OptionStatus, TripOption } from '../../api/types'
+import type { OptionKind, OptionStatus, Trip, TripOption } from '../../api/types'
 import { useTripContext } from '../../components/layout/tripContext'
 import { TripMap } from '../../components/map/TripMap'
 import { Button, IconButton } from '../../components/ui/Button'
@@ -11,6 +11,7 @@ import { buttonClass } from '../../components/ui/buttonStyles'
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog'
 import { EmptyState } from '../../components/ui/Feedback'
 import { formatDateRange, formatEuro, hostOf, nightsLabel } from '../../lib/format'
+import { routeFromHotelUrl, stageHotel } from '../../lib/activities'
 import { toLatLng } from '../../lib/geo'
 import { optionPins, stageMarkers } from '../../lib/mapData'
 import { kindLabels, sortOptions } from '../../lib/options'
@@ -234,6 +235,7 @@ export function OptionsPage({ kind }: { kind: OptionKind }) {
                       onEdit={() => setDialog({ option })}
                       onDelete={() => setToDelete(option)}
                       selected={showMap && option.id === selectedId}
+                      routeFromHotel={activityRoute(trip, option)}
                       onSelect={showMap && toLatLng(option) ? () => setSelectedId(option.id) : undefined}
                       extra={
                         canRecheck(option, undefined, hotelStatus.data?.provider) ? (
@@ -421,4 +423,11 @@ function Chip({ active, onClick, children }: { active: boolean; onClick: () => v
       {children}
     </button>
   )
+}
+
+/** Aktivität mit Ort und ausgewähltem Hotel in derselben Etappe → Route vom Hotel dorthin. */
+function activityRoute(trip: Trip, option: TripOption): { url: string; hotel: string } | null {
+  if (option.kind !== 'Activity' || option.latitude == null || option.longitude == null) return null
+  const hotel = stageHotel(trip, option.stageId)
+  return hotel ? { url: routeFromHotelUrl(hotel, { latitude: option.latitude, longitude: option.longitude }), hotel: hotel.title } : null
 }

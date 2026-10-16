@@ -42,6 +42,7 @@ public sealed class SettingsApiTests : IDisposable
         _factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
         {
             builder.UseSetting("Storage:FilePath", _dataFile);
+            builder.UseSetting("Activities:Prefetch", "false");
             builder.ConfigureTestServices(services => services.AddSingleton<ISearchKeyCheck>(_check));
         });
         _client = _factory.CreateClient();

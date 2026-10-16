@@ -1,5 +1,5 @@
 import clsx from 'clsx'
-import { BookOpen, Check, Clock, ExternalLink, Globe, Heart, MapPin, Sparkles, Ticket } from 'lucide-react'
+import { BookOpen, Check, Clock, ExternalLink, Globe, Heart, MapPin, Route, Sparkles, Ticket } from 'lucide-react'
 import { useState } from 'react'
 import type { ActivitySuggestion } from '../../api/activities'
 import { buttonClass } from '../../components/ui/buttonStyles'
@@ -14,9 +14,11 @@ interface ActivityCardProps {
   selected: boolean
   onSelect: () => void
   onSave: () => void
+  /** Google-Maps-Route vom ausgewählten Hotel der Etappe (null = noch kein Hotel). */
+  routeFromHotel?: { url: string; hotel: string } | null
 }
 
-export function ActivityCard({ activity: a, saved, saving, selected, onSelect, onSave }: ActivityCardProps) {
+export function ActivityCard({ activity: a, saved, saving, selected, onSelect, onSave, routeFromHotel }: ActivityCardProps) {
   const [imageFailed, setImageFailed] = useState(false)
   const hours = openingHoursDe(a.openingHours)
   const fame = fameLabel(a.popularity)
@@ -102,6 +104,18 @@ export function ActivityCard({ activity: a, saved, saving, selected, onSelect, o
             Maps
             <ExternalLink size={14} />
           </a>
+          {routeFromHotel && (
+            <a
+              href={routeFromHotel.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              title={`Weg von ${routeFromHotel.hotel} in Google Maps`}
+              className={buttonClass('secondary', 'sm')}
+            >
+              <Route size={14} />
+              Route vom Hotel
+            </a>
+          )}
           {tickets && (
             <a
               href={tickets}

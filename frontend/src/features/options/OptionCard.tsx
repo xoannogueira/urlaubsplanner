@@ -1,5 +1,5 @@
 import clsx from 'clsx'
-import { CalendarDays, ExternalLink, Heart, MapPin, Pencil, Trash2 } from 'lucide-react'
+import { CalendarDays, ExternalLink, Heart, MapPin, Pencil, Trash2, Route } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 import type { OptionStatus, Stage, TripOption } from '../../api/types'
 import { StatusControl } from '../../components/StatusControl'
@@ -20,9 +20,22 @@ interface OptionCardProps {
   onSelect?: () => void
   /** Zusatzbereich über dem Status, z. B. „Verfügbarkeit prüfen“ bei Hotels aus der Suche. */
   extra?: ReactNode
+  /** Aktivitäten: Google-Maps-Route vom ausgewählten Hotel der Etappe. */
+  routeFromHotel?: { url: string; hotel: string } | null
 }
 
-export function OptionCard({ option, stage, travelers, onStatus, onEdit, onDelete, selected, onSelect, extra }: OptionCardProps) {
+export function OptionCard({
+  option,
+  stage,
+  travelers,
+  onStatus,
+  onEdit,
+  onDelete,
+  selected,
+  onSelect,
+  extra,
+  routeFromHotel,
+}: OptionCardProps) {
   const favorite = option.status === 'Favorite'
   const chosen = option.status === 'Selected' || option.status === 'Booked'
   const hasDates = option.startDate || option.endDate
@@ -98,14 +111,28 @@ export function OptionCard({ option, stage, travelers, onStatus, onEdit, onDelet
             {option.priceCheckedAt && ` · geprüft ${formatRelative(option.priceCheckedAt)}`}
           </span>
         </div>
-        {option.url ? (
-          <a href={option.url} target="_blank" rel="noopener noreferrer" className={buttonClass('secondary', 'sm')}>
-            {hostOf(option.url)}
-            <ExternalLink size={14} />
-          </a>
-        ) : (
-          <span className="text-xs text-muted">kein Link</span>
-        )}
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {routeFromHotel && (
+            <a
+              href={routeFromHotel.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              title={`Weg von ${routeFromHotel.hotel} in Google Maps`}
+              className={buttonClass('secondary', 'sm')}
+            >
+              <Route size={14} />
+              Route vom Hotel
+            </a>
+          )}
+          {option.url ? (
+            <a href={option.url} target="_blank" rel="noopener noreferrer" className={buttonClass('secondary', 'sm')}>
+              {hostOf(option.url)}
+              <ExternalLink size={14} />
+            </a>
+          ) : (
+            <span className="text-xs text-muted">kein Link</span>
+          )}
+        </div>
       </div>
 
       {extra}

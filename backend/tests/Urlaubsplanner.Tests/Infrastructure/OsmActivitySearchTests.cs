@@ -79,10 +79,10 @@ public sealed class OsmActivitySearchTests
 
     private static HttpResponseMessage Json(string body) => new(HttpStatusCode.OK) { Content = new StringContent(body, Encoding.UTF8, "application/json") };
 
-    private static (OsmActivitySearch Search, FakeHandler Handler) Create(Func<HttpRequestMessage, HttpResponseMessage> respond)
+    private static (OsmActivitySearch Search, FakeHandler Handler) Create(Func<HttpRequestMessage, HttpResponseMessage> respond, string? cacheDirectory = null)
     {
         var handler = new FakeHandler(respond);
-        var settings = new ActivityOptions { WikidataSparqlUrl = "https://wikidata.test/sparql" };
+        var settings = new ActivityOptions { WikidataSparqlUrl = "https://wikidata.test/sparql", CacheDirectory = cacheDirectory };
         settings.OverpassUrls.Clear();
         settings.OverpassUrls.Add("https://overpass.test/api/interpreter");
         settings.OverpassUrls.Add("https://overpass2.test/api/interpreter");
@@ -210,6 +210,25 @@ public sealed class OsmActivitySearchTests
         await search.SearchAsync(ActivitySearchRequest.Create(38.69701, -9.20702, 3000), CancellationToken.None);
 
         Assert.Equal(2, handler.Calls.Count);
+    }
+
+    [Fact]
+    public async Task Ergebnisse_bleiben_nach_einem_Neustart_auf_der_Festplatte()
+    {
+        var folder = Directory.CreateTempSubdirectory().FullName;
+        var (first, firstHandler) = Create(Both, folder);
+        var fresh = await first.SearchAsync(Request, CancellationToken.None);
+        Assert.Equal(2, firstHandler.Calls.Count);
+        Assert.Single(Directory.GetFiles(folder, "*.json"));
+
+        // Neue Instanz mit leerem Speicher (wie nach einem Neustart): kein Aufruf bei OpenStreetMap/Wikidata.
+        var (second, secondHandler) = Create(Both, folder);
+        Assert.True(second.IsCached(Request));
+        var stored = await second.SearchAsync(Request, CancellationToken.None);
+
+        Assert.Empty(secondHandler.Calls);
+        Assert.Equal(fresh.Activities.Select(a => a.Name), stored.Activities.Select(a => a.Name));
+        Assert.False(second.IsCached(ActivitySearchRequest.Create(38.6970, -9.2070, 10_000)));
     }
 
     [Fact]

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { ActivitySuggestion } from '../api/activities'
-import { activityOptionInput, fameLabel, openingHoursDe, ticketsUrl } from './activities'
+import type { TripOption } from '../api/types'
+import { activityOptionInput, fameLabel, openingHoursDe, routeFromHotelUrl, stageHotel, ticketsUrl } from './activities'
 
 const activity = (patch: Partial<ActivitySuggestion>): ActivitySuggestion => ({
   id: 'node/1',
@@ -66,5 +67,47 @@ describe('Merken', () => {
     })
     expect(input.notes).toBe('Kunstmuseum\nÖffnungszeiten: Di–So 10:00–19:00\nEintritt frei')
     expect(activityOptionInput(activity({}), null).url).toBe('https://www.google.com/maps/search/?api=1&query=38.7,-9.2')
+  })
+})
+
+describe('Route vom Hotel', () => {
+  const hotel = (o: Partial<TripOption>): TripOption =>
+    ({
+      id: 'h',
+      kind: 'Hotel',
+      status: 'Selected',
+      stageId: 's1',
+      title: 'Hotel Azul',
+      locationName: 'Rua X 1, Lissabon',
+      latitude: 38.71,
+      longitude: -9.14,
+      ...o,
+    }) as TripOption
+
+  it('nimmt das gebuchte vor dem ausgewählten Hotel der Etappe', () => {
+    const trip = {
+      options: [
+        hotel({ id: 'a' }),
+        hotel({ id: 'b', status: 'Booked' }),
+        hotel({ id: 'c', stageId: 's2', status: 'Booked' }),
+        hotel({ id: 'd', status: 'Favorite' }),
+      ],
+    }
+    expect(stageHotel(trip, 's1')?.id).toBe('b')
+    expect(stageHotel(trip, 's3')).toBeNull()
+    expect(stageHotel({ options: [hotel({ status: 'Favorite' })] }, 's1')).toBeNull()
+  })
+
+  it('geht kurze Wege zu Fuß, längere mit Bus & Bahn', () => {
+    const near = new URL(routeFromHotelUrl(hotel({}), { latitude: 38.715, longitude: -9.14 }))
+    expect(near.searchParams.get('origin')).toBe('38.71,-9.14')
+    expect(near.searchParams.get('travelmode')).toBe('walking')
+    const far = new URL(routeFromHotelUrl(hotel({}), { latitude: 38.69, longitude: -9.21 }))
+    expect(far.searchParams.get('travelmode')).toBe('transit')
+  })
+
+  it('nimmt Name und Adresse, wenn das Hotel keinen Ort auf der Karte hat', () => {
+    const url = new URL(routeFromHotelUrl(hotel({ latitude: null, longitude: null }), { latitude: 38.69, longitude: -9.21 }))
+    expect(url.searchParams.get('origin')).toBe('Hotel Azul, Rua X 1, Lissabon')
   })
 })
