@@ -119,6 +119,7 @@ public sealed class TransitousPlannerTests
         Assert.Contains("time=2027-05-12T06%3A30%3A00Z", url, StringComparison.Ordinal);
         Assert.Contains("arriveBy=true", url, StringComparison.Ordinal);
         Assert.Contains("pageCursor=abc%3D", url, StringComparison.Ordinal);
+        Assert.Contains("maxPreTransitTime=1800", url, StringComparison.Ordinal);
     }
 
     [Fact]

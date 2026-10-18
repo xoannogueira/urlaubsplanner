@@ -347,7 +347,7 @@ function NoConnection({ places }: { places: { from: LatLng; to: LatLng } | null 
     <EmptyState
       icon={<TrainFront size={22} />}
       title="Keine Verbindung gefunden"
-      text="Für diese Strecke gibt es in den offenen Fahrplandaten nichts – probier eine andere Uhrzeit oder einen Bahnhof in der Nähe. In manchen Ländern sind die Daten lückenhaft."
+      text="In den offenen Fahrplandaten ist nichts zu finden. Tipp: Wähle statt eines Ortsnamens einen Bahnhof oder eine Haltestelle (z. B. „Jerez de la Frontera Estación“) – Ortsmitten liegen oft weit vom Bahnhof. In manchen Regionen fehlen Fahrpläne (vor allem Busse); dann hilft Google Maps."
       action={
         places ? (
           <a href={googleTransitUrl(places.from, places.to)} target="_blank" rel="noopener noreferrer" className={buttonClass('secondary')}>

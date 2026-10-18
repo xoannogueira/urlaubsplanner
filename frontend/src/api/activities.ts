@@ -1,4 +1,4 @@
-import { keepPreviousData, useInfiniteQuery } from '@tanstack/react-query'
+import { keepPreviousData, useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import { api } from './client'
 import type { LatLng } from './types'
 
@@ -73,6 +73,24 @@ export function useActivityPages(center: LatLng | null, radiusMeters: number, fi
     gcTime: 6 * 60 * 60_000,
     placeholderData: keepPreviousData,
     // Das Backend probiert schon mehrere Server – ein weiterer Versuch würde OpenStreetMap nur zusätzlich belasten.
+    retry: false,
+  })
+}
+
+/**
+ * Foto für einen Vorschlag ohne Bild nachladen (Wikimedia Commons in der Nähe, passender Dateiname).
+ * Nur wenn die Karte sichtbar ist – sonst gingen bei langen Listen viele Anfragen auf einmal raus.
+ */
+export function useActivityPhoto(a: Pick<ActivitySuggestion, 'id' | 'name' | 'latitude' | 'longitude' | 'imageUrl'>, visible: boolean) {
+  return useQuery({
+    queryKey: ['activity-photo', a.id],
+    queryFn: ({ signal }) => {
+      const params = new URLSearchParams({ lat: String(a.latitude), lon: String(a.longitude), name: a.name })
+      return api<{ url: string | null }>(`/activities/photo?${params.toString()}`, { signal })
+    },
+    enabled: visible && !a.imageUrl,
+    staleTime: Number.POSITIVE_INFINITY,
+    gcTime: 24 * 60 * 60_000,
     retry: false,
   })
 }

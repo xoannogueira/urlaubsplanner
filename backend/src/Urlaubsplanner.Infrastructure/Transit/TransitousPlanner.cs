@@ -69,6 +69,10 @@ public sealed partial class TransitousPlanner(HttpClient http, IMemoryCache cach
             // Zwei Stunden Suchfenster – genug Auswahl, ohne den freiwillig betriebenen Server zu belasten.
             "searchWindow=7200",
             "detailedTransfers=false",
+            // Bis zu 30 Minuten Fußweg zur ersten/von der letzten Haltestelle (Standard sind 15). Wer einen Ort statt
+            // eines Bahnhofs wählt, landet in der Ortsmitte – der Bahnhof liegt oft mehr als 15 Minuten entfernt.
+            "maxPreTransitTime=1800",
+            "maxPostTransitTime=1800",
             "language=de",
         };
         if (!string.IsNullOrEmpty(request.Cursor))

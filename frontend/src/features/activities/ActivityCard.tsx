@@ -1,7 +1,7 @@
 import clsx from 'clsx'
 import { BookOpen, Check, Clock, ExternalLink, Globe, Heart, MapPin, Route, Sparkles, Ticket } from 'lucide-react'
-import { useState } from 'react'
-import type { ActivitySuggestion } from '../../api/activities'
+import { useEffect, useRef, useState } from 'react'
+import { useActivityPhoto, type ActivitySuggestion } from '../../api/activities'
 import { buttonClass } from '../../components/ui/buttonStyles'
 import { categoryLabels, fameLabel, googleMapsUrl, openingHoursDe, ticketsUrl } from '../../lib/activities'
 import { formatDistance } from '../../lib/geo'
@@ -13,19 +13,40 @@ interface ActivityCardProps {
   saving: boolean
   selected: boolean
   onSelect: () => void
-  onSave: () => void
+  /** Mit nachgeladenem Foto, falls der Vorschlag selbst keins hatte */
+  onSave: (photo: string | null) => void
   /** Google-Maps-Route vom ausgewählten Hotel der Etappe (null = noch kein Hotel). */
   routeFromHotel?: { url: string; hotel: string } | null
 }
 
 export function ActivityCard({ activity: a, saved, saving, selected, onSelect, onSave, routeFromHotel }: ActivityCardProps) {
   const [imageFailed, setImageFailed] = useState(false)
+  const ref = useRef<HTMLElement>(null)
+  const [visible, setVisible] = useState(false)
+  useEffect(() => {
+    const el = ref.current
+    if (!el || a.imageUrl || typeof IntersectionObserver === 'undefined') return
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setVisible(true)
+          observer.disconnect()
+        }
+      },
+      { rootMargin: '200px' },
+    )
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [a.imageUrl])
+  const fallback = useActivityPhoto(a, visible).data?.url ?? null
+  const image = a.imageUrl ?? fallback
   const hours = openingHoursDe(a.openingHours)
   const fame = fameLabel(a.popularity)
   const tickets = ticketsUrl(a)
 
   return (
     <article
+      ref={ref}
       data-activity-id={a.id}
       onClick={(e) => {
         if (!(e.target as HTMLElement).closest('button, a')) onSelect()
@@ -36,9 +57,9 @@ export function ActivityCard({ activity: a, saved, saving, selected, onSelect, o
       )}
     >
       <div className="relative h-40 shrink-0 bg-surface-3 sm:h-auto sm:w-40">
-        {a.imageUrl && !imageFailed ? (
+        {image && !imageFailed ? (
           <img
-            src={a.imageUrl}
+            src={image}
             alt=""
             loading="lazy"
             decoding="async"
@@ -146,7 +167,7 @@ export function ActivityCard({ activity: a, saved, saving, selected, onSelect, o
               Gemerkt
             </span>
           ) : (
-            <button type="button" onClick={onSave} disabled={saving} className={buttonClass('primary', 'sm')}>
+            <button type="button" onClick={() => onSave(fallback)} disabled={saving} className={buttonClass('primary', 'sm')}>
               <Heart size={15} />
               Merken
             </button>

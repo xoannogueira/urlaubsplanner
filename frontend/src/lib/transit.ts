@@ -83,15 +83,32 @@ function zone(timeZone: string | null): { timeZone?: string } {
  */
 export function approximateUtc(date: string, hour: number, minute: number, at: LatLng): string {
   const [y, m, d] = date.split('-').map(Number)
+  return new Date(Date.UTC(y, m - 1, d, hour - utcOffsetHours(date, at), minute)).toISOString()
+}
+
+/**
+ * Abstand zur UTC in Stunden für einen Ort – grob nach Gebieten, ohne Zeitzonen-Datenbank.
+ * Westeuropäische Zeit nur für Portugal, Großbritannien, Irland und die Kanaren; Spanien (auch Galicien und
+ * Andalusien) hat trotz Lage im Westen Mitteleuropäische Zeit; Island hat UTC ohne Sommerzeit.
+ */
+export function utcOffsetHours(date: string, at: LatLng): number {
+  const [y, m, d] = date.split('-').map(Number)
   // EU-Sommerzeit: letzter Sonntag im März bis letzter Sonntag im Oktober
   const lastSunday = (month: number) => {
     const last = new Date(Date.UTC(y, month, 0))
     return last.getUTCDate() - last.getUTCDay()
   }
   const summer = (m > 3 && m < 10) || (m === 3 && d >= lastSunday(3)) || (m === 10 && d < lastSunday(10))
-  const europe = at.latitude > 34 && at.longitude > -11 && at.longitude < 32
-  const offset = europe ? (at.longitude < -5 ? 0 : at.longitude > 21 ? 2 : 1) + (summer ? 1 : 0) : Math.round(at.longitude / 15)
-  return new Date(Date.UTC(y, m - 1, d, hour - offset, minute)).toISOString()
+  const { latitude: lat, longitude: lon } = at
+  if (lat > 63 && lat < 67 && lon > -25 && lon < -13) return 0 // Island
+  if (lat > 27 && lat < 29.5 && lon > -18.5 && lon < -13) return summer ? 1 : 0 // Kanaren
+  if (lat > 32 && lat < 33.2 && lon > -17.5 && lon < -16) return summer ? 1 : 0 // Madeira
+  const europe = lat > 34 && lon > -11 && lon < 32
+  if (!europe) return Math.round(lon / 15)
+  const portugal = lat > 36.8 && lat < 42.2 && lon < (lat < 38.3 ? -7.45 : lat < 40.2 ? -7.0 : lat < 41.0 ? -6.9 : -6.2)
+  const britishIsles = lat > 49.8 && lon < 1.8 && !(lat < 51.2 && lon > -2) // ohne Kanalküste Frankreichs
+  const base = portugal || britishIsles ? 0 : lon > 21 ? 2 : 1
+  return base + (summer ? 1 : 0)
 }
 
 /** Teilstrecken, die man anzeigt: kurze Umsteigewege (unter 3 Min.) fallen weg. */
