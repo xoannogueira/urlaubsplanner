@@ -103,12 +103,26 @@ public sealed partial class OsmActivitySearch(
                 .Where(c => c.DistanceKm * 1000 <= request.RadiusMeters) // Rechteck → Kreis
                 .ToList();
 
-            var wikidataIds = candidates.Select(c => c.WikidataId).OfType<string>().Distinct().Take(150).ToList();
-            var wikidata = await QueryWikidataAsync(wikidataIds, CancellationToken.None).ConfigureAwait(false);
+            // Alle Orte mit Wikidata-Eintrag abfragen (früher nur die ersten 150 – in Großstädten fehlten dann viele Fotos),
+            // in Paketen, damit die einzelne Abfrage klein bleibt.
+            var wikidataIds = candidates.Select(c => c.WikidataId).OfType<string>().Distinct().Take(MaxWikidataIds).ToList();
+            var wikidata = new Dictionary<string, WikidataInfo>(StringComparer.Ordinal);
+            var complete = true;
+            foreach (var chunk in wikidataIds.Chunk(WikidataChunk))
+            {
+                var part = await QueryWikidataAsync([.. chunk], CancellationToken.None).ConfigureAwait(false);
+                complete &= part is not null;
+                foreach (var (id, info) in part ?? [])
+                {
+                    wikidata[id] = info;
+                }
+            }
 
             var result = new ActivitySearchResult(Rank(candidates, wikidata, _options.MaxResults), clock.GetUtcNow());
-            cache.Set(cacheKey, result, CacheDuration);
-            if (result.Activities.Count > 0)
+            // Ohne vollständige Wikidata-Antwort (Fotos, Beschreibungen) nur kurz merken und nicht auf die Festplatte –
+            // sonst bleiben die Vorschläge 30 Tage ohne Bilder.
+            cache.Set(cacheKey, result, complete ? CacheDuration : TimeSpan.FromMinutes(10));
+            if (result.Activities.Count > 0 && complete)
             {
                 WriteToDisk(request, result);
             }
@@ -259,8 +273,15 @@ public sealed partial class OsmActivitySearch(
                 : $"OpenStreetMap ist gerade nicht erreichbar ({string.Join(", ", problems.Distinct())}). Kleinerer Umkreis oder später nochmal versuchen.");
     }
 
-    /// <summary>Holt Beschreibung, Foto, Wikipedia-Link und Bekanntheit. Fehler sind nicht schlimm – dann eben ohne.</summary>
-    private async Task<Dictionary<string, WikidataInfo>> QueryWikidataAsync(List<string> ids, CancellationToken cancellationToken)
+    internal const int WikidataChunk = 100;
+
+    internal const int MaxWikidataIds = 600;
+
+    /// <summary>
+    /// Holt Beschreibung, Foto, Wikipedia-Link und Bekanntheit. Fehler sind nicht schlimm – dann eben ohne;
+    /// <c>null</c> heißt „Abfrage fehlgeschlagen“ (Ergebnis dann nicht dauerhaft speichern).
+    /// </summary>
+    private async Task<Dictionary<string, WikidataInfo>?> QueryWikidataAsync(List<string> ids, CancellationToken cancellationToken)
     {
         if (ids.Count == 0)
         {
@@ -278,7 +299,7 @@ public sealed partial class OsmActivitySearch(
             if (!response.IsSuccessStatusCode)
             {
                 LogFailedStatus("Wikidata", (int)response.StatusCode);
-                return new Dictionary<string, WikidataInfo>();
+                return null;
             }
 
             var body = await response.Content.ReadFromJsonAsync<SparqlResponse>(Json, cancellationToken).ConfigureAwait(false);
@@ -287,7 +308,7 @@ public sealed partial class OsmActivitySearch(
         catch (Exception e) when (e is HttpRequestException or JsonException or TaskCanceledException && !cancellationToken.IsCancellationRequested)
         {
             LogFailed("Wikidata", e);
-            return new Dictionary<string, WikidataInfo>();
+            return null;
         }
     }
 

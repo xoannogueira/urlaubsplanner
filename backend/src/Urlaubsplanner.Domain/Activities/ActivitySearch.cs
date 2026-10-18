@@ -75,3 +75,10 @@ public interface IActivitySearch
 
 /// <summary>OpenStreetMap ist gerade nicht erreichbar.</summary>
 public sealed class ActivitySearchUnavailableException(string message, Exception? inner = null) : Exception(message, inner);
+
+/// <summary>Sucht ein passendes Foto für einen Ort ohne Bild (z. B. auf Wikimedia Commons in unmittelbarer Nähe).</summary>
+public interface IActivityPhotos
+{
+    /// <summary>Bild-URL oder <c>null</c>, wenn nichts sicher passt.</summary>
+    Task<string?> FindAsync(Places.Coordinates at, string name, CancellationToken cancellationToken);
+}

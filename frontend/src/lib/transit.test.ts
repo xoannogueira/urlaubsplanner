@@ -14,6 +14,7 @@ import {
   exampleSearchDate,
   tzOffsetMinutes,
   shiftItinerary,
+  utcOffsetHours,
 } from './transit'
 
 const stop = (name: string, time: string, timeZone = 'Europe/Berlin', track: string | null = null) => ({
@@ -228,5 +229,19 @@ describe('Beispielsuche bei fehlendem Fahrplan', () => {
     expect(approximateUtc('2026-10-24', 8, 0, frankfurt)).toBe('2026-10-24T06:00:00.000Z') // noch Sommerzeit
     expect(approximateUtc('2026-10-26', 8, 0, frankfurt)).toBe('2026-10-26T07:00:00.000Z') // Winterzeit
     expect(approximateUtc('2027-03-29', 8, 0, frankfurt)).toBe('2027-03-29T06:00:00.000Z')
+  })
+})
+
+describe('Zeitzone nach Ort', () => {
+  it('Spanien hat MEZ, auch im Westen; Portugal, London und Island nicht', () => {
+    expect(utcOffsetHours('2026-12-31', { latitude: 36.68, longitude: -6.13 })).toBe(1) // Jerez
+    expect(utcOffsetHours('2026-07-01', { latitude: 42.88, longitude: -8.54 })).toBe(2) // Santiago de Compostela
+    expect(utcOffsetHours('2026-07-01', { latitude: 37.26, longitude: -6.95 })).toBe(2) // Huelva
+    expect(utcOffsetHours('2026-07-01', { latitude: 38.72, longitude: -9.14 })).toBe(1) // Lissabon
+    expect(utcOffsetHours('2026-12-31', { latitude: 41.15, longitude: -8.61 })).toBe(0) // Porto
+    expect(utcOffsetHours('2026-07-01', { latitude: 51.51, longitude: -0.13 })).toBe(1) // London
+    expect(utcOffsetHours('2026-07-01', { latitude: 65.68, longitude: -18.09 })).toBe(0) // Akureyri
+    expect(utcOffsetHours('2026-07-01', { latitude: 28.12, longitude: -15.43 })).toBe(1) // Las Palmas
+    expect(utcOffsetHours('2026-07-01', { latitude: 37.98, longitude: 23.73 })).toBe(3) // Athen
   })
 })

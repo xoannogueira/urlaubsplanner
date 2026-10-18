@@ -75,6 +75,10 @@ export default function TripMapImpl({
   const declutterFrame = useRef(0)
   const theme = useThemeValue()
   const [styleFailed, setStyleFailed] = useState(false)
+  // Letzte Fehlermeldung der Karte – wird im Hinweis gezeigt, damit man sie ohne Entwicklertools weitergeben kann
+  const [lastError, setLastError] = useState<string | null>(null)
+  // Karte ließ sich gar nicht anlegen (z. B. WebGL im Browser aus)
+  const [fatal, setFatal] = useState<string | null>(null)
   // OpenFreeMap (Vektor) oder die Ersatzkarte von CARTO, wenn OpenFreeMap nicht lädt
   const [basemap, setBasemap] = useState<'primary' | 'fallback'>('primary')
   const basemapRef = useRef<'primary' | 'fallback'>('primary')
@@ -116,16 +120,25 @@ export default function TripMapImpl({
     if (!container) return
 
     const theme = () => (document.documentElement.classList.contains('dark') ? 'dark' : 'light') as 'dark' | 'light'
-    const map = new maplibregl.Map({
-      container,
-      style: MAP_STYLES[theme()],
-      center: [10, 45],
-      zoom: 3,
-      attributionControl: { compact: true },
-      dragRotate: false,
-      pitchWithRotate: false,
-      touchPitch: false,
-    })
+    let map: MapLibreMap
+    try {
+      map = new maplibregl.Map({
+        container,
+        style: MAP_STYLES[theme()],
+        center: [10, 45],
+        zoom: 3,
+        attributionControl: { compact: true },
+        dragRotate: false,
+        pitchWithRotate: false,
+        touchPitch: false,
+      })
+    } catch (e) {
+      // Ohne WebGL (z. B. Safari im Blockierungsmodus, alte Grafiktreiber) lässt sich keine Karte zeichnen.
+      console.warn('Karte:', e)
+      const message = e instanceof Error ? e.message : String(e)
+      queueMicrotask(() => setFatal(message))
+      return
+    }
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right')
     map.on('click', () => onSelectRef.current?.(null))
     map.on('moveend', () => declutterRef.current())
@@ -149,6 +162,7 @@ export default function TripMapImpl({
     })
     map.on('error', (e) => {
       console.warn('Karte:', e.error?.message)
+      setLastError(e.error?.message ?? null)
       failures++
       if (!map.isStyleLoaded() || (!tilesLoaded && failures >= 3)) switchToFallback()
     })
@@ -382,9 +396,16 @@ export default function TripMapImpl({
     <div className={clsx('relative overflow-hidden rounded-[20px] border border-line bg-surface-2', className)}>
       {/* MapLibre setzt auf diesem Element selbst position: relative – daher volle Größe statt absolute. */}
       <div ref={containerRef} role="region" aria-label={label} className="h-full w-full" />
-      {styleFailed ? (
-        <p className="pointer-events-none absolute left-3 top-3 rounded-lg bg-surface px-2.5 py-1.5 text-xs text-muted shadow">
+      {fatal ? (
+        <p className="absolute inset-x-4 top-1/2 -translate-y-1/2 rounded-xl bg-surface px-4 py-3 text-center text-sm text-muted shadow">
+          Die Karte lässt sich in diesem Browser nicht anzeigen (WebGL ist aus oder blockiert). In Safari: Einstellungen → Erweitert →
+          „Funktionen für Webentwickler“ bzw. Blockierungsmodus prüfen – oder einen anderen Browser nutzen.
+          <span className="mt-1 block font-mono text-[11px] opacity-80">{fatal}</span>
+        </p>
+      ) : styleFailed ? (
+        <p className="absolute left-3 top-3 max-w-[calc(100%-24px)] rounded-lg bg-surface px-2.5 py-1.5 text-xs text-muted shadow">
           Kartenhintergrund nicht geladen – Pins funktionieren trotzdem. Internet oder Werbeblocker prüfen.
+          {lastError && <span className="mt-0.5 block select-text font-mono text-[10px] opacity-80">Fehler: {lastError}</span>}
         </p>
       ) : basemap === 'fallback' ? (
         <p className="pointer-events-none absolute left-3 top-3 rounded-lg bg-surface/90 px-2.5 py-1.5 text-[11px] text-muted shadow">

@@ -257,7 +257,7 @@ function Suggestions({ trip, stage, center }: { trip: Trip; stage: Stage; center
                     saving={savingId === a.id}
                     selected={selectedId === a.id}
                     onSelect={() => setSelectedId(a.id)}
-                    onSave={() => save(a)}
+                    onSave={(photo) => save(photo && !a.imageUrl ? { ...a, imageUrl: photo } : a)}
                     routeFromHotel={hotel ? { url: routeFromHotelUrl(hotel, a), hotel: hotel.title } : null}
                   />
                 ))

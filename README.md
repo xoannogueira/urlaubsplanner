@@ -389,6 +389,8 @@ Dieselben Checks laufen bei jedem Push in GitHub Actions.
 | GET | `/api/activities?lat=…&lon=…&radiusMeters=…&offset=0&limit=10` | Aktivitäten-Vorschläge seitenweise (500 m – 50 km), optional `category`, `q`, `sort=Distance` |
 | GET | `/api/transit/plan?fromLat=…&fromLon=…&toLat=…&toLon=…&time=…&arriveBy=false` | Bus-&-Bahn-Verbindungen (Transitous), optional `cursor` für früher/später |
 | GET | `/api/weather?lat=…&lon=…&from=…&to=…` | Wetter pro Tag (Vorhersage bzw. typisch), max. 62 Tage |
+| GET | `/api/activities/photo?lat=…&lon=…&name=…` | Foto für einen Vorschlag ohne Bild (Wikimedia Commons in der Nähe, passender Dateiname) |
+| GET | `/api/app/connectivity` | „Verbindung prüfen“: erreicht die App Photon, SerpApi, OpenStreetMap, Open-Meteo, Transitous, OpenFreeMap? |
 | GET | `/api/airports?q=…` | Flughafensuche (Code, Stadt, Name; sonst über die Ortssuche in der Nähe) |
 | GET | `/api/airports/near?lat=…&lon=…&radiusKm=…` | Flughäfen im Umkreis |
 | GET | `/api/airports/lookup?codes=STR,LIS` | Flughäfen nach Code |

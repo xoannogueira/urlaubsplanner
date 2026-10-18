@@ -1,7 +1,9 @@
 import clsx from 'clsx'
 import { CalendarDays } from 'lucide-react'
-import { useRef, useState } from 'react'
+import { useCallback, useState } from 'react'
 import { isoToGerman, maskGermanDate, parseGermanDate, parseTime } from '../../lib/dateInput'
+import { todayIso } from '../../lib/format'
+import { CalendarPopover } from './CalendarPopover'
 import { controlClass } from './fieldStyles'
 
 interface DateInputProps {
@@ -44,7 +46,8 @@ export function DateInput({
   const [text, setText] = useState(isoToGerman(value))
   const [shown, setShown] = useState(value)
   const [error, setError] = useState(false)
-  const picker = useRef<HTMLInputElement>(null)
+  const [calendar, setCalendar] = useState<{ today: string; anchor: HTMLElement } | null>(null)
+  const closeCalendar = useCallback(() => setCalendar(null), [])
   // Wert von außen geändert (z. B. Kalender, Vorbelegung): Text nachziehen.
   if (value !== shown) {
     setShown(value)
@@ -106,39 +109,34 @@ export function DateInput({
       <button
         type="button"
         aria-label={`${label ?? 'Datum'}: Kalender öffnen`}
+        aria-expanded={calendar !== null}
         title="Kalender öffnen"
-        onClick={() => {
-          const el = picker.current
-          if (!el) return
-          el.value = value || openAt || ''
-          try {
-            el.showPicker()
-          } catch {
-            el.focus()
-          }
+        onClick={(e) => {
+          const anchor = e.currentTarget.parentElement!
+          setCalendar((c) => (c ? null : { today: todayIso(), anchor }))
         }}
         className="absolute right-1.5 top-1/2 flex size-8 -translate-y-1/2 cursor-pointer items-center justify-center rounded-lg text-muted hover:bg-surface-3 hover:text-text"
       >
         <CalendarDays size={17} />
       </button>
-      {/* Unsichtbares Browser-Datumsfeld nur für die Kalenderauswahl (Auswahl per Klick ist unabhängig vom Format). */}
-      <input
-        ref={picker}
-        type="date"
-        tabIndex={-1}
-        aria-hidden="true"
-        min={min ?? undefined}
-        max={max ?? undefined}
-        onChange={(e) => {
-          if (e.target.value) {
-            setShown(e.target.value)
-            setText(isoToGerman(e.target.value))
-            onValue(e.target.value)
+      {calendar && (
+        <CalendarPopover
+          anchor={calendar.anchor}
+          value={value}
+          min={min}
+          max={max}
+          openAt={openAt}
+          today={calendar.today}
+          onClose={closeCalendar}
+          onPick={(iso) => {
+            setShown(iso)
+            setText(isoToGerman(iso))
+            onValue(iso)
             report(false)
-          }
-        }}
-        className="pointer-events-none absolute bottom-0 right-0 h-px w-px opacity-0"
-      />
+            setCalendar(null)
+          }}
+        />
+      )}
     </div>
   )
 }

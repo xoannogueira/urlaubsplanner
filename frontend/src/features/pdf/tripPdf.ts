@@ -1,5 +1,5 @@
 import type { Content, ContentTable, TDocumentDefinitions, TableCell } from 'pdfmake/interfaces'
-import type { OptionKind, OptionStatus, Stage, Trip, TripOption } from '../../api/types'
+import type { OptionKind, OptionStatus, PackingItem, Stage, Trip, TripOption } from '../../api/types'
 import type { TripWeather, WeatherDay } from '../../api/weather'
 import { buildTimeline, costByKind, costByStage } from '../../lib/dashboard'
 import { tripRange } from '../../lib/dates'
@@ -88,10 +88,10 @@ export function buildTripPdf(trip: Trip, { today, weather }: TripPdfOptions): TD
     activities(trip),
   ]
   if (extras.length > 0) content.push(section('Transfers & weitere Buchungen', 'Transport'), extras.map(extraBlock))
-  if (timeline && timeline.days.length > 0) content.push(section('Tag für Tag', null, true), dayTable(timeline.days, weather))
+  if (timeline && timeline.days.length > 0) content.push(section('Tag für Tag', null), dayTable(timeline.days, weather))
   content.push(section('Kosten', null), costTables(trip))
   if (trip.party.members.length > 0) content.push(section('Wer zahlt was', null), splitTables(trip))
-  if (trip.packing.items.length > 0) content.push(section('Packliste', null, true), packingColumns(trip))
+  if (trip.packing.items.length > 0) content.push(section('Packliste', null), packingColumns(trip))
   if (trip.notes?.trim()) content.push(section('Notizen', null), { text: trip.notes.trim(), style: 'body' })
 
   return {
@@ -243,11 +243,29 @@ function linkLine(option: TripOption, label = 'Ansehen / buchen'): Content {
   }
 }
 
+/** Grob geschätzte Zeilen eines Inhalts – um zu entscheiden, ob ein Block zusammenbleiben darf. */
+export function estimateLines(node: unknown): number {
+  if (typeof node === 'string') return node.split('\n').reduce((n, line) => n + Math.max(1, Math.ceil(line.length / 95)), 0)
+  if (Array.isArray(node)) return node.reduce((n, x) => n + estimateLines(x), 0)
+  if (node && typeof node === 'object') {
+    const o = node as Record<string, unknown>
+    if ('text' in o) return estimateLines(o.text)
+    if ('stack' in o) return estimateLines(o.stack)
+    if ('columns' in o) return Math.max(0, ...(o.columns as unknown[]).map(estimateLines))
+    if ('table' in o) return estimateLines((o.table as { body: unknown[] }).body)
+  }
+  return 0
+}
+
+/** Höhe, bis zu der ein Block auf eine Seite verschoben wird statt geteilt (größere Blöcke dürfen umbrechen –
+ * sonst erzeugt pdfmake leere Seiten, wenn ein „unteilbarer“ Block höher als eine Seite ist). */
+const KEEP_TOGETHER_LINES = 28
+
 function card(items: Content[], kind: OptionKind): Content {
   const stack = items.filter((c) => c !== '')
   return {
     margin: [0, 6, 0, 0],
-    unbreakable: true,
+    unbreakable: estimateLines(stack) <= KEEP_TOGETHER_LINES,
     table: { widths: ['*'], body: [[{ stack, margin: [10, 7, 10, 7] }]] },
     layout: {
       hLineWidth: () => 0.6,
@@ -430,7 +448,13 @@ function dayTable(days: ReturnType<typeof buildTimeline>['days'], weather: TripW
     ])
   }
   const table = {
-    table: { headerRows: 1, widths: withWeather ? [58, 62, 66, '*', 130] : [62, 70, '*', 150], body, dontBreakRows: true },
+    table: {
+      headerRows: 1,
+      widths: withWeather ? [58, 62, 66, '*', 130] : [62, 70, '*', 150],
+      body,
+      // Zeilen zusammenhalten – außer eine ist so lang, dass sie nicht auf eine Seite passt (sonst leere Seiten)
+      dontBreakRows: body.every((row) => estimateLines(row) <= KEEP_TOGETHER_LINES),
+    },
     layout: zebra,
   } satisfies ContentTable
   if (!withWeather) return table
@@ -543,6 +567,13 @@ function splitTables(trip: Trip): Content {
         { width: '*', margin: [24, 0, 0, 0], stack: [transfers] },
       ],
     },
+    split.unpaid > 0
+      ? {
+          text: `${money(split.unpaid)} ohne eingetragenen Käufer – zählen zum Anteil, aber noch nicht zum Ausgleich.`,
+          style: 'small',
+          margin: [0, 6, 0, 0],
+        }
+      : '',
     {
       stack: [
         { text: 'RECHENWEG', style: 'label', margin: [0, 12, 0, 3] },
@@ -565,52 +596,64 @@ function splitTables(trip: Trip): Content {
         })),
       ],
     },
-    split.unpaid > 0
-      ? {
-          text: `${money(split.unpaid)} ohne eingetragenen Käufer – zählen zum Anteil, aber noch nicht zum Ausgleich.`,
-          style: 'small',
-          margin: [0, 6, 0, 0],
-        }
-      : '',
   ]
 }
 
-/** Packliste zum Abhaken: Kästchen, zwei Spalten, nach Kategorie. */
+/**
+ * Packliste zum Abhaken: zwei gleich lange Spalten (nach Anzahl Zeilen aufgeteilt), Kategorie als Zwischenzeile.
+ * Als Tabelle gesetzt, damit sie sauber über Seiten umbricht – ohne „unteilbare“ Blöcke, die leere Seiten erzeugen.
+ */
+export function packingRows(items: PackingItem[]): { left: PackLine[]; right: PackLine[] } {
+  const groups = groupPacking(items)
+  const lines = (g: (typeof groups)[number]): PackLine[] => [
+    { kind: 'head', text: g.category },
+    ...g.items.map((i) => ({ kind: 'item' as const, text: i.text, packed: i.packed })),
+  ]
+  const total = groups.reduce((n, g) => n + g.items.length + 1, 0)
+  const left: PackLine[] = []
+  const right: PackLine[] = []
+  for (const g of groups) {
+    const target = left.length < total / 2 ? left : right
+    // Kategorie nicht zerreißen: ganze Gruppe in eine Spalte
+    target.push(...lines(g))
+  }
+  return { left, right }
+}
+
+export type PackLine = { kind: 'head'; text: string } | { kind: 'item'; text: string; packed: boolean }
+
 function packingColumns(trip: Trip): Content {
-  const box = (checked: boolean) => ({
-    canvas: [
-      { type: 'rect', x: 0, y: 1.5, w: 8, h: 8, r: 1.5, lineWidth: 0.8, lineColor: color.muted },
-      ...(checked
-        ? [
-            {
-              type: 'polyline' as const,
-              points: [
-                { x: 1.8, y: 5.6 },
-                { x: 3.6, y: 7.6 },
-                { x: 6.6, y: 3.2 },
-              ],
-              lineWidth: 1.2,
-              lineColor: color.accent,
-            },
-          ]
-        : []),
-    ],
-    width: 13,
+  // Kästchen als kleines SVG (Canvas in Tabellenzellen verrutscht in pdfmake)
+  const box = (checked: boolean): TableCell => ({
+    svg: `<svg xmlns="http://www.w3.org/2000/svg" width="9" height="9" viewBox="0 0 9 9"><rect x="0.5" y="0.5" width="8" height="8" rx="1.5" fill="none" stroke="${color.muted}" stroke-width="0.8"/>${
+      checked ? `<polyline points="2,4.6 3.8,6.6 7,2.4" fill="none" stroke="${color.accent}" stroke-width="1.2"/>` : ''
+    }</svg>`,
+    width: 9,
+    margin: [0, 2, 0, 0],
   })
-  const blocks = groupPacking(trip.packing.items).map((g) => ({
-    stack: [
-      { text: g.category.toUpperCase(), style: 'label', margin: [0, 0, 0, 3] },
-      ...g.items.map((i) => ({
-        columns: [box(i.packed), { text: i.text, color: i.packed ? color.muted : color.text }],
-        columnGap: 2,
-        margin: [0, 1.5, 0, 0],
-      })),
-    ],
-    margin: [0, 0, 0, 10],
-    unbreakable: g.items.length <= 12,
-  }))
-  const half = Math.ceil(blocks.length / 2)
-  return { columns: [{ stack: blocks.slice(0, half) }, { stack: blocks.slice(half) }], columnGap: 28 } as Content
+  const cells = (line: PackLine | undefined): TableCell[] =>
+    !line
+      ? ['', '']
+      : line.kind === 'head'
+        ? [{ text: line.text.toUpperCase(), style: 'label', colSpan: 2, margin: [0, 6, 0, 1] }, '']
+        : [box(line.packed), { text: pdfText(line.text), color: line.packed ? color.muted : color.text }]
+  const { left, right } = packingRows(trip.packing.items)
+  const body: TableCell[][] = Array.from({ length: Math.max(left.length, right.length) }, (_, i) => [
+    ...cells(left[i]),
+    '',
+    ...cells(right[i]),
+  ])
+  return {
+    table: { widths: [11, '*', 20, 11, '*'], body },
+    layout: {
+      hLineWidth: () => 0,
+      vLineWidth: () => 0,
+      paddingLeft: () => 0,
+      paddingRight: () => 2,
+      paddingTop: () => 1.5,
+      paddingBottom: () => 1.5,
+    },
+  } satisfies ContentTable
 }
 
 const thinRows = {

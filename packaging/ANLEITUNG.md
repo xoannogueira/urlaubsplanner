@@ -66,6 +66,11 @@ Deine Reisen und dein Key bleiben bei einem Update natürlich erhalten. Welche V
   - Windows: `%LOCALAPPDATA%\Urlaubsplanner`
 
   Zum Sichern diesen Ordner kopieren, am besten bei geschlossener App.
+- **Suche findet nichts oder meldet Fehler?** In der App oben **Einstellungen → „Verbindung prüfen“** klicken. Dort steht
+  für jeden Dienst, ob die App ihn erreicht – und wenn nicht, warum. Mit **„Ergebnis kopieren“** kannst du es an Xoan schicken.
+- **Windows mit Avast (oder einem anderen Antivirenprogramm):** Blockiert es die App, im Antivirenprogramm den
+  Programmordner `%LOCALAPPDATA%\Programs\Urlaubsplanner` als Ausnahme hinzufügen (Avast: Menü → Einstellungen → Ausnahmen)
+  und bei einer Firewall-Frage **Zulassen** wählen. Danach die App schließen, neu öffnen und noch einmal „Verbindung prüfen“.
 - **Wenn etwas nicht klappt:** Im selben Ordner liegt `urlaubsplanner.log`. Schick die Datei an Xoan.
 - **Mac, Notlösung:** Startet die App gar nicht, öffne das Programm **Terminal** und gib einmal ein:
   `xattr -dr com.apple.quarantine /Applications/Urlaubsplanner.app`

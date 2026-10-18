@@ -13,6 +13,7 @@ import { KeyBanner } from '../setup/KeyBanner'
 import { SearchCosts } from '../setup/SearchCosts'
 import { useSetup } from '../setup/setupContext'
 import { InstallationSection } from './InstallationSection'
+import { ConnectivitySection } from './ConnectivitySection'
 import { KEY_URL, SIGN_UP_URL, Warning } from '../setup/SetupWizard'
 
 /** API-Key, verbleibende Suchen, was Suchen kosten und wo die Daten liegen. */
@@ -137,6 +138,7 @@ export function SettingsPage() {
               </p>
             </Section>
 
+            <ConnectivitySection />
             {info.data?.desktop && <InstallationSection />}
           </>
         )}

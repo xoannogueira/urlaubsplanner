@@ -46,7 +46,12 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
         'Diese Funktion kennt die laufende App noch nicht. Bitte die App schließen und neu öffnen (bzw. das Backend nach git pull neu starten).',
       )
     }
-    throw new ApiError(response.status, problem.detail ?? problem.title ?? `Fehler ${response.status}`, normalizeKeys(problem.errors ?? {}))
+    let message = problem.detail ?? problem.title ?? `Fehler ${response.status}`
+    // Dienst nicht erreichbar: Hinweis auf die Verbindungsprüfung (oft blockiert ein Antivirenprogramm die App)
+    if (response.status === 502 || response.status === 503 || response.status === 504) {
+      message += ' Passiert das immer wieder: Einstellungen → „Verbindung prüfen“.'
+    }
+    throw new ApiError(response.status, message, normalizeKeys(problem.errors ?? {}))
   }
 
   return body as T
