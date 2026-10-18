@@ -142,3 +142,14 @@ export async function savePdf(pdf: Blob, title: string): Promise<PdfSaved> {
   }
   return (await response.json()) as PdfSaved
 }
+
+export interface ConnectivityResult {
+  name: string
+  url: string
+  ok: boolean
+  milliseconds: number
+  problem: string | null
+}
+
+/** Prüft, ob die App die Dienste für die Suchen erreicht (z. B. wenn ein Antivirenprogramm blockiert). */
+export const checkConnectivity = () => api<ConnectivityResult[]>('/app/connectivity')

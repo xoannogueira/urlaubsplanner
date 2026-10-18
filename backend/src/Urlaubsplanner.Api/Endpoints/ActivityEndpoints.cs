@@ -7,7 +7,20 @@ public static class ActivityEndpoints
     public static IEndpointRouteBuilder MapActivityEndpoints(this IEndpointRouteBuilder app)
     {
         app.MapGet("/api/activities", Search).WithTags("Aktivitäten");
+        app.MapGet("/api/activities/photo", Photo).WithTags("Aktivitäten");
         return app;
+    }
+
+    /// <summary>GET /api/activities/photo?lat=41.38&amp;lon=2.18&amp;name=Palau%20Centelles – Foto für einen Ort ohne Bild, sonst <c>url: null</c>.</summary>
+    private static async Task<IResult> Photo(double? lat, double? lon, string? name, IActivityPhotos photos, CancellationToken ct)
+    {
+        var at = Urlaubsplanner.Domain.Places.Coordinates.TryCreate(lat, lon);
+        if (at is null || string.IsNullOrWhiteSpace(name) || name.Length > 200)
+        {
+            return TypedResults.ValidationProblem(new Dictionary<string, string[]> { ["name"] = ["Ort und Name werden gebraucht."] }, title: "Eingabe ungültig");
+        }
+
+        return TypedResults.Ok(new { Url = await photos.FindAsync(at.Value, name.Trim(), ct) });
     }
 
     /// <summary>

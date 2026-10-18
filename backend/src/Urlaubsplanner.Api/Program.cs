@@ -77,6 +77,11 @@ builder.Services.AddSingleton<AppInstallation>();
 
 // Automatische Updates der Desktop-App von GitHub (beim Entwickeln ohne Wirkung).
 builder.Services.Configure<UpdateOptions>(builder.Configuration.GetSection(UpdateOptions.Section));
+builder.Services.AddHttpClient(ConnectivityCheck.HttpClientName, http =>
+{
+    http.Timeout = TimeSpan.FromSeconds(10);
+    http.DefaultRequestHeaders.UserAgent.ParseAdd("Urlaubsplanner/1.0 (Verbindungstest; +https://github.com/xoannogueira/urlaubsplanner)");
+});
 builder.Services.AddHttpClient(AppUpdater.HttpClientName, (sp, http) => AppUpdater.ConfigureClient(http, sp.GetRequiredService<IOptions<UpdateOptions>>().Value));
 builder.Services.AddSingleton<AppUpdater>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<AppUpdater>());

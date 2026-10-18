@@ -105,6 +105,14 @@ public static class DependencyInjection
             http.DefaultRequestHeaders.UserAgent.ParseAdd("Urlaubsplanner/1.0 (privates Hobbyprojekt; https://github.com/xoannogueira/urlaubsplanner)");
         });
 
+        // Fotos für Aktivitäten ohne Bild: Wikimedia Commons in der Nähe (frei, ohne Key; bittet um erkennbaren User-Agent).
+        services.AddHttpClient<IActivityPhotos, CommonsPhotoLookup>(http =>
+        {
+            http.BaseAddress = new Uri(configuration["Activities:CommonsUrl"] ?? "https://commons.wikimedia.org/");
+            http.Timeout = TimeSpan.FromSeconds(10);
+            http.DefaultRequestHeaders.UserAgent.ParseAdd("Urlaubsplanner/1.0 (privates Open-Source-Projekt; +https://github.com/xoannogueira/urlaubsplanner)");
+        });
+
         // Bus & Bahn: Transitous (frei, ohne Key). Bittet um einen User-Agent mit App-Name und Kontakt.
         services.Configure<TransitOptions>(configuration.GetSection(TransitOptions.Section));
         services.AddHttpClient<ITransitPlanner, TransitousPlanner>(http =>

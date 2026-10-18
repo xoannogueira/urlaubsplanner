@@ -130,6 +130,10 @@ public static partial class AppEndpoints
                 ? Results.Accepted()
                 : Results.Problem(statusCode: StatusCodes.Status409Conflict, title: "Kein Update bereit", detail: "Es liegt gerade kein Update zum Installieren bereit."));
 
+        // „Verbindung prüfen“: erreicht die App die Dienste für die Suchen? (Hilft bei Antivirus/Firewall)
+        group.MapGet("/connectivity", async (IHttpClientFactory factory, IConfiguration configuration, CancellationToken ct) =>
+            TypedResults.Ok(await ConnectivityCheck.RunAsync(factory.CreateClient(ConnectivityCheck.HttpClientName), configuration, ct)));
+
         var settings = app.MapGroup("/api/settings").WithTags("Einstellungen");
         settings.MapGet("/", GetSettings);
         settings.MapPut("/serpapi", SetSerpApiKey);
