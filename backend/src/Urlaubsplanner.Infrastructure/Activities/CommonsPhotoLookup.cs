@@ -83,17 +83,45 @@ public sealed partial class CommonsPhotoLookup(HttpClient http, IMemoryCache cac
         return null;
     }
 
+    /// <summary>Akzente → Grundbuchstabe. Eigene Tabelle statt Unicode-Normalisierung, die im Invariant-Modus (ohne ICU) nichts tut.</summary>
+    private static readonly Dictionary<char, char> Folding = BuildFolding();
+
+    private static Dictionary<char, char> BuildFolding()
+    {
+        var map = new Dictionary<char, char>();
+        void Add(string accented, char plain)
+        {
+            foreach (var c in accented)
+            {
+                map[c] = plain;
+            }
+        }
+
+        Add("àáâãäåāăą", 'a');
+        Add("çćĉċč", 'c');
+        Add("ďđ", 'd');
+        Add("èéêëēĕėęě", 'e');
+        Add("ĝğġģ", 'g');
+        Add("ìíîïĩīĭįı", 'i');
+        Add("ĺļľŀł", 'l');
+        Add("ñńņňŉ", 'n');
+        Add("òóôõöøōŏő", 'o');
+        Add("ŕŗř", 'r');
+        Add("śŝşšș", 's');
+        Add("ţťŧț", 't');
+        Add("ùúûüũūŭůűų", 'u');
+        Add("ýÿŷ", 'y');
+        Add("źżž", 'z');
+        return map;
+    }
+
     /// <summary>Kleinbuchstaben ohne Akzente, nur Buchstabenfolgen ab 3 Zeichen.</summary>
     internal static List<string> Words(string text)
     {
-        var decomposed = text.Normalize(NormalizationForm.FormD);
-        var plain = new StringBuilder(decomposed.Length);
-        foreach (var c in decomposed)
+        var plain = new StringBuilder(text.Length);
+        foreach (var c in text.ToLowerInvariant())
         {
-            if (CharUnicodeInfo.GetUnicodeCategory(c) != UnicodeCategory.NonSpacingMark)
-            {
-                plain.Append(char.ToLowerInvariant(c));
-            }
+            plain.Append(Folding.TryGetValue(c, out var f) ? f : c);
         }
 
         return WordRegex().Matches(plain.ToString()).Select(m => m.Value).Where(w => w.Length >= 3).ToList();
