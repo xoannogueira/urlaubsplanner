@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tansta
 import { api, json } from './client'
 import { adjustTripToFlight, announceAdjustment } from './flightAdjust'
 import { periodExtendedMessage } from '../lib/dates'
+import { newMismatchMessage } from '../lib/hotelFit'
 import type { OptionInput, OptionStatus, PackingList, StageInput, Trip, TripInput, TripListItem, TripParty, TripSummary } from './types'
 
 export const tripKeys = {
@@ -115,7 +116,7 @@ export function useTripActions(tripId: string) {
       api<Trip>(`${base}/options/${id}`, { method: 'PUT', ...json(input) }),
     onSuccess: (trip: Trip, { id, input }: { id: string; input: OptionInput }) => {
       storeTrip(queryClient, trip)
-      if (input.kind === 'Flight') afterFlight(trip, id)
+      if (input.kind === 'Flight' || input.kind === 'Transport') afterFlight(trip, id)
     },
   })
 
@@ -141,7 +142,14 @@ export function useTripActions(tripId: string) {
 
   /** Neuer Reisezeitraum – erste und letzte Etappe wandern mit. */
   const changePeriod = useMutation({
-    mutationFn: (period: { startDate: string; endDate: string }) => api<Trip>(`${base}/period`, { method: 'PUT', ...json(period) }),
+    mutationFn: async (period: { startDate: string; endDate: string }) => {
+      const before = queryClient.getQueryData<Trip>(tripKeys.detail(tripId))
+      const trip = await api<Trip>(`${base}/period`, { method: 'PUT', ...json(period) })
+      // Gebuchte Hotels ziehen nicht von selbst um – darauf hinweisen.
+      const message = before ? newMismatchMessage(before, trip) : null
+      if (message) announceAdjustment({ tripId, message })
+      return trip
+    },
     onSuccess,
   })
 

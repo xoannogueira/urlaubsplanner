@@ -3,9 +3,10 @@ import { api, json } from './client'
 import { placesUrl } from './places'
 import type { Place, Trip } from './types'
 import { tripRange } from '../lib/dates'
-import { flightDates, periodForFlight } from '../lib/flightPeriod'
+import { flightDates, periodForFlight, periodForTransit } from '../lib/flightPeriod'
 import { formatDateRange } from '../lib/format'
-import { isChosen } from '../lib/options'
+import { newMismatchMessage } from '../lib/hotelFit'
+import { isChosen, isTransitAnreise } from '../lib/options'
 
 /** Was die App nach dem Auswählen eines Flugs angepasst hat – für den Hinweis mit „Rückgängig“. */
 export interface TripAdjustment {
@@ -23,31 +24,36 @@ export function announceAdjustment(adjustment: TripAdjustment) {
 export const ADJUST_EVENT = 'urlaubsplanner:trip-adjusted'
 
 /**
- * Nach dem Auswählen oder Buchen eines Flugs: Reisezeitraum an Ankunft des Hinflugs und Abflug des Rückflugs
+ * Nach dem Auswählen oder Buchen eines Flugs (oder einer Anreise mit Bus & Bahn): Reisezeitraum an Ankunft des Hinflugs und Abflug des Rückflugs
  * anpassen; hat die Reise noch keine Etappe, eine für die Zielstadt anlegen. Fehler hier sind nicht schlimm –
  * der Flug ist ja gespeichert –, deshalb werden sie nur protokolliert.
  */
 export async function adjustTripToFlight(trip: Trip, optionId: string, store: (trip: Trip) => void): Promise<void> {
   const option = trip.options.find((o) => o.id === optionId)
-  if (!option || option.kind !== 'Flight' || !isChosen(option)) return
-  const dates = flightDates(option)
-  if (!dates) return
+  if (!option || !isChosen(option)) return
+  const transit = isTransitAnreise(option)
+  if (option.kind !== 'Flight' && !transit) return
+  const dates = transit ? null : flightDates(option)
+  if (!transit && !dates) return
   const base = `/trips/${trip.id}`
   const before = { range: tripRange(trip) }
-  const period = periodForFlight(trip, dates)
-  const createStage = trip.stages.length === 0 && dates.destination !== null
+  const period = transit ? periodForTransit(trip, option) : dates ? periodForFlight(trip, dates) : null
+  const createStage = !transit && trip.stages.length === 0 && dates?.destination != null
   if (!period && !createStage) return
 
   try {
     let current = trip
     const done: string[] = []
     if (period) {
+      const beforePeriod = current
       current = await api<Trip>(`${base}/period`, { method: 'PUT', ...json(period) })
-      done.push(`Zeitraum an den Flug angepasst: ${formatDateRange(period.startDate, period.endDate)}`)
+      done.push(`Zeitraum an ${transit ? 'die Bahnfahrt' : 'den Flug'} angepasst: ${formatDateRange(period.startDate, period.endDate)}`)
+      const hotels = newMismatchMessage(beforePeriod, current)
+      if (hotels) done.push(hotels)
     }
     let stageId: string | null = null
     const range = tripRange(current)
-    if (createStage && range.start && range.end && range.end > range.start) {
+    if (createStage && dates?.destination && range.start && range.end && range.end > range.start) {
       const [airport] = await api<Airport[]>(`/airports/lookup?codes=${dates.destination}`)
       if (airport) {
         const name = await germanCityName(airport)

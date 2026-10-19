@@ -273,7 +273,13 @@ export function OptionsPage({ kind }: { kind: OptionKind }) {
                   }
                 />
               ) : (
-                <div className="grid grid-cols-[repeat(auto-fill,minmax(300px,1fr))] gap-4">
+                <div
+                  className={clsx(
+                    'grid gap-4',
+                    // Flüge und Bus & Bahn untereinander – mehr Platz für Zeiten, Strecke und Flugnummer
+                    kind === 'Flight' || kind === 'Transport' ? 'grid-cols-1' : 'grid-cols-[repeat(auto-fill,minmax(300px,1fr))]',
+                  )}
+                >
                   {visible.map((option) => (
                     <OptionCard
                       key={option.id}

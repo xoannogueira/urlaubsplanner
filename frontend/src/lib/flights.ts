@@ -250,7 +250,7 @@ export function flightNotes(journey: FlightJourney, fare: FlightFare): string {
     const date = formatShortDate(leg.departure.slice(0, 10))
     const flights = leg.segments.map((s) => s.carrierCode + s.flightNumber).join(' + ')
     const arrival = formatClock(leg.arrival) + (leg.dayChange > 0 ? ` (+${leg.dayChange})` : '')
-    return `${leg.origin} → ${leg.destination}: ${date}, ${formatClock(leg.departure)}–${arrival}, ${flights}, ${stopsLabel(leg)}`
+    return `${leg.origin} → ${leg.destination}: ${date}, ${formatClock(leg.departure)}–${arrival}, ${flights}, ${stopsLabel(leg)}, Dauer ${formatDuration(leg.durationMinutes)}`
   })
   return [...legs, fareSummary(fare)].join('\n')
 }

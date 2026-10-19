@@ -3,7 +3,7 @@ import type { TransitItinerary, TransitLeg } from '../api/transit'
 import type { LatLng, OptionInput, Trip } from '../api/types'
 import { stageHotel } from './activities'
 import { flightTime } from './dashboard'
-import { parseSignature } from './flights'
+import { formatDuration, parseSignature } from './flights'
 import { formatShortDate } from './format'
 import { toLatLng } from './geo'
 import { isChosen } from './options'
@@ -136,7 +136,7 @@ export function transitNotes(itinerary: TransitItinerary, fromName: string, toNa
   const head =
     `${fromName} → ${toName}: ${formatShortDate(dateAt(itinerary.departure, first.from.timeZone))}, ` +
     `${clockAt(itinerary.departure, first.from.timeZone)}–${clockAt(itinerary.arrival, last.to.timeZone)}, ` +
-    `${lines.join(' + ') || 'zu Fuß'}, ${transfersLabel(itinerary.transfers)}`
+    `${lines.join(' + ') || 'zu Fuß'}, ${transfersLabel(itinerary.transfers)}, Dauer ${formatDuration(itinerary.durationMinutes)}`
   const details = visibleLegs(itinerary.legs)
     .filter((l) => l.mode !== 'WALK')
     .map(
@@ -185,7 +185,8 @@ export function transitOptionInput(
     status: 'Favorite',
     stageId,
     url: lines.length > 0 ? bahnUrl(places.fromName, places.toName, itinerary) : googleTransitUrl(places.from, places.to),
-    price: null,
+    // Preis laut Verkehrsverbund, wenn bekannt (pro Person) – Bahn.de-Preise lassen sich nicht kostenlos abfragen.
+    price: itinerary.fare?.currency === 'EUR' ? itinerary.fare.amount : null,
     pricePerPerson: true,
     startDate: dateAt(itinerary.departure, first.from.timeZone),
     endDate: dateAt(itinerary.arrival, last.to.timeZone),

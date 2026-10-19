@@ -28,7 +28,7 @@ import { Button } from '../../components/ui/Button'
 import { buttonClass } from '../../components/ui/buttonStyles'
 import { EmptyState, ErrorState, Skeleton } from '../../components/ui/Feedback'
 import { DateInput, TimeInput } from '../../components/ui/DateInput'
-import { formatShortDate, todayIso } from '../../lib/format'
+import { formatEuro, formatShortDate, todayIso } from '../../lib/format'
 import { formatDuration } from '../../lib/flights'
 import {
   approximateUtc,
@@ -397,6 +397,14 @@ function ItineraryCard({
         </div>
         <span className="text-sm text-muted">
           {formatDuration(it.durationMinutes)} · {transit ? transfersLabel(it.transfers) : 'nur zu Fuß'}
+          {it.fare && it.fare.currency === 'EUR' && (
+            <span
+              className="ml-2 font-semibold text-text"
+              title={`Preis laut Tarifdaten des Verkehrsverbunds, pro Person${it.fare.name ? ` (${it.fare.name})` : ''} – ohne Gewähr`}
+            >
+              · ca. {formatEuro(it.fare.amount)} p. P.
+            </span>
+          )}
         </span>
       </div>
 

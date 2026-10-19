@@ -154,4 +154,55 @@ public sealed class TransitousPlannerTests
         var (planner, _) = Create(_ => new HttpResponseMessage(HttpStatusCode.ServiceUnavailable));
         await Assert.ThrowsAsync<TransitUnavailableException>(() => planner.PlanAsync(Request, CancellationToken.None));
     }
+
+    private static string WithFares(string fares, int? busTransferIndex = 0) => $$"""
+        { "direct": [], "itineraries": [ { "duration": 1800, "transfers": 1, "startTime": "2027-05-12T06:30:00Z", "endTime": "2027-05-12T07:00:00Z",
+          "legs": [
+            { "mode": "BUS", "duration": 600, "startTime": "2027-05-12T06:30:00Z", "endTime": "2027-05-12T06:40:00Z", "routeShortName": "728",
+              "from": { "name": "A", "lat": 1, "lon": 1 }, "to": { "name": "B", "lat": 1.01, "lon": 1 }, "fareTransferIndex": 0, "effectiveFareLegIndex": 0 },
+            { "mode": "WALK", "duration": 120, "startTime": "2027-05-12T06:40:00Z", "endTime": "2027-05-12T06:42:00Z",
+              "from": { "name": "B", "lat": 1.01, "lon": 1 }, "to": { "name": "C", "lat": 1.011, "lon": 1 } },
+            { "mode": "REGIONAL_RAIL", "duration": 1080, "startTime": "2027-05-12T06:42:00Z", "endTime": "2027-05-12T07:00:00Z", "routeShortName": "RE 1",
+              "from": { "name": "C", "lat": 1.011, "lon": 1 }, "to": { "name": "D", "lat": 1.1, "lon": 1 }{{(busTransferIndex is null ? "" : $", \"fareTransferIndex\": {busTransferIndex}, \"effectiveFareLegIndex\": 1")}} }
+          ],
+          "fareTransfers": [ {{fares}} ] } ], "previousPageCursor": "", "nextPageCursor": "" }
+        """;
+
+    private const string Adult = "\"riderCategory\": { \"riderCategoryName\": \"Erwachsene\", \"isDefaultFareCategory\": true }";
+    private const string Child = "\"riderCategory\": { \"riderCategoryName\": \"Kinder\", \"isDefaultFareCategory\": false }";
+
+    [Fact]
+    public async Task Fahrpreis_aus_den_Tarifdaten()
+    {
+        // Je Abschnitt ein Ticket (Erwachsene; das Kinderticket zählt nicht), Übergang kostenlos.
+        var fares = $$"""
+            { "rule": "A_AB_B", "effectiveFareLegProducts": [
+                [ [ { "name": "Einzelfahrt", "amount": 2.9, "currency": "EUR", {{Adult}} }, { "name": "Kind", "amount": 1.5, "currency": "EUR", {{Child}} } ] ],
+                [ [ { "name": "Regio", "amount": 7.6, "currency": "EUR", {{Adult}} } ] ] ] }
+            """;
+        var (planner, handler) = Create(_ => Json(WithFares(fares)));
+        var plan = await planner.PlanAsync(Request, CancellationToken.None);
+
+        Assert.Equal(new TransitFare(10.5m, "EUR", null), Assert.Single(plan.Itineraries).Fare);
+        Assert.Contains("withFares=true", handler.Calls.Single().RequestUri!.ToString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Verbundticket_fuer_die_ganze_Fahrt()
+    {
+        var fares = $$"""
+            { "rule": "AB", "transferProducts": [ { "name": "Tageskarte", "amount": 6.4, "currency": "EUR" } ],
+              "effectiveFareLegProducts": [ [ [ { "name": "Einzelfahrt", "amount": 2.9, "currency": "EUR" } ] ], [ [ { "name": "Regio", "amount": 7.6, "currency": "EUR" } ] ] ] }
+            """;
+        var (planner, _) = Create(_ => Json(WithFares(fares)));
+        Assert.Equal(new TransitFare(6.4m, "EUR", "Tageskarte"), Assert.Single((await planner.PlanAsync(Request, CancellationToken.None)).Itineraries).Fare);
+    }
+
+    [Fact]
+    public async Task Ohne_Preis_fuer_einen_Abschnitt_kein_Gesamtpreis()
+    {
+        var fares = """{ "rule": "A_AB_B", "effectiveFareLegProducts": [ [ [ { "name": "Einzelfahrt", "amount": 2.9, "currency": "EUR" } ] ] ] }""";
+        var (planner, _) = Create(_ => Json(WithFares(fares, busTransferIndex: null)));
+        Assert.Null(Assert.Single((await planner.PlanAsync(Request, CancellationToken.None)).Itineraries).Fare);
+    }
 }

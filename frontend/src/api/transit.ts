@@ -29,12 +29,20 @@ export interface TransitLeg {
   color: string | null
 }
 
+/** Fahrpreis laut Verkehrsverbund (experimentell, fehlt oft) – für eine erwachsene Person. */
+export interface TransitFare {
+  amount: number
+  currency: string
+  name: string | null
+}
+
 export interface TransitItinerary {
   departure: string
   arrival: string
   durationMinutes: number
   transfers: number
   legs: TransitLeg[]
+  fare?: TransitFare | null
 }
 
 export interface TransitPlan {
