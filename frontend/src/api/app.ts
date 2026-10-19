@@ -149,6 +149,12 @@ export interface ConnectivityResult {
   ok: boolean
   milliseconds: number
   problem: string | null
+  /** blockiert | zertifikat | verschluesselung | netz | zeit | sonstiges */
+  kind?: string | null
+  /** Technische Originalmeldung (zum Weitergeben). */
+  detail?: string | null
+  /** Hinweis, wenn der Dienst nur über einen Ausweichserver erreichbar ist. */
+  note?: string | null
 }
 
 /** Prüft, ob die App die Dienste für die Suchen erreicht (z. B. wenn ein Antivirenprogramm blockiert). */

@@ -1,5 +1,7 @@
+using System.Collections.Concurrent;
 using System.Globalization;
 using System.Net.Http.Json;
+using System.Security.Authentication;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -57,6 +59,7 @@ public sealed partial class OsmActivitySearch(
 {
     private static readonly TimeSpan CacheDuration = TimeSpan.FromDays(1);
     private static readonly Lock PendingGate = new();
+    private static readonly ConcurrentDictionary<string, byte> TlsFailedHosts = new(StringComparer.OrdinalIgnoreCase);
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) { NumberHandling = JsonNumberHandling.AllowReadingFromString };
     private readonly ActivityOptions _options = options.Value;
 
@@ -235,9 +238,12 @@ public sealed partial class OsmActivitySearch(
     {
         var query = BuildQuery(request);
         var problems = new List<string>();
-        foreach (var url in _options.OverpassUrls.Where(u => !string.IsNullOrWhiteSpace(u)))
+        // Server, mit denen keine verschlüsselte Verbindung zustande kam (z. B. nur TLS 1.3 auf einem System ohne TLS 1.3),
+        // kommen ans Ende – so kostet nicht jede Suche erst einen Fehlversuch.
+        var urls = _options.OverpassUrls.Where(u => !string.IsNullOrWhiteSpace(u)).OrderBy(u => TlsFailedHosts.ContainsKey(HostOf(u))).ToList();
+        foreach (var url in urls)
         {
-            var host = Uri.TryCreate(url, UriKind.Absolute, out var uri) ? uri.Host : url;
+            var host = HostOf(url);
             try
             {
                 using var content = new FormUrlEncodedContent([new KeyValuePair<string, string>("data", query)]);
@@ -258,11 +264,17 @@ public sealed partial class OsmActivitySearch(
                     continue;
                 }
 
+                TlsFailedHosts.TryRemove(host, out _);
                 return body?.Elements ?? [];
             }
             catch (Exception e) when (e is HttpRequestException or JsonException or TaskCanceledException && !cancellationToken.IsCancellationRequested)
             {
                 LogFailed($"Overpass ({host})", e);
+                if (e.InnerException is AuthenticationException)
+                {
+                    TlsFailedHosts[host] = 0;
+                }
+
                 problems.Add(e is TaskCanceledException ? "Zeitüberschreitung" : "nicht erreichbar");
             }
         }
@@ -509,6 +521,8 @@ public sealed partial class OsmActivitySearch(
         builder[0] = char.ToUpperInvariant(builder[0]);
         return builder.ToString();
     }
+
+    private static string HostOf(string url) => Uri.TryCreate(url, UriKind.Absolute, out var uri) ? uri.Host : url;
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "{Service} antwortete mit {Status}")]
     private partial void LogFailedStatus(string service, int status);
