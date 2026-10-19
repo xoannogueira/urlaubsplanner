@@ -185,7 +185,8 @@ export function transitOptionInput(
     status: 'Favorite',
     stageId,
     url: lines.length > 0 ? bahnUrl(places.fromName, places.toName, itinerary) : googleTransitUrl(places.from, places.to),
-    price: null,
+    // Preis laut Verkehrsverbund, wenn bekannt (pro Person) – Bahn.de-Preise lassen sich nicht kostenlos abfragen.
+    price: itinerary.fare?.currency === 'EUR' ? itinerary.fare.amount : null,
     pricePerPerson: true,
     startDate: dateAt(itinerary.departure, first.from.timeZone),
     endDate: dateAt(itinerary.arrival, last.to.timeZone),

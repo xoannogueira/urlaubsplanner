@@ -74,6 +74,8 @@ public sealed partial class TransitousPlanner(HttpClient http, IMemoryCache cach
             "maxPreTransitTime=1800",
             "maxPostTransitTime=1800",
             "language=de",
+            // Experimentell: Preise aus den Tarifdaten der Verkehrsverbünde (fehlen oft, dann ohne Preis).
+            "withFares=true",
         };
         if (!string.IsNullOrEmpty(request.Cursor))
         {
@@ -116,8 +118,102 @@ public sealed partial class TransitousPlanner(HttpClient http, IMemoryCache cach
             dto.EndTime,
             (int)Math.Round(dto.Duration / 60.0),
             dto.Transfers,
-            legs);
+            legs,
+            Fare(dto));
     }
+
+    /// <summary>
+    /// Günstigster Gesamtpreis nach den Regeln der Tarif-Übergänge (GTFS fare_transfer_rules):
+    /// AB = nur das Übergangsticket, A_AB = erstes Ticket + Übergang, A_AB_B = jedes Ticket + Übergang.
+    /// Nur Tickets der Standard-Fahrgastgruppe (Erwachsene). Fehlt für einen Abschnitt mit Bus/Bahn ein Preis,
+    /// gibt es keinen – lieber kein Preis als ein falscher.
+    /// </summary>
+    internal static TransitFare? Fare(ItineraryDto dto)
+    {
+        var transfers = dto.FareTransfers;
+        if (transfers is not { Count: > 0 } || dto.Legs is null)
+        {
+            return null;
+        }
+
+        if (dto.Legs.Any(l => !string.Equals(l.Mode, "WALK", StringComparison.OrdinalIgnoreCase) && l.FareTransferIndex is null))
+        {
+            return null;
+        }
+
+        var currency = (string?)null;
+        var names = new List<string>();
+        decimal total = 0;
+        foreach (var transfer in transfers)
+        {
+            var legProducts = (transfer.EffectiveFareLegProducts ?? []).Select(Flatten).Select(Cheapest).ToList();
+            var transferProduct = Cheapest(transfer.TransferProducts ?? []);
+            IEnumerable<FareProductDto?> needed = transfer.Rule switch
+            {
+                "AB" => [transferProduct],
+                "A_AB" => [legProducts.FirstOrDefault(), transferProduct ?? Free],
+                _ => [.. legProducts, transferProduct ?? Free],
+            };
+            foreach (var product in needed)
+            {
+                if (product is null)
+                {
+                    return null;
+                }
+
+                if (ReferenceEquals(product, Free))
+                {
+                    continue;
+                }
+
+                if (currency is not null && !string.Equals(currency, product.Currency, StringComparison.OrdinalIgnoreCase))
+                {
+                    return null;
+                }
+
+                currency = product.Currency;
+                total += (decimal)product.Amount;
+                names.Add(product.Name);
+            }
+        }
+
+        return currency is null || total <= 0
+            ? null
+            : new TransitFare(decimal.Round(total, 2), currency.ToUpperInvariant(), names.Count == 1 ? names[0] : null);
+    }
+
+    private static readonly FareProductDto Free = new(string.Empty, 0, string.Empty, null);
+
+    private static List<FareProductDto> Flatten(System.Text.Json.JsonElement element)
+    {
+        var list = new List<FareProductDto>();
+        if (element.ValueKind == System.Text.Json.JsonValueKind.Array)
+        {
+            foreach (var item in element.EnumerateArray())
+            {
+                list.AddRange(Flatten(item));
+            }
+        }
+        else if (element.ValueKind == System.Text.Json.JsonValueKind.Object)
+        {
+            var product = element.Deserialize<FareProductDto>(JsonOptions);
+            if (product is not null)
+            {
+                list.Add(product);
+            }
+        }
+
+        return list;
+    }
+
+    private static FareProductDto? Cheapest(IEnumerable<FareProductDto> products) =>
+        products
+            .Where(p => p.RiderCategory is null || p.RiderCategory.IsDefaultFareCategory)
+            .Where(p => p.Amount >= 0 && !string.IsNullOrWhiteSpace(p.Currency))
+            .OrderBy(p => p.Amount)
+            .FirstOrDefault();
+
+    private static readonly System.Text.Json.JsonSerializerOptions JsonOptions = new(System.Text.Json.JsonSerializerDefaults.Web);
 
     private static TransitLeg MapLeg(LegDto leg) => new(
         leg.Mode,
@@ -148,7 +244,19 @@ public sealed partial class TransitousPlanner(HttpClient http, IMemoryCache cach
 
     internal sealed record PlanResponse(List<ItineraryDto>? Itineraries, List<ItineraryDto>? Direct, string? PreviousPageCursor, string? NextPageCursor);
 
-    internal sealed record ItineraryDto(double Duration, DateTimeOffset StartTime, DateTimeOffset EndTime, int Transfers, List<LegDto>? Legs);
+    internal sealed record ItineraryDto(
+        double Duration,
+        DateTimeOffset StartTime,
+        DateTimeOffset EndTime,
+        int Transfers,
+        List<LegDto>? Legs,
+        List<FareTransferDto>? FareTransfers = null);
+
+    internal sealed record FareTransferDto(string? Rule, List<FareProductDto>? TransferProducts, List<System.Text.Json.JsonElement>? EffectiveFareLegProducts);
+
+    internal sealed record FareProductDto(string Name, double Amount, string Currency, RiderCategoryDto? RiderCategory);
+
+    internal sealed record RiderCategoryDto(string? RiderCategoryName, bool IsDefaultFareCategory);
 
     internal sealed record LegDto(
         string Mode,
@@ -165,7 +273,8 @@ public sealed partial class TransitousPlanner(HttpClient http, IMemoryCache cach
         string? TripShortName,
         string? DisplayName,
         string? RouteColor,
-        List<PlaceDto>? IntermediateStops);
+        List<PlaceDto>? IntermediateStops,
+        int? FareTransferIndex = null);
 
     internal sealed record PlaceDto(string Name, double Lat, double Lon, string? Tz, string? Track);
 }

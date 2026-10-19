@@ -26,7 +26,19 @@ public sealed record TransitLeg(
     int Stops,
     string? Color);
 
-public sealed record TransitItinerary(DateTimeOffset Departure, DateTimeOffset Arrival, int DurationMinutes, int Transfers, IReadOnlyList<TransitLeg> Legs);
+/// <summary>
+/// Fahrpreis laut Verkehrsverbund (GTFS-Tarifdaten bei Transitous, experimentell): nur gesetzt, wenn sich für alle
+/// Abschnitte ein Preis in einer Währung ergibt. Name des Tickets nur bei genau einem Ticket.
+/// </summary>
+public sealed record TransitFare(decimal Amount, string Currency, string? Name);
+
+public sealed record TransitItinerary(
+    DateTimeOffset Departure,
+    DateTimeOffset Arrival,
+    int DurationMinutes,
+    int Transfers,
+    IReadOnlyList<TransitLeg> Legs,
+    TransitFare? Fare = null);
 
 /// <param name="EarlierCursor">Für „Früher“ (null = keine weiteren).</param>
 /// <param name="LaterCursor">Für „Später“.</param>

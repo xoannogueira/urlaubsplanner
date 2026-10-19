@@ -108,6 +108,15 @@ describe('Bus & Bahn', () => {
     expect(input.notes?.split('\n')[0]).toBe('Stuttgart → Paris: Mi., 12. Mai, 08:43–11:56, ICE 9576, direkt, Dauer 3 Std. 13 Min.')
     expect(input.notes).toContain('08:50 Stuttgart Hbf (Gleis 9) → 11:54 Paris Est: ICE 9576 Richtung Paris Est')
     expect(timeRange(input.notes)).toBe('08:43–11:56')
+    expect(input.price).toBeNull()
+    // Mit Preis aus den Tarifdaten: pro Person übernommen
+    const withFare = transitOptionInput(
+      { ...itinerary, fare: { amount: 39.9, currency: 'EUR', name: null } },
+      { fromName: 'Stuttgart', toName: 'Paris', from: { latitude: 48.78, longitude: 9.18 }, to: { latitude: 48.87, longitude: 2.36 } },
+      'anreise',
+      's1',
+    )
+    expect([withFare.price, withFare.pricePerPerson]).toEqual([39.9, true])
   })
 
   it('verlinkt bahn.de mit Start, Ziel und Abfahrt', () => {
