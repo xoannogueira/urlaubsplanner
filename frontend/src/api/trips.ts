@@ -116,7 +116,7 @@ export function useTripActions(tripId: string) {
       api<Trip>(`${base}/options/${id}`, { method: 'PUT', ...json(input) }),
     onSuccess: (trip: Trip, { id, input }: { id: string; input: OptionInput }) => {
       storeTrip(queryClient, trip)
-      if (input.kind === 'Flight') afterFlight(trip, id)
+      if (input.kind === 'Flight' || input.kind === 'Transport') afterFlight(trip, id)
     },
   })
 
