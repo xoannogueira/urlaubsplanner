@@ -1,3 +1,4 @@
+import { isPrivateStay } from '../../lib/privateStay'
 import clsx from 'clsx'
 import { CalendarDays, ExternalLink, Heart, MapPin, Pencil, Trash2, Route } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
@@ -100,14 +101,16 @@ export function OptionCard({
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div className="flex flex-col gap-0.5">
           <span className="font-mono text-lg font-semibold">
-            {option.totalPrice != null ? formatEuro(option.totalPrice) : 'Preis offen'}
+            {option.totalPrice === 0 ? 'kostenlos' : option.totalPrice != null ? formatEuro(option.totalPrice) : 'Preis offen'}
           </span>
           <span className="text-xs text-muted">
-            {option.price != null && option.pricePerPerson
-              ? `${formatEuro(option.price)} p. P. × ${travelers}`
-              : option.price != null
-                ? 'Gesamtpreis'
-                : 'noch kein Preis eingetragen'}
+            {isPrivateStay(option)
+              ? 'bei Familie/Freunden'
+              : option.price != null && option.pricePerPerson
+                ? `${formatEuro(option.price)} p. P. × ${travelers}`
+                : option.price != null
+                  ? 'Gesamtpreis'
+                  : 'noch kein Preis eingetragen'}
             {option.priceCheckedAt && ` · geprüft ${formatRelative(option.priceCheckedAt)}`}
           </span>
         </div>
