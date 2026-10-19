@@ -1,3 +1,4 @@
+import { hotelMismatches, mismatchText } from './hotelFit'
 import type { OptionKind, Stage, Trip, TripOption, TripSummary } from '../api/types'
 import { parseDate } from './format'
 import { parseSignature } from './flights'
@@ -212,6 +213,9 @@ export function openTasks(trip: Trip, summary: TripSummary): OpenTask[] {
       target: 'hotels',
       level: 'warn',
     })
+  }
+  for (const m of hotelMismatches(trip)) {
+    tasks.push({ id: `hotelfit:${m.option.id}`, text: mismatchText(m), target: 'hotels', level: 'warn' })
   }
   for (const stage of trip.stages) {
     const hasActivity = trip.options.some((o) => o.kind === 'Activity' && o.stageId === stage.id && o.status !== 'Idea')

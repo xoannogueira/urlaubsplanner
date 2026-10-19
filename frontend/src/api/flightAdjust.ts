@@ -5,6 +5,7 @@ import type { Place, Trip } from './types'
 import { tripRange } from '../lib/dates'
 import { flightDates, periodForFlight } from '../lib/flightPeriod'
 import { formatDateRange } from '../lib/format'
+import { newMismatchMessage } from '../lib/hotelFit'
 import { isChosen } from '../lib/options'
 
 /** Was die App nach dem Auswählen eines Flugs angepasst hat – für den Hinweis mit „Rückgängig“. */
@@ -42,8 +43,11 @@ export async function adjustTripToFlight(trip: Trip, optionId: string, store: (t
     let current = trip
     const done: string[] = []
     if (period) {
+      const beforePeriod = current
       current = await api<Trip>(`${base}/period`, { method: 'PUT', ...json(period) })
       done.push(`Zeitraum an den Flug angepasst: ${formatDateRange(period.startDate, period.endDate)}`)
+      const hotels = newMismatchMessage(beforePeriod, current)
+      if (hotels) done.push(hotels)
     }
     let stageId: string | null = null
     const range = tripRange(current)
