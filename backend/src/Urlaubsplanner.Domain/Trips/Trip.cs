@@ -27,7 +27,10 @@ public sealed class Trip
 
     public int Travelers { get; private set; }
 
-    /// <summary>Grober Zeitraum, solange noch keine Etappen angelegt sind.</summary>
+    /// <summary>
+    /// Der Reisezeitraum – der eine Zeitraum, nach dem sich alles richtet (Kopfzeile, Flugsuche, Wetter, PDF).
+    /// Ohne Etappen darf er offen sein; mit Etappen umfasst er immer alle Etappen (Lücken dazwischen sind erlaubt).
+    /// </summary>
     public DateOnly? StartDate { get; private set; }
 
     public DateOnly? EndDate { get; private set; }
@@ -70,7 +73,7 @@ public sealed class Trip
         IEnumerable<TripOption> options,
         PackingList? packing = null,
         TripParty? party = null) =>
-        new(id, createdAt, stages.ToList(), options.ToList())
+        new Trip(id, createdAt, stages.ToList(), options.ToList())
         {
             Packing = packing ?? PackingList.Empty,
             Party = party ?? TripParty.Empty,
@@ -81,7 +84,7 @@ public sealed class Trip
             Notes = notes,
             OwnerId = ownerId,
             UpdatedAt = updatedAt,
-        };
+        }.CoverStages();
 
     public void Update(TripData data, DateTimeOffset now)
     {
@@ -93,12 +96,25 @@ public sealed class Trip
         }
 
         Guard.DateOrder(data.StartDate, data.EndDate, "endDate");
+        var notes = Guard.OptionalText(data.Notes, "notes", 4000);
+
+        if (_stages.Count > 0)
+        {
+            // Mit Etappen gilt: ein Zeitraum. Neue Daten verschieben erste und letzte Etappe; fehlende Daten lassen ihn, wie er ist.
+            if (data.StartDate is { } start && data.EndDate is { } end && (start != StartDate || end != EndDate))
+            {
+                ChangePeriod(start, end, now);
+            }
+        }
+        else
+        {
+            StartDate = data.StartDate;
+            EndDate = data.EndDate;
+        }
 
         Name = name;
         Travelers = travelers;
-        StartDate = data.StartDate;
-        EndDate = data.EndDate;
-        Notes = Guard.OptionalText(data.Notes, "notes", 4000);
+        Notes = notes;
         Touch(now);
     }
 
@@ -106,6 +122,7 @@ public sealed class Trip
     {
         var stage = Stage.Create(data);
         _stages.Add(stage);
+        CoverStages();
         Touch(now);
         return stage;
     }
@@ -114,14 +131,11 @@ public sealed class Trip
     {
         var stage = FindStage(stageId);
         stage.Update(data);
+        CoverStages();
         Touch(now);
         return stage;
     }
 
-    /// <summary>
-    /// Entfernt eine Etappe. Ihre Optionen bleiben erhalten und gelten danach für die ganze Reise,
-    /// damit keine gespeicherten Links verloren gehen.
-    /// </summary>
     /// <summary>
     /// Neuer Reisezeitraum (z. B. weil der gebuchte Flug früher oder später fliegt): Die erste Etappe beginnt am neuen
     /// Startdatum, die letzte endet am neuen Enddatum. Etappen dazwischen bleiben unverändert.
@@ -160,6 +174,10 @@ public sealed class Trip
         Touch(now);
     }
 
+    /// <summary>
+    /// Entfernt eine Etappe. Ihre Optionen bleiben erhalten und gelten danach für die ganze Reise,
+    /// damit keine gespeicherten Links verloren gehen. Der Reisezeitraum bleibt, wie er ist.
+    /// </summary>
     public void RemoveStage(Guid stageId, DateTimeOffset now)
     {
         var stage = FindStage(stageId);
@@ -233,6 +251,24 @@ public sealed class Trip
         }
 
         Touch(now);
+    }
+
+    /// <summary>
+    /// Liegt eine Etappe außerhalb des Reisezeitraums, wird er verlängert (nie verkürzt). Hat die Reise noch keinen
+    /// Zeitraum, ergibt er sich aus den Etappen. Gilt auch beim Laden – ältere Reisen werden so angeglichen.
+    /// </summary>
+    private Trip CoverStages()
+    {
+        if (_stages.Count == 0)
+        {
+            return this;
+        }
+
+        var first = _stages.Min(s => s.StartDate);
+        var last = _stages.Max(s => s.EndDate);
+        StartDate = StartDate is { } start && start < first ? start : first;
+        EndDate = EndDate is { } end && end > last ? end : last;
+        return this;
     }
 
     private Stage FindStage(Guid stageId) =>

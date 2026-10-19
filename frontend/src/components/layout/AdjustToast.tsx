@@ -2,7 +2,7 @@ import { CircleCheck, Undo2, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { ADJUST_EVENT, type TripAdjustment } from '../../api/flightAdjust'
 
-/** Hinweis unten rechts, wenn die App die Reise an einen gewählten Flug angepasst hat – mit „Rückgängig“. */
+/** Hinweis unten rechts, wenn die App die Reise selbst angepasst hat (Flug gewählt, Etappe verlängert) – wenn möglich mit „Rückgängig“. */
 export function AdjustToast({ tripId }: { tripId: string }) {
   const [current, setCurrent] = useState<TripAdjustment | null>(null)
   const [busy, setBusy] = useState(false)
@@ -23,6 +23,7 @@ export function AdjustToast({ tripId }: { tripId: string }) {
   }, [current, busy])
 
   if (!current) return null
+  const undo = current.undo
   return (
     <div
       role="status"
@@ -30,24 +31,25 @@ export function AdjustToast({ tripId }: { tripId: string }) {
     >
       <CircleCheck size={18} className="mt-0.5 shrink-0 text-accent" />
       <span className="flex-1">{current.message}</span>
-      <button
-        type="button"
-        disabled={busy}
-        onClick={() => {
-          setBusy(true)
-          current
-            .undo()
-            .catch((e) => console.warn('Rückgängig:', e))
-            .finally(() => {
-              setBusy(false)
-              setCurrent(null)
-            })
-        }}
-        className="flex shrink-0 cursor-pointer items-center gap-1 font-bold text-accent hover:underline disabled:opacity-50"
-      >
-        <Undo2 size={14} />
-        Rückgängig
-      </button>
+      {undo && (
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => {
+            setBusy(true)
+            undo()
+              .catch((e) => console.warn('Rückgängig:', e))
+              .finally(() => {
+                setBusy(false)
+                setCurrent(null)
+              })
+          }}
+          className="flex shrink-0 cursor-pointer items-center gap-1 font-bold text-accent hover:underline disabled:opacity-50"
+        >
+          <Undo2 size={14} />
+          Rückgängig
+        </button>
+      )}
       <button
         type="button"
         aria-label="Hinweis schließen"

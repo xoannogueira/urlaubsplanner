@@ -21,7 +21,7 @@ import { PeriodDialog } from './PeriodDialog'
 import { Link, NavLink, Outlet, useParams } from 'react-router'
 import { useTrip, useTripActions, useTrips } from '../../api/trips'
 import type { Trip } from '../../api/types'
-import { shownRange } from '../../lib/dates'
+import { tripRange } from '../../lib/dates'
 import { formatDateRange, peopleLabel } from '../../lib/format'
 import { isChosen } from '../../lib/options'
 import { KeyBanner } from '../../features/setup/KeyBanner'
@@ -167,7 +167,7 @@ function NavItem({ to, end, icon, badge, children }: { to: string; end?: boolean
 function TripHeader({ trip }: { trip: Trip }) {
   const { updateTrip } = useTripActions(trip.id)
   const [periodOpen, setPeriodOpen] = useState(false)
-  const { start: stageStart, end: stageEnd } = shownRange(trip)
+  const { start: periodStart, end: periodEnd } = tripRange(trip)
 
   const setTravelers = (travelers: number) =>
     updateTrip.mutate({ name: trip.name, travelers, startDate: trip.startDate, endDate: trip.endDate, notes: trip.notes })
@@ -192,7 +192,7 @@ function TripHeader({ trip }: { trip: Trip }) {
           className="flex h-10 cursor-pointer items-center gap-2 rounded-[10px] bg-surface-2 px-3.5 text-sm font-semibold hover:bg-surface-3"
         >
           <CalendarDays size={16} />
-          {stageStart && stageEnd ? formatDateRange(stageStart, stageEnd) : 'Zeitraum festlegen'}
+          {periodStart && periodEnd ? formatDateRange(periodStart, periodEnd) : 'Zeitraum festlegen'}
         </button>
         {trip.party.members.length > 0 ? (
           <Link

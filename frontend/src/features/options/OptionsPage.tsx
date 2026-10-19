@@ -1,5 +1,5 @@
 import clsx from 'clsx'
-import { BedDouble, Compass, ExternalLink, List, Map as MapIcon, MapPinOff, Plane, Plus, Search, TrainFront, X } from 'lucide-react'
+import { BedDouble, Compass, House, ExternalLink, List, Map as MapIcon, MapPinOff, Plane, Plus, Search, TrainFront, X } from 'lucide-react'
 import { useNavigate } from 'react-router'
 import { useCallback, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useTripActions } from '../../api/trips'
@@ -16,6 +16,8 @@ import { toLatLng } from '../../lib/geo'
 import { optionPins, stageMarkers } from '../../lib/mapData'
 import { isRentalCar, kindLabels, sortOptions } from '../../lib/options'
 import { RentalDialog } from '../rental/RentalDialog'
+import { PrivateStayDialog } from '../privatestay/PrivateStayDialog'
+import { isPrivateStay } from '../../lib/privateStay'
 import { canRecheck } from '../../lib/hotels'
 import { useHotelSearchStatus } from '../../api/hotels'
 import { canRecheckFlight, parseSignature, savedFlightArcs } from '../../lib/flights'
@@ -51,6 +53,7 @@ export function OptionsPage({ kind }: { kind: OptionKind }) {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
   const [dialog, setDialog] = useState<{ option?: TripOption } | null>(null)
   const [rentalDialog, setRentalDialog] = useState<{ option?: TripOption } | null>(null)
+  const [privateDialog, setPrivateDialog] = useState<{ option?: TripOption } | null>(null)
   const [toDelete, setToDelete] = useState<TripOption | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [view, setView] = useState<'list' | 'map'>('list')
@@ -235,6 +238,11 @@ export function OptionsPage({ kind }: { kind: OptionKind }) {
                 </ViewButton>
               </div>
             )}
+            {kind === 'Hotel' && (
+              <Button icon={<House size={16} />} onClick={() => setPrivateDialog({})}>
+                Bei Familie/Freunden
+              </Button>
+            )}
             {kind === 'Transport' && (
               <Button icon={<Plus size={16} strokeWidth={2.5} />} onClick={() => setRentalDialog({})}>
                 Mietwagen
@@ -273,7 +281,13 @@ export function OptionsPage({ kind }: { kind: OptionKind }) {
                       stage={option.stageId ? stageById.get(option.stageId) : undefined}
                       travelers={trip.travelers}
                       onStatus={(status) => setStatus(option, status)}
-                      onEdit={() => (isRentalCar(option) ? setRentalDialog({ option }) : setDialog({ option }))}
+                      onEdit={() =>
+                        isRentalCar(option)
+                          ? setRentalDialog({ option })
+                          : isPrivateStay(option)
+                            ? setPrivateDialog({ option })
+                            : setDialog({ option })
+                      }
                       onDelete={() => setToDelete(option)}
                       selected={showMap && option.id === selectedId}
                       routeFromHotel={activityRoute(trip, option)}
@@ -341,6 +355,18 @@ export function OptionsPage({ kind }: { kind: OptionKind }) {
         onSubmit={(input) =>
           rentalDialog?.option
             ? actions.updateOption.mutateAsync({ id: rentalDialog.option.id, input })
+            : actions.addOption.mutateAsync(input)
+        }
+      />
+      <PrivateStayDialog
+        open={privateDialog !== null}
+        trip={trip}
+        option={privateDialog?.option}
+        defaultStageId={defaultStage}
+        onClose={() => setPrivateDialog(null)}
+        onSubmit={(input) =>
+          privateDialog?.option
+            ? actions.updateOption.mutateAsync({ id: privateDialog.option.id, input })
             : actions.addOption.mutateAsync(input)
         }
       />

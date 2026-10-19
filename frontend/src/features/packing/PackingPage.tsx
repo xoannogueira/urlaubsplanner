@@ -1,5 +1,5 @@
 import clsx from 'clsx'
-import { Backpack, Check, Plus, Sparkles, Trash2, X } from 'lucide-react'
+import { Backpack, Check, ListChecks, Plus, Sparkles, Trash2, X } from 'lucide-react'
 import { useMemo, useState, type FormEvent } from 'react'
 import { useTripActions } from '../../api/trips'
 import type { PackingItem, PackingList } from '../../api/types'
@@ -7,7 +7,16 @@ import { useTripWeather } from '../../api/weather'
 import { useTripContext } from '../../components/layout/tripContext'
 import { Button, IconButton } from '../../components/ui/Button'
 import { EmptyState, ProgressBar } from '../../components/ui/Feedback'
-import { fromSuggestion, groupPacking, openSuggestions, packingCategories, suggestPacking, type PackingSuggestion } from '../../lib/packing'
+import { PackingTemplatesDialog } from './PackingTemplatesDialog'
+import {
+  applyTemplate,
+  fromSuggestion,
+  groupPacking,
+  openSuggestions,
+  packingCategories,
+  suggestPacking,
+  type PackingSuggestion,
+} from '../../lib/packing'
 
 const newId = () => crypto.randomUUID()
 
@@ -38,11 +47,23 @@ export function PackingPage() {
   const dismiss = (s: PackingSuggestion) => save({ ...list, dismissed: [...list.dismissed, s.key] })
   const add = (text: string, category: string) =>
     save({ ...list, items: [...list.items, { id: newId(), text, category, packed: false, suggestionKey: null }] })
+  const [templatesOpen, setTemplatesOpen] = useState(false)
 
   return (
     <div className="flex flex-col gap-5 px-4 pb-10 pt-6 md:px-8">
+      <PackingTemplatesDialog
+        open={templatesOpen}
+        list={list}
+        onClose={() => setTemplatesOpen(false)}
+        onApply={(t) => save(applyTemplate(list, t.items, newId).list)}
+      />
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_400px]">
         <div className="flex min-w-0 flex-col gap-5">
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <Button size="sm" icon={<ListChecks size={16} />} onClick={() => setTemplatesOpen(true)}>
+              Vorlagen
+            </Button>
+          </div>
           {list.items.length > 0 && (
             <section className="flex flex-wrap items-center gap-4 rounded-[18px] border border-line bg-surface p-5">
               <div className="flex min-w-[220px] flex-1 flex-col gap-2.5">

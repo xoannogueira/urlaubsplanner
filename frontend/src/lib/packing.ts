@@ -125,3 +125,32 @@ export function groupPacking(items: PackingItem[]): { category: string; items: P
   const categories = [...new Set(items.map((i) => i.category))].sort((a, b) => order(a) - order(b) || a.localeCompare(b, 'de'))
   return categories.map((category) => ({ category, items: items.filter((i) => i.category === category) }))
 }
+
+/** Vorlage übernehmen: nur Einträge, die noch nicht auf der Liste stehen (gleicher Text), ohne Haken. */
+export function applyTemplate(
+  list: PackingList,
+  items: { text: string; category: string; suggestionKey: string | null }[],
+  newId: () => string,
+): { list: PackingList; added: number } {
+  const have = new Set(list.items.map((i) => i.text.trim().toLowerCase()))
+  const fresh = items.filter((i) => {
+    const k = i.text.trim().toLowerCase()
+    if (have.has(k)) return false
+    have.add(k)
+    return true
+  })
+  return {
+    list: {
+      ...list,
+      items: [
+        ...list.items,
+        ...fresh.map((i) => ({ id: newId(), text: i.text, category: i.category, packed: false, suggestionKey: i.suggestionKey })),
+      ],
+    },
+    added: fresh.length,
+  }
+}
+
+/** Aktuelle Packliste als Vorlage: nur Text, Kategorie und Herkunft – keine Haken. */
+export const templateItems = (list: PackingList) =>
+  list.items.map((i) => ({ text: i.text, category: i.category, suggestionKey: i.suggestionKey }))

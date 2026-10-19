@@ -1,4 +1,4 @@
-import { CalendarRange, Hourglass, MapPin, Pencil, Plus, Trash2, TriangleAlert } from 'lucide-react'
+import { CalendarRange, CircleHelp, Hourglass, MapPin, Pencil, Plus, Trash2, TriangleAlert } from 'lucide-react'
 import { useMemo, useState, type ReactNode } from 'react'
 import { useNavigate } from 'react-router'
 import { useDeleteTrip, useTripActions, useTripSummary } from '../../api/trips'
@@ -16,6 +16,8 @@ import { TripFormDialog } from '../trips/TripFormDialog'
 import { CostByKindCard, CostByStageCard } from './CostCards'
 import { OpenTasks } from './OpenTasks'
 import { StageFormDialog } from './StageFormDialog'
+import { StageGuide } from './StageGuide'
+import { stageGuideDismissed } from '../../lib/stageGuide'
 import { TripTimeline } from './TripTimeline'
 import { WeatherCard } from '../weather/WeatherCard'
 
@@ -30,6 +32,7 @@ export function OverviewPage() {
   const [stageToDelete, setStageToDelete] = useState<Stage | null>(null)
   const [editTrip, setEditTrip] = useState(false)
   const [confirmDeleteTrip, setConfirmDeleteTrip] = useState(false)
+  const [guideOpen, setGuideOpen] = useState(() => !stageGuideDismissed())
 
   const mapStages = useMemo(() => stageMarkers(trip.stages), [trip.stages])
   const stagesWithoutPlace = trip.stages.length - mapStages.length
@@ -43,11 +46,17 @@ export function OverviewPage() {
           <Card
             title="Reise-Etappen"
             action={
-              <Button size="sm" variant="primary" icon={<Plus size={16} strokeWidth={2.5} />} onClick={() => setStageDialog({})}>
-                Etappe
-              </Button>
+              <div className="flex items-center gap-2">
+                <IconButton label="Was ist eine Etappe?" active={guideOpen} className="size-9" onClick={() => setGuideOpen((o) => !o)}>
+                  <CircleHelp size={16} />
+                </IconButton>
+                <Button size="sm" variant="primary" icon={<Plus size={16} strokeWidth={2.5} />} onClick={() => setStageDialog({})}>
+                  Etappe
+                </Button>
+              </div>
             }
           >
+            {guideOpen && <StageGuide onClose={() => setGuideOpen(false)} />}
             {trip.stages.length === 0 ? (
               <EmptyState
                 icon={<MapPin size={22} />}
@@ -99,8 +108,7 @@ export function OverviewPage() {
                         </>
                       ) : (
                         <>
-                          <strong>Zwischen zwei Etappen</strong> ist {formatShortDate(gap.from)} – {formatShortDate(gap.to)} keinem Ort
-                          zugeordnet
+                          <strong>Ohne Etappe:</strong> {formatShortDate(gap.from)} – {formatShortDate(gap.to)} ist keinem Ort zugeordnet
                         </>
                       )}
                     </span>

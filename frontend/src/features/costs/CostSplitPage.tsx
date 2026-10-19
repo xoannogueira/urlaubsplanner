@@ -6,7 +6,8 @@ import type { TripMember, TripParty } from '../../api/types'
 import { useTripContext } from '../../components/layout/tripContext'
 import { Button, IconButton } from '../../components/ui/Button'
 import { formatEuro } from '../../lib/format'
-import { calculateSplit, type SplitItem } from '../../lib/split'
+import { ConfirmDialog } from '../../components/ui/ConfirmDialog'
+import { calculateSplit, removalImpact, type SplitItem } from '../../lib/split'
 
 const newId = () => crypto.randomUUID()
 const euro = (n: number) => formatEuro(n).replace(/,00(?=\s?€)/, '')
@@ -23,6 +24,15 @@ export function CostSplitPage() {
   const members = party.members
   const split = calculateSplit(trip)
   const save = (next: TripParty) => setParty.mutate(next)
+  const [toRemove, setToRemove] = useState<TripMember | null>(null)
+  const removeMember = (m: TripMember) => save({ ...party, members: members.filter((x) => x.id !== m.id) })
+  // Hat die Person etwas gekauft oder ist sie nur bei einzelnen Posten dabei, erst nachfragen.
+  const askRemove = (m: TripMember) => {
+    const impact = removalImpact(split, m.id, members.length)
+    if (impact.bought.length === 0 && impact.sharedIn.length === 0) removeMember(m)
+    else setToRemove(m)
+  }
+  const impact = toRemove ? removalImpact(split, toRemove.id, members.length) : null
 
   const setShare = (item: SplitItem, change: { paidBy?: string | null; for?: string[] }) => {
     const forList = (list: string[]) => (list.length === members.length ? [] : list)
@@ -44,7 +54,19 @@ export function CostSplitPage() {
         members={members}
         travelers={trip.travelers}
         onChange={(next) => save({ ...party, members: next })}
+        onRemove={askRemove}
         pending={setParty.isPending}
+      />
+      <ConfirmDialog
+        open={toRemove !== null}
+        title={`${toRemove?.name ?? ''} entfernen?`}
+        message={impact && toRemove ? removalMessage(toRemove.name, impact) : ''}
+        confirmLabel="Trotzdem entfernen"
+        onClose={() => setToRemove(null)}
+        onConfirm={() => {
+          if (toRemove) removeMember(toRemove)
+          setToRemove(null)
+        }}
       />
 
       {members.length > 0 && (
@@ -230,15 +252,28 @@ function CalculationCard({ split }: { split: ReturnType<typeof calculateSplit> }
   )
 }
 
+function removalMessage(name: string, impact: ReturnType<typeof removalImpact>): string {
+  const parts: string[] = []
+  if (impact.bought.length > 0)
+    parts.push(
+      `${name} hat gekauft: ${impact.bought.map((b) => `${b.title} (${euro(b.amount)})`).join(', ')}. Diese Posten stehen danach ohne Käufer da – trag dann ein, wer sie bezahlt hat.`,
+    )
+  if (impact.sharedIn.length > 0)
+    parts.push(`${name} ist bei ${impact.sharedIn.join(', ')} dabei – diese Posten werden auf die anderen aufgeteilt.`)
+  return parts.join(' ')
+}
+
 function MembersCard({
   members,
   travelers,
   onChange,
+  onRemove,
   pending,
 }: {
   members: TripMember[]
   travelers: number
   onChange: (members: TripMember[]) => void
+  onRemove: (member: TripMember) => void
   pending: boolean
 }) {
   const [name, setName] = useState('')
@@ -285,7 +320,7 @@ function MembersCard({
                 type="button"
                 aria-label={`${m.name} entfernen`}
                 title={`${m.name} entfernen`}
-                onClick={() => onChange(members.filter((x) => x.id !== m.id))}
+                onClick={() => onRemove(m)}
                 className="flex size-6 cursor-pointer items-center justify-center rounded-full text-muted hover:bg-surface-3 hover:text-text"
               >
                 <X size={13} />
