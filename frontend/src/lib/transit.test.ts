@@ -105,7 +105,7 @@ describe('Bus & Bahn', () => {
     expect(input.title).toBe('Stuttgart → Paris')
     expect(input.externalId).toBe('anreise|2027-05-12T06:43:00+00:00|ICE 9576')
     expect(input.startDate).toBe('2027-05-12')
-    expect(input.notes?.split('\n')[0]).toBe('Stuttgart → Paris: Mi., 12. Mai, 08:43–11:56, ICE 9576, direkt')
+    expect(input.notes?.split('\n')[0]).toBe('Stuttgart → Paris: Mi., 12. Mai, 08:43–11:56, ICE 9576, direkt, Dauer 3 Std. 13 Min.')
     expect(input.notes).toContain('08:50 Stuttgart Hbf (Gleis 9) → 11:54 Paris Est: ICE 9576 Richtung Paris Est')
     expect(timeRange(input.notes)).toBe('08:43–11:56')
   })

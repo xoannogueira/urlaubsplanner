@@ -1,12 +1,14 @@
-import { isPrivateStay } from '../../lib/privateStay'
 import clsx from 'clsx'
 import { CalendarDays, ExternalLink, Heart, MapPin, Pencil, Trash2, Route } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 import type { OptionStatus, Stage, TripOption } from '../../api/types'
+import { JourneyDetails } from '../../components/JourneyDetails'
 import { StatusControl } from '../../components/StatusControl'
 import { IconButton } from '../../components/ui/Button'
 import { buttonClass } from '../../components/ui/buttonStyles'
 import { formatDateRange, formatEuro, formatRelative, hostOf } from '../../lib/format'
+import { parseJourneyNotes } from '../../lib/journeyNotes'
+import { isPrivateStay } from '../../lib/privateStay'
 
 interface OptionCardProps {
   option: TripOption
@@ -41,6 +43,8 @@ export function OptionCard({
   const chosen = option.status === 'Selected' || option.status === 'Booked'
   const hasDates = option.startDate || option.endDate
   const location = displayLocation(option.title, option.locationName)
+  // Flüge und Bus & Bahn: Strecken übersichtlich statt als Notiz
+  const journey = (option.kind === 'Flight' || option.kind === 'Transport') && parseJourneyNotes(option.notes).lines.length > 0
 
   return (
     <article
@@ -96,7 +100,11 @@ export function OptionCard({
         </div>
       </div>
 
-      {option.notes && <p className="line-clamp-2 whitespace-pre-line text-[13px] leading-relaxed text-muted">{option.notes}</p>}
+      {journey ? (
+        <JourneyDetails option={option} />
+      ) : (
+        option.notes && <p className="line-clamp-2 whitespace-pre-line text-[13px] leading-relaxed text-muted">{option.notes}</p>
+      )}
 
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div className="flex flex-col gap-0.5">
