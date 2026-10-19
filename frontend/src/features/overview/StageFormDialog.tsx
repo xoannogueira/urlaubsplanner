@@ -35,9 +35,8 @@ export function StageFormDialog({ open, onClose, onSubmit, stage, trip }: StageF
 function StageForm({ stage, trip, onSubmit, onClose }: Omit<StageFormDialogProps, 'open'>) {
   // Neue Etappe: schließt an die letzte an und reicht bis zum Reiseende.
   const [defaults] = useState(() => newStageDefaults(trip))
+  // Keine festen Grenzen: liegt die Etappe außerhalb, verlängert sich der Reisezeitraum (mit Hinweis).
   const range = tripRange(trip)
-  // Feste Grenzen nur, wenn die Reise selbst Daten hat – sonst könnte man die Reise nicht um Etappen verlängern.
-  const limits = trip.startDate && trip.endDate ? { min: trip.startDate, max: trip.endDate } : { min: null, max: null }
   const [name, setName] = useState(stage?.name ?? '')
   const [coordinates, setCoordinates] = useState<LatLng | null>(toLatLng(stage))
   const [startDate, setStartDate] = useState(stage?.startDate ?? defaults.start)
@@ -96,8 +95,6 @@ function StageForm({ stage, trip, onSubmit, onClose }: Omit<StageFormDialogProps
           label="Anreise"
           value={startDate}
           onValue={setStartDate}
-          min={limits.min}
-          max={limits.max}
           openAt={range.start}
           required
           error={fe.startDate}
@@ -107,13 +104,15 @@ function StageForm({ stage, trip, onSubmit, onClose }: Omit<StageFormDialogProps
           label="Abreise"
           value={endDate}
           onValue={setEndDate}
-          min={startDate || limits.min}
-          max={limits.max}
+          min={startDate || null}
           openAt={range.end && range.end > startDate ? range.end : startDate || range.start}
           required
           error={fe.endDate}
         />
       </div>
+      {range.start && range.end && ((startDate && startDate < range.start) || (endDate && endDate > range.end)) && (
+        <p className="-mt-2 text-[13px] text-muted">Liegt außerhalb des Reisezeitraums – er wird beim Speichern verlängert.</p>
+      )}
       <TextAreaField
         label="Beschreibung (optional)"
         value={description}

@@ -60,4 +60,51 @@ public sealed class PeriodTests
         trip.ChangePeriod(May(1), May(8), Now);
         Assert.Equal((May(1), May(8)), (trip.StartDate!.Value, trip.EndDate!.Value));
     }
+
+    [Fact]
+    public void Etappe_ausserhalb_verlaengert_den_Reisezeitraum()
+    {
+        var trip = Trip.Create(new TripData("Portugal", 2, May(10), May(15)), Now);
+        trip.AddStage(new StageData("Lissabon", May(10), May(13)), Now);
+        var porto = trip.AddStage(new StageData("Porto", May(13), May(17)), Now);
+
+        Assert.Equal((May(10), May(17)), (trip.StartDate!.Value, trip.EndDate!.Value));
+
+        trip.UpdateStage(porto.Id, new StageData("Porto", May(13), May(15)), Now);
+        Assert.Equal(May(17), trip.EndDate); // wird nie still verkürzt
+    }
+
+    [Fact]
+    public void Ohne_Reisedaten_ergibt_sich_der_Zeitraum_aus_den_Etappen()
+    {
+        var trip = Trip.Create(new TripData("Portugal", 2), Now);
+        trip.AddStage(new StageData("Porto", May(16), May(20)), Now);
+        trip.AddStage(new StageData("Lissabon", May(12), May(16)), Now);
+
+        Assert.Equal((May(12), May(20)), (trip.StartDate!.Value, trip.EndDate!.Value));
+    }
+
+    [Fact]
+    public void Aeltere_Reisen_werden_beim_Laden_angeglichen()
+    {
+        var stage = Stage.Restore(Guid.NewGuid(), "Lissabon", May(12), May(16), null, null);
+        var trip = Trip.Restore(Guid.NewGuid(), "Alt", 2, May(13), May(14), null, null, Now, Now, [stage], []);
+
+        Assert.Equal((May(12), May(16)), (trip.StartDate!.Value, trip.EndDate!.Value));
+    }
+
+    [Fact]
+    public void Reise_bearbeiten_mit_Etappen_verschiebt_erste_und_letzte_Etappe()
+    {
+        var trip = Trip.Create(new TripData("Portugal", 2), Now);
+        trip.AddStage(new StageData("Lissabon", May(12), May(16)), Now);
+        trip.AddStage(new StageData("Porto", May(16), May(20)), Now);
+
+        trip.Update(new TripData("Portugal", 3, May(11), May(21)), Now);
+        Assert.Equal((May(11), May(21)), (trip.Stages[0].StartDate, trip.Stages[^1].EndDate));
+
+        // Ohne Daten bleibt der Zeitraum, wie er ist.
+        trip.Update(new TripData("Portugal", 3), Now);
+        Assert.Equal((May(11), May(21)), (trip.StartDate!.Value, trip.EndDate!.Value));
+    }
 }

@@ -13,19 +13,26 @@ export function addDays(iso: string, days: number): string {
   return d.toISOString().slice(0, 10)
 }
 
-/** Reisezeitraum: die Daten der Reise, sonst von der ersten bis zur letzten Etappe. */
+/**
+ * Der Reisezeitraum – der eine Zeitraum für Kopfzeile, Suchen, Wetter und PDF. Er umfasst immer alle Etappen
+ * (der Server sorgt dafür); ohne Reisedaten ergibt er sich aus den Etappen.
+ */
 export function tripRange(trip: Pick<Trip, 'startDate' | 'endDate' | 'stages'>): DateRange {
-  const starts = trip.stages.map((s) => s.startDate).sort()
-  const ends = trip.stages.map((s) => s.endDate).sort()
-  return { start: trip.startDate ?? starts[0] ?? null, end: trip.endDate ?? ends.at(-1) ?? null }
+  const starts = [trip.startDate, ...trip.stages.map((s) => s.startDate)].filter((d): d is string => !!d).sort()
+  const ends = [trip.endDate, ...trip.stages.map((s) => s.endDate)].filter((d): d is string => !!d).sort()
+  return { start: starts[0] ?? null, end: ends.at(-1) ?? null }
 }
 
-/** Zeitraum, wie er oben in der Kopfzeile steht: von der ersten bis zur letzten Etappe, ohne Etappen die Reisedaten. */
-export function shownRange(trip: Pick<Trip, 'startDate' | 'endDate' | 'stages'>): DateRange {
-  if (trip.stages.length === 0) return { start: trip.startDate, end: trip.endDate }
-  const starts = trip.stages.map((s) => s.startDate).sort()
-  const ends = trip.stages.map((s) => s.endDate).sort()
-  return { start: starts[0], end: ends.at(-1)! }
+/** „Reisezeitraum auf 1.–12. Mai verlängert“, wenn eine Etappe den Zeitraum vergrößert hat – sonst null. */
+export function periodExtendedMessage(
+  before: Pick<Trip, 'startDate' | 'endDate' | 'stages'>,
+  after: Pick<Trip, 'startDate' | 'endDate' | 'stages'>,
+): string | null {
+  const a = tripRange(before)
+  const b = tripRange(after)
+  if (!a.start || !a.end || !b.start || !b.end) return null
+  if (b.start >= a.start && b.end <= a.end) return null
+  return `Reisezeitraum auf ${formatDateRange(b.start, b.end)} verlängert`
 }
 
 /** Zeitraum für Einträge einer Etappe (Hotel, Aktivität): die Etappe, sonst die ganze Reise. */

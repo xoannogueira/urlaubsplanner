@@ -99,8 +99,7 @@ export function OverviewPage() {
                         </>
                       ) : (
                         <>
-                          <strong>Zwischen zwei Etappen</strong> ist {formatShortDate(gap.from)} – {formatShortDate(gap.to)} keinem Ort
-                          zugeordnet
+                          <strong>Ohne Etappe:</strong> {formatShortDate(gap.from)} – {formatShortDate(gap.to)} ist keinem Ort zugeordnet
                         </>
                       )}
                     </span>

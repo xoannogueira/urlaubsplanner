@@ -2,7 +2,7 @@ import { useState, type FormEvent } from 'react'
 import { ApiError } from '../../api/client'
 import { useTripActions } from '../../api/trips'
 import type { Trip } from '../../api/types'
-import { shownRange } from '../../lib/dates'
+import { tripRange } from '../../lib/dates'
 import { formatDateRange, nightsLabel } from '../../lib/format'
 import { Button } from '../ui/Button'
 import { DateField } from '../ui/DateField'
@@ -32,7 +32,7 @@ export function PeriodDialog({ trip, open, onClose }: { trip: Trip; open: boolea
 
 function PeriodForm({ trip, onClose }: { trip: Trip; onClose: () => void }) {
   const { changePeriod } = useTripActions(trip.id)
-  const range = shownRange(trip)
+  const range = tripRange(trip)
   const [start, setStart] = useState(range.start ?? '')
   const [end, setEnd] = useState(range.end ?? '')
   const [error, setError] = useState<ApiError | null>(null)

@@ -70,6 +70,20 @@ public sealed class TripSummaryTests
     }
 
     [Fact]
+    public void Tage_vor_und_nach_den_Etappen_sind_offene_Punkte()
+    {
+        var trip = Trip.Create(new TripData("Japan", 2, new DateOnly(2027, 10, 2), new DateOnly(2027, 10, 11)), Now);
+        var tokyo = trip.AddStage(new StageData("Tokio", new DateOnly(2027, 10, 4), new DateOnly(2027, 10, 9)), Now);
+        trip.AddOption(new OptionData(OptionKind.Hotel, "Hotel", OptionStatus.Booked, tokyo.Id), Now);
+
+        var summary = TripSummaryCalculator.Calculate(trip);
+        Assert.Equal(10, summary.Days);
+        Assert.Equal(
+            [(new DateOnly(2027, 10, 2), new DateOnly(2027, 10, 4)), (new DateOnly(2027, 10, 9), new DateOnly(2027, 10, 11))],
+            summary.Gaps.Where(g => g.Kind == TripGapKind.BetweenStages).Select(g => (g.From, g.To)));
+    }
+
+    [Fact]
     public void Hotel_ohne_Daten_deckt_die_ganze_Etappe_ab()
     {
         var (trip, lisbon, porto) = PortugalTrip();

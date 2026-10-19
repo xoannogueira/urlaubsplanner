@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Stage } from '../api/types'
-import { addDays, newStageDefaults, rangeFor, rangeHint, tripRange } from './dates'
+import { addDays, newStageDefaults, periodExtendedMessage, rangeFor, rangeHint, tripRange } from './dates'
 
 const stage = (startDate: string, endDate: string) =>
   ({ id: startDate, name: 'x', startDate, endDate, nights: 1, latitude: null, longitude: null }) as Stage
@@ -15,6 +15,20 @@ describe('Reisezeitraum', () => {
       end: '2027-02-28',
     })
     expect(tripRange({ startDate: null, endDate: null, stages: [] })).toEqual({ start: null, end: null })
+  })
+
+  it('meldet, wenn eine Etappe den Zeitraum verlängert', () => {
+    const before = { startDate: '2027-05-01', endDate: '2027-05-10', stages: [stage('2027-05-01', '2027-05-10')] }
+    expect(periodExtendedMessage(before, { ...before, endDate: '2027-05-12' })).toMatch(/^Reisezeitraum auf .* verlängert$/)
+    expect(periodExtendedMessage(before, before)).toBeNull()
+    expect(periodExtendedMessage({ startDate: null, endDate: null, stages: [] }, before)).toBeNull()
+  })
+
+  it('umfasst immer alle Etappen', () => {
+    expect(tripRange({ startDate: '2027-02-20', endDate: '2027-02-25', stages: [stage('2027-02-19', '2027-02-22')] })).toEqual({
+      start: '2027-02-19',
+      end: '2027-02-25',
+    })
   })
 
   it('schlägt für eine neue Etappe den Rest der Reise vor', () => {

@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { api, json } from './client'
-import { adjustTripToFlight } from './flightAdjust'
+import { adjustTripToFlight, announceAdjustment } from './flightAdjust'
+import { periodExtendedMessage } from '../lib/dates'
 import type { OptionInput, OptionStatus, PackingList, StageInput, Trip, TripInput, TripListItem, TripParty, TripSummary } from './types'
 
 export const tripKeys = {
@@ -72,13 +73,23 @@ export function useTripActions(tripId: string) {
     ...optimisticVars<TripInput>(queryClient, tripId, (trip, input) => ({ ...trip, ...input })),
   })
 
+  // Liegt eine Etappe außerhalb des Reisezeitraums, verlängert der Server ihn – das sagen wir dazu.
+  const withPeriodHint = async (request: Promise<Trip>) => {
+    const before = queryClient.getQueryData<Trip>(tripKeys.detail(tripId))
+    const trip = await request
+    const message = before ? periodExtendedMessage(before, trip) : null
+    if (message) announceAdjustment({ tripId, message })
+    return trip
+  }
+
   const addStage = useMutation({
-    mutationFn: (input: StageInput) => api<Trip>(`${base}/stages`, { method: 'POST', ...json(input) }),
+    mutationFn: (input: StageInput) => withPeriodHint(api<Trip>(`${base}/stages`, { method: 'POST', ...json(input) })),
     onSuccess,
   })
 
   const updateStage = useMutation({
-    mutationFn: ({ id, input }: { id: string; input: StageInput }) => api<Trip>(`${base}/stages/${id}`, { method: 'PUT', ...json(input) }),
+    mutationFn: ({ id, input }: { id: string; input: StageInput }) =>
+      withPeriodHint(api<Trip>(`${base}/stages/${id}`, { method: 'PUT', ...json(input) })),
     onSuccess,
   })
 

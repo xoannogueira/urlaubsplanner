@@ -2,7 +2,7 @@ import type { Airport } from './airports'
 import { api, json } from './client'
 import { placesUrl } from './places'
 import type { Place, Trip } from './types'
-import { shownRange } from '../lib/dates'
+import { tripRange } from '../lib/dates'
 import { flightDates, periodForFlight } from '../lib/flightPeriod'
 import { formatDateRange } from '../lib/format'
 import { isChosen } from '../lib/options'
@@ -11,7 +11,13 @@ import { isChosen } from '../lib/options'
 export interface TripAdjustment {
   tripId: string
   message: string
-  undo: () => Promise<Trip>
+  /** Fehlt, wenn sich die Änderung nicht sinnvoll zurücknehmen lässt (dann nur ein Hinweis). */
+  undo?: () => Promise<Trip>
+}
+
+/** Hinweis unten rechts anzeigen (z. B. „Reisezeitraum verlängert“). */
+export function announceAdjustment(adjustment: TripAdjustment) {
+  window.dispatchEvent(new CustomEvent<TripAdjustment>(ADJUST_EVENT, { detail: adjustment }))
 }
 
 export const ADJUST_EVENT = 'urlaubsplanner:trip-adjusted'
@@ -27,7 +33,7 @@ export async function adjustTripToFlight(trip: Trip, optionId: string, store: (t
   const dates = flightDates(option)
   if (!dates) return
   const base = `/trips/${trip.id}`
-  const before = { range: shownRange(trip), tripStart: trip.startDate, tripEnd: trip.endDate }
+  const before = { range: tripRange(trip) }
   const period = periodForFlight(trip, dates)
   const createStage = trip.stages.length === 0 && dates.destination !== null
   if (!period && !createStage) return
@@ -40,7 +46,7 @@ export async function adjustTripToFlight(trip: Trip, optionId: string, store: (t
       done.push(`Zeitraum an den Flug angepasst: ${formatDateRange(period.startDate, period.endDate)}`)
     }
     let stageId: string | null = null
-    const range = shownRange(current)
+    const range = tripRange(current)
     if (createStage && range.start && range.end && range.end > range.start) {
       const [airport] = await api<Airport[]>(`/airports/lookup?codes=${dates.destination}`)
       if (airport) {
@@ -61,19 +67,19 @@ export async function adjustTripToFlight(trip: Trip, optionId: string, store: (t
       let t = current
       if (stageId) t = await api<Trip>(`${base}/stages/${stageId}`, { method: 'DELETE' })
       if (period) {
-        if (before.range.start && before.range.end && t.stages.length > 0) {
-          t = await api<Trip>(`${base}/period`, { method: 'PUT', ...json({ startDate: before.range.start, endDate: before.range.end }) })
-        }
-        // Grobe Reisedaten wie vorher (auch „noch offen“)
-        t = await api<Trip>(base, {
-          method: 'PUT',
-          ...json({ name: t.name, travelers: t.travelers, startDate: before.tripStart, endDate: before.tripEnd, notes: t.notes }),
-        })
+        // Zeitraum wie vorher – oder wieder „noch offen“, wenn es vorher keinen gab (dann gibt es auch keine Etappen).
+        t =
+          before.range.start && before.range.end
+            ? await api<Trip>(`${base}/period`, { method: 'PUT', ...json({ startDate: before.range.start, endDate: before.range.end }) })
+            : await api<Trip>(base, {
+                method: 'PUT',
+                ...json({ name: t.name, travelers: t.travelers, startDate: null, endDate: null, notes: t.notes }),
+              })
       }
       store(t)
       return t
     }
-    window.dispatchEvent(new CustomEvent<TripAdjustment>(ADJUST_EVENT, { detail: { tripId: trip.id, message: done.join(' · '), undo } }))
+    announceAdjustment({ tripId: trip.id, message: done.join(' · '), undo })
   } catch (e) {
     console.warn('Reise an Flug anpassen:', e)
   }

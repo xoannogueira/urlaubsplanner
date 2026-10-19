@@ -91,9 +91,9 @@ function TripForm({ trip, onSubmit, onSuccess, onClose }: Omit<TripFormDialogPro
           </p>
         ) : (
           <>
-            <DateField label="Von (optional)" value={startDate} onValue={setStartDate} error={fe.startDate} />
+            <DateField label="Reisebeginn (optional)" value={startDate} onValue={setStartDate} error={fe.startDate} />
             <DateField
-              label="Bis (optional)"
+              label="Reiseende (optional)"
               value={endDate}
               onValue={setEndDate}
               min={startDate || null}

@@ -32,7 +32,7 @@ public enum TripGapKind
     /// <summary>Innerhalb einer Etappe gibt es Nächte ohne ausgewähltes Hotel.</summary>
     MissingHotel,
 
-    /// <summary>Zwischen zwei Etappen liegen Nächte, die keiner Etappe zugeordnet sind.</summary>
+    /// <summary>Nächte im Reisezeitraum, die keiner Etappe zugeordnet sind (zwischen, vor oder nach Etappen).</summary>
     BetweenStages,
 }
 
@@ -48,8 +48,9 @@ public static class TripSummaryCalculator
         var stages = trip.Stages;
         var chosen = trip.Options.Where(o => o.Status.IsChosen()).ToList();
 
-        var start = stages.Count > 0 ? stages.Min(s => s.StartDate) : trip.StartDate;
-        var end = stages.Count > 0 ? stages.Max(s => s.EndDate) : trip.EndDate;
+        // Der Reisezeitraum umfasst immer alle Etappen (siehe Trip) – er ist der eine Zeitraum.
+        var start = trip.StartDate;
+        var end = trip.EndDate;
         int? days = start is { } s && end is { } e ? e.DayNumber - s.DayNumber + 1 : null;
         var nights = days is { } d ? Math.Max(0, d - 1) : 0;
 
@@ -89,12 +90,16 @@ public static class TripSummaryCalculator
             chosen.Count(o => o.Price is null),
             byKind,
             byStage,
-            FindGaps(stages, chosen));
+            FindGaps(stages, chosen, start, end));
     }
 
-    private static List<TripGap> FindGaps(IReadOnlyList<Stage> stages, List<TripOption> chosen)
+    private static List<TripGap> FindGaps(IReadOnlyList<Stage> stages, List<TripOption> chosen, DateOnly? start, DateOnly? end)
     {
         var gaps = new List<TripGap>();
+        if (stages.Count > 0 && start is { } s && s < stages[0].StartDate)
+        {
+            gaps.Add(new TripGap(TripGapKind.BetweenStages, null, null, s, stages[0].StartDate));
+        }
 
         for (var i = 0; i < stages.Count; i++)
         {
@@ -106,6 +111,12 @@ public static class TripSummaryCalculator
             {
                 gaps.Add(new TripGap(TripGapKind.BetweenStages, null, null, stage.EndDate, stages[i + 1].StartDate));
             }
+        }
+
+        var lastEnd = stages.Count > 0 ? stages.Max(x => x.EndDate) : (DateOnly?)null;
+        if (lastEnd is { } l && end is { } e && l < e)
+        {
+            gaps.Add(new TripGap(TripGapKind.BetweenStages, null, null, l, e));
         }
 
         return gaps;

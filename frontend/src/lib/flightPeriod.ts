@@ -1,6 +1,6 @@
 import type { Trip, TripOption } from '../api/types'
 import { flightTime } from './dashboard'
-import { shownRange } from './dates'
+import { tripRange } from './dates'
 import { parseSignature, shiftDate } from './flights'
 
 export interface FlightDates {
@@ -29,7 +29,7 @@ export function flightDates(o: TripOption): FlightDates | null {
 
 /** Neuer Reisezeitraum passend zum Flug – oder null, wenn er schon passt bzw. sich nichts Sinnvolles ergibt. */
 export function periodForFlight(trip: Trip, dates: FlightDates): { startDate: string; endDate: string } | null {
-  const current = shownRange(trip)
+  const current = tripRange(trip)
   const end = dates.end ?? current.end
   if (!end || end <= dates.start) return null
   if (current.start === dates.start && current.end === end) return null
