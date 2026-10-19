@@ -12,6 +12,13 @@
     <ApplicationIcon>..\..\..\packaging\icons\Urlaubsplanner.ico</ApplicationIcon>
   </PropertyGroup>
 
+  <!-- macOS: .NET nutzt sonst eine alte Apple-Schnittstelle ohne TLS 1.3 – Server, die nur noch TLS 1.3 sprechen
+       (z. B. overpass-api.de), scheitern dann mit „handshake failure“. Ab .NET 10 als Schalter; wirkt nur auf dem Mac
+       und nur für ausgehende Verbindungen. -->
+  <ItemGroup>
+    <RuntimeHostConfigurationOption Include="System.Net.Security.UseNetworkFramework" Value="true" />
+  </ItemGroup>
+
   <ItemGroup>
     <InternalsVisibleTo Include="Urlaubsplanner.Tests" />
   </ItemGroup>

@@ -6,6 +6,7 @@ using Urlaubsplanner.Api.Desktop;
 using Urlaubsplanner.Domain;
 using Urlaubsplanner.Domain.Flights;
 using Urlaubsplanner.Domain.Hotels;
+using Urlaubsplanner.Infrastructure.Activities;
 using Urlaubsplanner.Infrastructure.SerpApi;
 
 namespace Urlaubsplanner.Api.Endpoints;
@@ -131,8 +132,8 @@ public static partial class AppEndpoints
                 : Results.Problem(statusCode: StatusCodes.Status409Conflict, title: "Kein Update bereit", detail: "Es liegt gerade kein Update zum Installieren bereit."));
 
         // „Verbindung prüfen“: erreicht die App die Dienste für die Suchen? (Hilft bei Antivirus/Firewall)
-        group.MapGet("/connectivity", async (IHttpClientFactory factory, IConfiguration configuration, CancellationToken ct) =>
-            TypedResults.Ok(await ConnectivityCheck.RunAsync(factory.CreateClient(ConnectivityCheck.HttpClientName), configuration, ct)));
+        group.MapGet("/connectivity", async (IHttpClientFactory factory, IConfiguration configuration, IOptions<ActivityOptions> activities, CancellationToken ct) =>
+            TypedResults.Ok(await ConnectivityCheck.RunAsync(factory.CreateClient(ConnectivityCheck.HttpClientName), configuration, ct, activities.Value.OverpassUrls)));
 
         var settings = app.MapGroup("/api/settings").WithTags("Einstellungen");
         settings.MapGet("/", GetSettings);

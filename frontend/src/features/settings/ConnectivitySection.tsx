@@ -26,7 +26,17 @@ export function ConnectivitySection() {
     }
   }
   const failed = results?.filter((r) => !r.ok) ?? []
-  const report = results?.map((r) => `${r.ok ? 'OK' : 'FEHLER'} – ${r.name} (${r.url})${r.problem ? `: ${r.problem}` : ''}`).join('\n')
+  // Der Antivirus-Tipp passt nur, wenn etwas blockiert oder ein Zertifikat abgelehnt wurde.
+  const blocked = failed.some((r) => !r.kind || ['blockiert', 'zertifikat', 'zeit', 'sonstiges'].includes(r.kind))
+  const encryption = failed.some((r) => r.kind === 'verschluesselung')
+  const report = results
+    ?.map(
+      (r) =>
+        `${r.ok ? 'OK' : 'FEHLER'} – ${r.name} (${r.url})${r.problem ? `: ${r.problem}` : ''}${r.note ? ` – ${r.note}` : ''}${
+          r.detail ? ` [${r.detail}]` : ''
+        }`,
+    )
+    .join('\n')
 
   return (
     <section id="verbindung" className="flex scroll-mt-6 flex-col gap-4 rounded-[18px] border border-line bg-surface p-5">
@@ -59,14 +69,26 @@ export function ConnectivitySection() {
                 <span className="flex min-w-0 flex-1 flex-col">
                   <span className="font-semibold">{r.name}</span>
                   {r.problem && <span className="text-danger">{r.problem}</span>}
+                  {r.note && <span className="text-muted">{r.note}</span>}
+                  {r.detail && <span className="font-mono text-xs break-words text-muted">{r.detail}</span>}
                 </span>
                 <span className="shrink-0 font-mono text-xs text-muted">{r.ok ? `${r.milliseconds} ms` : r.url}</span>
               </li>
             ))}
           </ul>
-          {failed.length === 0 ? (
+          {failed.length === 0 && (
             <p className="text-sm text-muted">Alles erreichbar. Liegt das Problem woanders, schick die Fehlermeldung aus der Suche.</p>
-          ) : (
+          )}
+          {encryption && (
+            <div className="flex flex-col gap-2 rounded-xl border border-star/40 bg-star/10 px-4 py-3 text-sm">
+              <strong>Verschlüsselung passt nicht:</strong>
+              <span>
+                Das liegt meist an einem älteren Betriebssystem (z. B. Windows 10), nicht an Antivirus oder Firewall. Hilft: Windows bzw.
+                macOS aktualisieren. Und schick das Ergebnis an Xoan.
+              </span>
+            </div>
+          )}
+          {blocked && (
             <div className="flex flex-col gap-2 rounded-xl border border-star/40 bg-star/10 px-4 py-3 text-sm">
               <strong>So behebst du es meist:</strong>
               <ol className="list-decimal pl-5">
