@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Trip, TripOption } from '../api/types'
 import { sampleTrip } from '../features/pdf/sampleTrip'
-import { calculateSplit } from './split'
+import { calculateSplit, removalImpact } from './split'
 
 const anna = { id: 'a', name: 'Anna' }
 const ben = { id: 'b', name: 'Ben' }
@@ -54,5 +54,19 @@ describe('Kostenaufteilung', () => {
     expect(split.people.map((p) => p.share)).toEqual([3.34, 3.33, 3.33])
     expect(split.transfers.reduce((s, t) => s + t.amount, 0)).toBeCloseTo(6.66, 2)
     expect(split.people[0].balance).toBe(6.66)
+  })
+
+  it('zeigt vor dem Entfernen, was die Person gekauft hat und wo sie dabei ist', () => {
+    const split = calculateSplit(
+      trip(
+        {
+          optionShares: [{ optionId: 'hotel', paidBy: 'a', for: [] }],
+          expenses: [{ id: 'e', title: 'Essen', amount: 60, paidBy: 'b', for: ['b', 'c'], date: null }],
+        },
+        [option('hotel', 900)],
+      ),
+    )
+    expect(removalImpact(split, 'a', 3)).toEqual({ bought: [{ title: 'hotel', amount: 900 }], sharedIn: [] })
+    expect(removalImpact(split, 'c', 3)).toEqual({ bought: [], sharedIn: ['Essen'] })
   })
 })

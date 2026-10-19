@@ -144,3 +144,17 @@ export function calculateSplit(trip: Trip): Split {
 
   return { items, people, transfers, total: cents(items.reduce((s, x) => s + x.amount, 0)), unpaid: unpaid / 100 }
 }
+
+/** Was beim Entfernen einer Person passiert: ihre Käufe verlieren den Käufer, ausgewählte Anteile fallen weg. */
+export interface RemovalImpact {
+  bought: { title: string; amount: number }[]
+  /** Posten nur für einige (nicht alle), bei denen die Person dabei ist */
+  sharedIn: string[]
+}
+
+export function removalImpact(split: Split, memberId: string, memberCount: number): RemovalImpact {
+  return {
+    bought: split.items.filter((i) => i.paidBy === memberId).map((i) => ({ title: i.title, amount: i.amount })),
+    sharedIn: split.items.filter((i) => i.for.length < memberCount && i.for.includes(memberId)).map((i) => i.title),
+  }
+}
