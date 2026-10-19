@@ -38,6 +38,7 @@ export function PrivateStayDialog(props: PrivateStayDialogProps) {
 }
 
 const statuses: OptionStatus[] = ['Selected', 'Booked']
+const shownFields = ['title', 'locationName', 'latitude', 'stageId', 'startDate', 'endDate', 'notes']
 
 function PrivateStayForm({ trip, option, defaultStageId, onClose, onSubmit }: PrivateStayDialogProps) {
   const stages = trip.stages
@@ -150,7 +151,8 @@ function PrivateStayForm({ trip, option, defaultStageId, onClose, onSubmit }: Pr
         rows={2}
         error={fe.notes}
       />
-      <FormError message={error && Object.keys(fe).length === 0 ? error.message : null} />
+      {/* Fehler zu Feldern, die hier nicht zu sehen sind, als allgemeine Meldung zeigen */}
+      <FormError message={error && !shownFields.some((f) => fe[f]) ? error.message : null} />
       <div className="flex justify-end gap-2">
         <Button onClick={onClose}>Abbrechen</Button>
         <Button type="submit" variant="primary" disabled={pending}>

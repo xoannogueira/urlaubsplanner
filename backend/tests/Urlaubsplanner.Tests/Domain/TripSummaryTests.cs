@@ -84,6 +84,18 @@ public sealed class TripSummaryTests
     }
 
     [Fact]
+    public void Uebernachtung_bei_Familie_deckt_Naechte_ohne_Kosten_ab()
+    {
+        var (trip, lisbon, porto) = PortugalTrip();
+        trip.AddOption(new OptionData(OptionKind.Hotel, "Bei Tante Maria", OptionStatus.Booked, lisbon.Id, Price: 0m, Provider: "private"), Now);
+        trip.AddOption(new OptionData(OptionKind.Hotel, "Porto", OptionStatus.Booked, porto.Id), Now);
+
+        var summary = TripSummaryCalculator.Calculate(trip);
+        Assert.Empty(summary.Gaps);
+        Assert.Equal("private", trip.Options[0].Provider);
+    }
+
+    [Fact]
     public void Hotel_ohne_Daten_deckt_die_ganze_Etappe_ab()
     {
         var (trip, lisbon, porto) = PortugalTrip();
