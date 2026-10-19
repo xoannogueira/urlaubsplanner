@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { TripOption } from '../api/types'
 import type { WeatherDay } from '../api/weather'
 import { sampleTrip } from '../features/pdf/sampleTrip'
-import { groupPacking, openSuggestions, suggestPacking } from './packing'
+import { applyTemplate, groupPacking, openSuggestions, suggestPacking, templateItems } from './packing'
 
 const day = (over: Partial<WeatherDay>): WeatherDay => ({
   date: '2027-05-12',
@@ -63,5 +63,29 @@ describe('Packliste', () => {
       { id: '3', text: 'Pass', category: 'Dokumente', packed: true, suggestionKey: null },
     ])
     expect(groups.map((g) => g.category)).toEqual(['Dokumente', 'Kleidung', 'Fotos'])
+  })
+})
+
+describe('Packlisten-Vorlagen', () => {
+  it('übernimmt nur fehlende Einträge, ohne Haken', () => {
+    const list = {
+      items: [{ id: '1', text: 'Reisepass', category: 'Dokumente', packed: true, suggestionKey: 'pass' }],
+      dismissed: [],
+    }
+    let n = 0
+    const { list: next, added } = applyTemplate(
+      list,
+      [
+        { text: 'reisepass', category: 'Dokumente', suggestionKey: null },
+        { text: 'Sonnencreme', category: 'Hygiene & Gesundheit', suggestionKey: null },
+      ],
+      () => `n${++n}`,
+    )
+    expect(added).toBe(1)
+    expect(next.items.map((i) => [i.text, i.packed])).toEqual([
+      ['Reisepass', true],
+      ['Sonnencreme', false],
+    ])
+    expect(templateItems(next)[0]).toEqual({ text: 'Reisepass', category: 'Dokumente', suggestionKey: 'pass' })
   })
 })

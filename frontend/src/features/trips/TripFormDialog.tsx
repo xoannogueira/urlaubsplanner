@@ -1,10 +1,14 @@
 import { useState, type FormEvent } from 'react'
-import { ApiError } from '../../api/client'
+import { useQueryClient } from '@tanstack/react-query'
+import { api, ApiError, json } from '../../api/client'
+import { usePackingTemplates } from '../../api/packingTemplates'
+import { tripKeys } from '../../api/trips'
+import { applyTemplate } from '../../lib/packing'
 import type { Trip, TripInput } from '../../api/types'
 import { Button } from '../../components/ui/Button'
 import { DateField } from '../../components/ui/DateField'
 import { Dialog } from '../../components/ui/Dialog'
-import { FormError, InputField, TextAreaField } from '../../components/ui/Field'
+import { FormError, InputField, SelectField, TextAreaField } from '../../components/ui/Field'
 
 interface TripFormDialogProps {
   open: boolean
@@ -37,6 +41,10 @@ function TripForm({ trip, onSubmit, onSuccess, onClose }: Omit<TripFormDialogPro
   const [notes, setNotes] = useState(trip?.notes ?? '')
   const [error, setError] = useState<ApiError | null>(null)
   const [pending, setPending] = useState(false)
+  // Neue Reise: Packliste direkt aus einer gespeicherten Vorlage füllen.
+  const templates = usePackingTemplates()
+  const [templateId, setTemplateId] = useState('')
+  const queryClient = useQueryClient()
 
   const submit = async (e: FormEvent) => {
     e.preventDefault()
@@ -50,8 +58,15 @@ function TripForm({ trip, onSubmit, onSuccess, onClose }: Omit<TripFormDialogPro
         endDate: endDate || null,
         notes: notes || null,
       })
+      let result = saved
+      const template = !trip ? templates.data?.find((t) => t.id === templateId) : undefined
+      if (template) {
+        const packing = applyTemplate({ items: [], dismissed: [] }, template.items, () => crypto.randomUUID()).list
+        result = await api<Trip>(`/trips/${saved.id}/packing`, { method: 'PUT', ...json(packing) })
+        queryClient.setQueryData(tripKeys.detail(result.id), result)
+      }
       onClose()
-      onSuccess?.(saved)
+      onSuccess?.(result)
     } catch (err) {
       setError(err instanceof ApiError ? err : new ApiError(0, 'Unbekannter Fehler'))
     } finally {
@@ -103,6 +118,16 @@ function TripForm({ trip, onSubmit, onSuccess, onClose }: Omit<TripFormDialogPro
           </>
         )}
       </div>
+      {!trip && (templates.data?.length ?? 0) > 0 && (
+        <SelectField label="Packliste aus Vorlage (optional)" value={templateId} onChange={(e) => setTemplateId(e.target.value)}>
+          <option value="">Keine</option>
+          {templates.data?.map((t) => (
+            <option key={t.id} value={t.id}>
+              {t.name} ({t.items.length} Einträge)
+            </option>
+          ))}
+        </SelectField>
+      )}
       <TextAreaField label="Notizen (optional)" value={notes} onChange={(e) => setNotes(e.target.value)} error={fe.notes} />
       <FormError message={error && Object.keys(fe).length === 0 ? error.message : null} />
       <div className="flex justify-end gap-2 pt-1">

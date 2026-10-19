@@ -433,4 +433,28 @@ public sealed class ApiTests : IDisposable
         rebinding.Headers.Host = "boese.example";
         Assert.Equal(HttpStatusCode.BadRequest, (await _client.SendAsync(rebinding)).StatusCode);
     }
+
+    [Fact]
+    public async Task Packlisten_Vorlagen_speichern_umbenennen_loeschen()
+    {
+        var items = new[] { new { text = "Reisepass", category = "Dokumente" }, new { text = "reisepass", category = "Dokumente" }, new { text = "Sonnencreme", category = "Hygiene & Gesundheit" } };
+        var created = await _client.PostAsJsonAsync("/api/packing-templates", new { name = "Strand", items });
+        Assert.Equal(HttpStatusCode.OK, created.StatusCode);
+        var template = await created.Content.ReadFromJsonAsync<JsonElement>();
+        var id = template.GetProperty("id").GetGuid();
+        Assert.Equal(2, template.GetProperty("items").GetArrayLength()); // doppelte fallen weg
+
+        // Gleicher Name überschreibt statt doppelt anzulegen.
+        var again = await (await _client.PostAsJsonAsync("/api/packing-templates", new { name = "strand", items = items[..1] })).Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(id, again.GetProperty("id").GetGuid());
+
+        var renamed = await _client.PutAsJsonAsync($"/api/packing-templates/{id}", new { name = "Strandurlaub" });
+        Assert.Equal(HttpStatusCode.OK, renamed.StatusCode);
+        var list = await _client.GetFromJsonAsync<JsonElement>("/api/packing-templates");
+        Assert.Equal("Strandurlaub", Assert.Single(list.EnumerateArray()).GetProperty("name").GetString());
+
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync("/api/packing-templates", new { name = "Leer", items = Array.Empty<object>() })).StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, (await _client.DeleteAsync($"/api/packing-templates/{id}")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await _client.DeleteAsync($"/api/packing-templates/{id}")).StatusCode);
+    }
 }
