@@ -45,6 +45,17 @@
   --kind-activity: #1baf7a;
   --kind-transport: #eda100;
   --kind-other: #e87ba4;
+  /* Preis-Heatmap: eine Farbe (Petrol), kräftiger = günstiger. Stufen geprüft (monoton, sichtbar auf der Fläche). */
+  --heat-0: #6fc5b9;
+  --heat-1: #3fa89a;
+  --heat-2: #1c8a7f;
+  --heat-3: #0f6b64;
+  --heat-4: #0a4c47;
+  --heat-ink-0: #0b1e31;
+  --heat-ink-1: #0b1e31;
+  --heat-ink-2: #ffffff;
+  --heat-ink-3: #ffffff;
+  --heat-ink-4: #ffffff;
   color-scheme: light;
 }
 
@@ -67,6 +78,16 @@
   --kind-activity: #199e70;
   --kind-transport: #c98500;
   --kind-other: #d55181;
+  --heat-0: #1f6b66;
+  --heat-1: #1f8f84;
+  --heat-2: #26b3a3;
+  --heat-3: #2dd4bf;
+  --heat-4: #9af0e2;
+  --heat-ink-0: #e6f0f7;
+  --heat-ink-1: #e6f0f7;
+  --heat-ink-2: #04211f;
+  --heat-ink-3: #04211f;
+  --heat-ink-4: #04211f;
   color-scheme: dark;
 }
 

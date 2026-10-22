@@ -1,3 +1,4 @@
+using Urlaubsplanner.Api.PriceStats;
 using Urlaubsplanner.Domain;
 using Urlaubsplanner.Domain.Flights;
 
@@ -48,8 +49,9 @@ public static class FlightEndpoints
         });
     }
 
-    private static async Task<IResult> Search(FlightSearchBody body, IFlightSearch search, TimeProvider clock, CancellationToken ct)
+    private static async Task<IResult> Search(FlightSearchBody body, IFlightSearch search, TimeProvider clock, PriceArchive archive, CancellationToken ct)
     {
+        var returnDate = body.Legs is { Count: > 1 } l ? l[^1].Date : (DateOnly?)null;
         if (search is IMultiAirportFlightSearch multi)
         {
             if (!search.IsConfigured)
@@ -63,6 +65,13 @@ public static class FlightEndpoints
                 body.Cabin ?? CabinClass.Economy,
                 Today(clock));
             var found = await multi.SearchAsync(combined, ct);
+            // Fürs Preisarchiv merken (keine zusätzliche Suche) – plus Googles Preisverlauf zur günstigsten Verbindung.
+            archive.Record(found.Journeys, returnDate, "suche", clock.GetUtcNow());
+            if (found.Journeys.MinBy(j => j.TotalPrice) is { Legs.Count: > 0 } cheapest)
+            {
+                archive.RecordHistory(cheapest.Legs[0].Origin, cheapest.Legs[0].Destination, body.Legs![0].Date, returnDate, found.Insights, clock.GetUtcNow());
+            }
+
             return TypedResults.Ok(new
             {
                 Journeys = found.Journeys.Select(JourneyResponse.From),
@@ -93,6 +102,7 @@ public static class FlightEndpoints
             .OrderBy(j => j.TotalPrice)
             .ThenBy(j => j.TotalMinutes)
             .ToList();
+        archive.Record(journeys, returnDate, "suche", clock.GetUtcNow());
 
         return TypedResults.Ok(new
         {
@@ -105,7 +115,7 @@ public static class FlightEndpoints
     }
 
     /// <summary>Nächste Strecke zu einer Teil-Verbindung, z. B. die Rückflüge zum gewählten Hinflug.</summary>
-    private static async Task<IResult> Continue(FlightContinueBody body, IFlightSearch search, TimeProvider clock, CancellationToken ct)
+    private static async Task<IResult> Continue(FlightContinueBody body, IFlightSearch search, TimeProvider clock, PriceArchive archive, CancellationToken ct)
     {
         if (search is not IStepwiseFlightSearch stepwise)
         {
@@ -118,6 +128,7 @@ public static class FlightEndpoints
         }
 
         var result = await stepwise.ContinueAsync(body.Continuation, ct);
+        archive.Record(result.Journeys, null, "suche", clock.GetUtcNow());
         return TypedResults.Ok(new
         {
             Journeys = result.Journeys.Select(JourneyResponse.From),
@@ -132,7 +143,7 @@ public static class FlightEndpoints
     /// Ausweichdaten: alle Strecken gemeinsam um ±1–3 Tage verschoben (gleiche Reisedauer).
     /// Eine Anfrage pro Zeitraum; pro Zeitraum kommt der günstigste Preis zurück.
     /// </summary>
-    private static async Task<IResult> Alternatives(FlightAlternativesBody body, IFlightSearch search, TimeProvider clock, CancellationToken ct)
+    private static async Task<IResult> Alternatives(FlightAlternativesBody body, IFlightSearch search, TimeProvider clock, PriceArchive archive, CancellationToken ct)
     {
         var today = Today(clock);
         var request = FlightSearchRequest.Create(
@@ -161,6 +172,11 @@ public static class FlightEndpoints
             throw new FlightSearchUnavailableException("Die Flugsuche ist gerade nicht erreichbar.");
         }
 
+        foreach (var (shifted, result) in results.Where(r => r.Result is not null))
+        {
+            archive.Record(result!.Journeys, shifted.Legs.Count > 1 ? shifted.Legs[^1].Date : null, "andere-daten", clock.GetUtcNow());
+        }
+
         return TypedResults.Ok(new
         {
             Windows = shifts.Zip(results, (shift, r) => new
@@ -176,9 +192,14 @@ public static class FlightEndpoints
     }
 
     /// <summary>Gemerkten Flug erneut suchen: gibt es exakt diese Flüge noch, und was kostet der Tarif jetzt?</summary>
-    private static async Task<IResult> Recheck(FlightRecheckBody body, IFlightSearch search, TimeProvider clock, CancellationToken ct)
+    private static async Task<IResult> Recheck(FlightRecheckBody body, IFlightSearch search, TimeProvider clock, PriceArchive archive, CancellationToken ct)
     {
         var outcome = await RecheckAsync(search, body.Signature, body.Adults, body.Cabin ?? CabinClass.Economy, Today(clock), ct);
+        if (outcome.Journey is not null)
+        {
+            archive.Record([outcome.Journey], null, "prüfung", clock.GetUtcNow());
+        }
+
         var result = outcome.Result;
         return TypedResults.Ok(new
         {

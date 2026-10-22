@@ -10,6 +10,7 @@ namespace Urlaubsplanner.Api.PriceWatch;
 /// </summary>
 public sealed partial class PriceWatcher(
     PriceWatchStore store,
+    Urlaubsplanner.Api.PriceStats.PriceArchive archive,
     IServiceScopeFactory scopes,
     TimeProvider clock,
     ILogger<PriceWatcher> logger) : BackgroundService
@@ -65,6 +66,10 @@ public sealed partial class PriceWatcher(
             var (journey, fare, _) = await FlightEndpoints.RecheckAsync(search, watch.Signature, watch.Adults, CabinClass.Economy, FlightEndpoints.Today(clock), ct)
                 .ConfigureAwait(false);
             store.Update(watch.OptionId, w => Apply(w, journey is not null, fare?.TotalPrice, clock.GetUtcNow()));
+            if (journey is not null)
+            {
+                archive.Record([journey], null, "wächter", clock.GetUtcNow());
+            }
         }
         catch (Exception e) when (e is FlightSearchUnavailableException or FlightSearchNotConfiguredException or DomainException or HttpRequestException)
         {

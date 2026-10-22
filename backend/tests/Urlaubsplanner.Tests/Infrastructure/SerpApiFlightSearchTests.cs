@@ -255,4 +255,19 @@ public sealed class SerpApiFlightSearchTests
     {
         Assert.Equal((carrier, number), SerpApiFlightSearch.SplitFlightNumber(value));
     }
+
+    [Fact]
+    public void Preisverlauf_aus_price_insights()
+    {
+        var body = System.Text.Json.JsonSerializer.Deserialize<SearchResponse>(
+            """{ "price_insights": { "lowest_price": 251, "price_level": "low", "typical_price_range": [280, 390], "price_history": [[1791583200, 320], [1791669600, 300], [0, 5]] } }""",
+            SerpApiFlightSearch.Json);
+        var insights = SerpApiFlightSearch.Insights(body!.PriceInsights)!;
+
+        Assert.Equal((251m, "low", 280m, 390m), (insights.Lowest!.Value, insights.Level, insights.TypicalLow!.Value, insights.TypicalHigh!.Value));
+        Assert.Equal(2, insights.History.Count); // ungültiger Punkt fällt weg
+        Assert.Equal(new DateOnly(2026, 10, 9), insights.History[0].Date);
+        Assert.Equal(300m, insights.History[1].Price);
+        Assert.Null(SerpApiFlightSearch.Insights(null));
+    }
 }
