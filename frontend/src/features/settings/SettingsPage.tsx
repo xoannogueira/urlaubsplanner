@@ -15,6 +15,7 @@ import { useSetup } from '../setup/setupContext'
 import { InstallationSection } from './InstallationSection'
 import { ConnectivitySection } from './ConnectivitySection'
 import { SearchDefaultsSection } from './SearchDefaultsSection'
+import { StoredDataSection } from './StoredDataSection'
 import { KEY_URL, SIGN_UP_URL, Warning } from '../setup/SetupWizard'
 
 /** API-Key, verbleibende Suchen, was Suchen kosten und wo die Daten liegen. */
@@ -156,6 +157,13 @@ export function SettingsPage() {
               description="Jede neue Reise übernimmt diese Einstellungen für die Suchen. Pro Reise änderst du sie direkt in der Suche mit „Als Standard merken“."
             >
               <SearchDefaultsSection />
+            </Section>
+
+            <Section
+              title="Gespeicherte Preisdaten"
+              description="Preisarchiv und Preiskalender. Was du seit 30 Tagen nicht benutzt hast, kannst du auslagern: Es wird komprimiert im Datenordner abgelegt und lässt sich jederzeit zurückholen."
+            >
+              <StoredDataSection />
             </Section>
 
             <ConnectivitySection />
