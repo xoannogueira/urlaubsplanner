@@ -126,6 +126,10 @@ public static partial class AppEndpoints
 
         // Automatische Updates: Stand abfragen und bereitliegendes Update sofort installieren.
         group.MapGet("/update", (AppUpdater updater) => TypedResults.Ok(updater.Status));
+        group.MapPost("/update/check", (AppUpdater updater) =>
+            updater.RequestCheck()
+                ? Results.Accepted()
+                : Results.Problem(statusCode: StatusCodes.Status409Conflict, title: "Gerade nicht möglich", detail: "Es wird schon gesucht, ein Update liegt bereit oder Updates sind aus."));
         group.MapPost("/update/restart", (AppUpdater updater) =>
             updater.RequestRestart()
                 ? Results.Accepted()

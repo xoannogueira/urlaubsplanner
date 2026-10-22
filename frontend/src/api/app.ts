@@ -73,6 +73,8 @@ export interface UpdateStatus {
   progress: number | null
   /** Für Menschen: warum es keine Updates gibt bzw. was schiefging */
   hint: string | null
+  /** Wann zuletzt nachgesehen wurde */
+  checkedAt?: string | null
 }
 
 /** Stand der automatischen Updates – nur in der Desktop-App; während Prüfen/Laden öfter nachfragen. */
@@ -84,6 +86,18 @@ export function useUpdateStatus(enabled: boolean) {
     refetchInterval: (query) => {
       const state = query.state.data?.state
       return state === 'Checking' || state === 'Downloading' || state === undefined ? 4_000 : 5 * 60_000
+    },
+  })
+}
+
+/** „Jetzt nach Updates suchen“ – danach den Stand häufiger abfragen. */
+export function useCheckForUpdate() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: () => api<void>('/app/update/check', { method: 'POST' }),
+    onSuccess: () => {
+      queryClient.setQueryData<UpdateStatus>(['app', 'update'], (s) => (s ? { ...s, state: 'Checking', hint: null } : s))
+      void queryClient.invalidateQueries({ queryKey: ['app', 'update'] })
     },
   })
 }

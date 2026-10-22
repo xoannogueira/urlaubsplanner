@@ -163,6 +163,8 @@ public sealed class AppUpdaterTests : IDisposable
 
         Assert.Equal(UpdateState.Ready, updater.Status.State);
         Assert.Equal("99.1.0", updater.Status.Available);
+        Assert.NotNull(updater.Status.CheckedAt);
+        Assert.False(updater.RequestCheck()); // Update liegt bereit – nicht nochmal suchen
         Assert.Contains(handler.Calls, u => u.AbsolutePath == "/repos/xoannogueira/urlaubsplanner/releases/latest");
         Assert.Contains(handler.Calls, u => u.Host == "dl.test" && u.AbsolutePath == "/win.zip");
 
