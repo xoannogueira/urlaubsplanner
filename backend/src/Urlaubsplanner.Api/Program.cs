@@ -76,6 +76,9 @@ builder.Services.AddSingleton<AppSettingsStore>();
 builder.Services.AddSingleton<SearchDefaultsStore>();
 builder.Services.AddSingleton<Urlaubsplanner.Api.PriceWatch.PriceWatchStore>();
 builder.Services.AddSingleton<Urlaubsplanner.Api.PriceStats.PriceArchive>();
+builder.Services.AddSingleton<Urlaubsplanner.Api.PriceStats.PriceCalendarStore>();
+builder.Services.AddSingleton<Urlaubsplanner.Api.PriceStats.PriceCalendarRunner>();
+builder.Services.AddSingleton<Urlaubsplanner.Api.PriceStats.DataOffload>();
 builder.Services.AddHostedService<Urlaubsplanner.Api.PriceWatch.PriceWatcher>();
 builder.Services.AddSingleton<Urlaubsplanner.Api.Packing.PackingTemplateStore>();
 builder.Services.AddSingleton<AppInstallation>();
@@ -121,6 +124,10 @@ app.MapWeatherEndpoints();
 app.MapPackingTemplateEndpoints();
 app.MapPriceWatchEndpoints();
 app.MapPriceStatsEndpoints();
+app.MapPriceCalendarEndpoints();
+app.MapDataEndpoints();
+// Ein beim letzten Beenden noch laufender Preiskalender läuft nicht weiter.
+app.Services.GetRequiredService<Urlaubsplanner.Api.PriceStats.PriceCalendarStore>().MarkInterrupted();
 
 // Im Produktivbetrieb liefert die API auch das gebaute Frontend aus (frontend/dist → wwwroot).
 // .mjs (z. B. der Web-Worker der Karte) kennt ASP.NET nicht von Haus aus – ohne Eintrag würde er nicht ausgeliefert.

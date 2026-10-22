@@ -57,6 +57,107 @@ public sealed partial class PriceArchive(AppPaths paths, ILogger<PriceArchive> l
 
     private string HistoryFile => Path.Combine(paths.DataDirectory, "preisverlauf.json");
 
+    private string UsageFile => Path.Combine(paths.DataDirectory, "preisarchiv-nutzung.json");
+
+    /// <summary>Strecke wurde angesehen – zählt fürs Auslagern („seit 30 Tagen nicht benutzt“).</summary>
+    public void Touch(string origin, string destination, DateTimeOffset now)
+    {
+        try
+        {
+            lock (_gate)
+            {
+                var usage = ReadUsage();
+                usage[$"{origin}-{destination}"] = now;
+                Directory.CreateDirectory(paths.DataDirectory);
+                File.WriteAllText(UsageFile, JsonSerializer.Serialize(usage, Indented));
+            }
+        }
+        catch (IOException e)
+        {
+            LogFailed(e);
+        }
+    }
+
+    /// <summary>Strecken im Archiv mit Anzahl und wann zuletzt benutzt (angesehen oder neue Preise).</summary>
+    public IReadOnlyList<(string Origin, string Destination, int Count, DateTimeOffset LastUsed)> Routes()
+    {
+        lock (_gate)
+        {
+            var usage = ReadUsage();
+            return ReadRecords()
+                .GroupBy(r => (r.Origin, r.Destination))
+                .Select(g =>
+                {
+                    var recorded = g.Max(r => r.SearchedAt);
+                    var viewed = usage.GetValueOrDefault($"{g.Key.Origin}-{g.Key.Destination}");
+                    return (g.Key.Origin, g.Key.Destination, g.Count(), viewed > recorded ? viewed : recorded);
+                })
+                .ToList();
+        }
+    }
+
+    /// <summary>Alle Daten einer Strecke herausnehmen (zum Auslagern).</summary>
+    public (List<PriceRecord> Records, List<PriceHistoryEntry> Histories) TakeRoute(string origin, string destination)
+    {
+        lock (_gate)
+        {
+            var records = ReadRecords();
+            var taken = records.Where(r => r.Origin == origin && r.Destination == destination).ToList();
+            WriteRecords(records.Where(r => !(r.Origin == origin && r.Destination == destination)));
+            var histories = ReadHistories();
+            var takenHistories = histories.Where(h => h.Origin == origin && h.Destination == destination).ToList();
+            WriteHistories(histories.Where(h => !(h.Origin == origin && h.Destination == destination)));
+            return (taken, takenHistories);
+        }
+    }
+
+    /// <summary>Ausgelagerte Daten zurückholen.</summary>
+    public void Restore(IEnumerable<PriceRecord> records, IEnumerable<PriceHistoryEntry> histories)
+    {
+        lock (_gate)
+        {
+            WriteRecords(ReadRecords().Concat(records).OrderBy(r => r.SearchedAt));
+            var all = ReadHistories();
+            foreach (var h in histories)
+            {
+                all.RemoveAll(x => x.Origin == h.Origin && x.Destination == h.Destination && x.DepartureDate == h.DepartureDate && x.ReturnDate == h.ReturnDate);
+                all.Add(h);
+            }
+
+            WriteHistories(all);
+        }
+    }
+
+    private Dictionary<string, DateTimeOffset> ReadUsage()
+    {
+        try
+        {
+            return File.Exists(UsageFile)
+                ? JsonSerializer.Deserialize<Dictionary<string, DateTimeOffset>>(File.ReadAllText(UsageFile), Json) ?? []
+                : [];
+        }
+        catch (JsonException)
+        {
+            return [];
+        }
+    }
+
+    private void WriteRecords(IEnumerable<PriceRecord> records)
+    {
+        Directory.CreateDirectory(paths.DataDirectory);
+        var temp = RecordsFile + ".tmp";
+        File.WriteAllLines(temp, records.Select(r => JsonSerializer.Serialize(r, Json)));
+        File.Move(temp, RecordsFile, overwrite: true);
+    }
+
+    private void WriteHistories(IEnumerable<PriceHistoryEntry> histories)
+    {
+        Directory.CreateDirectory(paths.DataDirectory);
+        var temp = HistoryFile + ".tmp";
+        File.WriteAllText(temp, JsonSerializer.Serialize(histories.ToList(), Indented));
+        File.Move(temp, HistoryFile, overwrite: true);
+    }
+
     /// <summary>Verbindungen aus einer Suche ablegen. Gleiche Verbindung zum gleichen Preis am selben Tag nur einmal.</summary>
     public void Record(IEnumerable<FlightJourney> journeys, DateOnly? returnDate, string source, DateTimeOffset now)
     {
