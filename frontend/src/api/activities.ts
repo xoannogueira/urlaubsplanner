@@ -2,7 +2,23 @@ import { keepPreviousData, useInfiniteQuery, useQuery } from '@tanstack/react-qu
 import { api } from './client'
 import type { LatLng } from './types'
 
-export type ActivityCategory = 'Sight' | 'Museum' | 'Viewpoint' | 'Castle' | 'Religious' | 'Nature' | 'Beach' | 'Zoo' | 'ThemePark'
+export type ActivityCategory =
+  | 'Sight'
+  | 'Museum'
+  | 'Viewpoint'
+  | 'Castle'
+  | 'Religious'
+  | 'Nature'
+  | 'Beach'
+  | 'Zoo'
+  | 'ThemePark'
+  | 'Restaurant'
+  | 'Cafe'
+  | 'Bar'
+  | 'IceCream'
+
+/** Sehenswertes oder Essen & Trinken */
+export type ActivityTheme = 'Sights' | 'Food'
 
 export interface ActivitySuggestion {
   /** OpenStreetMap-Kennung, z. B. "way/123" */
@@ -23,6 +39,11 @@ export interface ActivitySuggestion {
   /** Anzahl Wikipedia-Sprachversionen – wie bekannt der Ort ist */
   popularity: number
   wikidataId: string | null
+  /** Essen & Trinken: Küche auf Deutsch, z. B. „Portugiesisch, Fisch“ */
+  cuisine?: string | null
+  /** „vegan“, „vegetarisch“, „vegetarische Auswahl“ … */
+  diet?: string | null
+  phone?: string | null
 }
 
 export type ActivitySort = 'Popular' | 'Distance'
@@ -50,9 +71,9 @@ export const PAGE_SIZE = 10
  * Vorschläge seitenweise (10 Stück). Die Suche bei OpenStreetMap läuft auf dem Server nur einmal und bleibt
  * einen Tag im Cache – weitere Seiten, Filter und Sortierung kosten keine neue Abfrage dort.
  */
-export function useActivityPages(center: LatLng | null, radiusMeters: number, filter: ActivityFilter) {
+export function useActivityPages(center: LatLng | null, radiusMeters: number, filter: ActivityFilter, theme: ActivityTheme = 'Sights') {
   return useInfiniteQuery({
-    queryKey: ['activities', center?.latitude.toFixed(3), center?.longitude.toFixed(3), radiusMeters, filter],
+    queryKey: ['activities', theme, center?.latitude.toFixed(3), center?.longitude.toFixed(3), radiusMeters, filter],
     queryFn: ({ signal, pageParam }) => {
       const params = new URLSearchParams({
         lat: String(center!.latitude),
@@ -61,6 +82,7 @@ export function useActivityPages(center: LatLng | null, radiusMeters: number, fi
         offset: String(pageParam),
         limit: String(PAGE_SIZE),
         sort: filter.sort,
+        theme,
       })
       if (filter.category) params.set('category', filter.category)
       if (filter.query.trim()) params.set('q', filter.query.trim())

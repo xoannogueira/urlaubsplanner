@@ -282,4 +282,46 @@ public sealed class OsmActivitySearchTests
     {
         Assert.Equal(expected, OsmActivitySearch.WikipediaUrl(tag));
     }
+
+    private const string Food = """
+        {
+          "elements": [
+            { "type": "node", "id": 11, "lat": 38.6975, "lon": -9.2065,
+              "tags": { "name": "Pastéis de Belém", "amenity": "cafe", "cuisine": "cake;coffee_shop", "opening_hours": "Mo-Su 08:00-23:00", "phone": "+351 21 363 7423" } },
+            { "type": "node", "id": 12, "lat": 38.6990, "lon": -9.2050,
+              "tags": { "name": "Taberna dos Ferreiras", "amenity": "restaurant", "cuisine": "portuguese;seafood", "diet:vegetarian": "yes" } },
+            { "type": "node", "id": 13, "lat": 38.6960, "lon": -9.2080, "tags": { "name": "Bar do Rio", "amenity": "pub" } },
+            { "type": "node", "id": 14, "lat": 38.6960, "lon": -9.2080, "tags": { "name": "McBurger", "amenity": "fast_food" } }
+          ]
+        }
+        """;
+
+    [Fact]
+    public async Task Essen_und_Trinken_ohne_Wikidata_mit_Kueche_auf_Deutsch()
+    {
+        var (search, handler) = Create(r => Json(r.RequestUri!.Host.StartsWith("overpass", StringComparison.Ordinal) ? Food : Sparql));
+        var request = ActivitySearchRequest.Create(38.6970, -9.2070, 1500, ActivityTheme.Food);
+
+        var result = await search.SearchAsync(request, CancellationToken.None);
+
+        Assert.Contains("amenity", handler.OverpassQuery, StringComparison.Ordinal);
+        Assert.DoesNotContain("wikidata.test", handler.Calls);
+        Assert.Equal(3, result.Activities.Count); // Fast Food kommt nicht vor
+        var cafe = Assert.Single(result.Activities, a => a.Name == "Pastéis de Belém");
+        Assert.Equal(ActivityCategory.Cafe, cafe.Category);
+        Assert.Equal("Kuchen, Kaffee", cafe.Cuisine);
+        Assert.Equal("+351 21 363 7423", cafe.Phone);
+        var taberna = Assert.Single(result.Activities, a => a.Category == ActivityCategory.Restaurant);
+        Assert.Equal("Portugiesisch, Fisch & Meeresfrüchte", taberna.Cuisine);
+        Assert.Equal("vegetarische Auswahl", taberna.Diet);
+        Assert.Equal(ActivityCategory.Bar, Assert.Single(result.Activities, a => a.Name == "Bar do Rio").Category);
+
+        // Sehenswertes und Essen werden getrennt gemerkt.
+        Assert.False(search.IsCached(ActivitySearchRequest.Create(38.6970, -9.2070, 1500)));
+        Assert.True(search.IsCached(request));
+    }
+
+    [Fact]
+    public void Umkreis_fuer_Essen_ist_begrenzt() =>
+        Assert.Equal(ActivitySearchRequest.MaxFoodRadiusMeters, ActivitySearchRequest.Create(38.69, -9.2, 50_000, ActivityTheme.Food).RadiusMeters);
 }

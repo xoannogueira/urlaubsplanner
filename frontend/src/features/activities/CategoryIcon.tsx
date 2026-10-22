@@ -1,4 +1,19 @@
-import { Binoculars, Castle, Church, FerrisWheel, Landmark, Palette, PawPrint, TreePalm, Trees, type LucideProps } from 'lucide-react'
+import {
+  Binoculars,
+  Castle,
+  Church,
+  Coffee,
+  FerrisWheel,
+  IceCreamCone,
+  Landmark,
+  Palette,
+  PawPrint,
+  TreePalm,
+  Trees,
+  Utensils,
+  Wine,
+  type LucideProps,
+} from 'lucide-react'
 import type { ActivityCategory } from '../../api/activities'
 
 const icons: Record<ActivityCategory, typeof Landmark> = {
@@ -11,6 +26,10 @@ const icons: Record<ActivityCategory, typeof Landmark> = {
   Beach: TreePalm,
   Zoo: PawPrint,
   ThemePark: FerrisWheel,
+  Restaurant: Utensils,
+  Cafe: Coffee,
+  Bar: Wine,
+  IceCream: IceCreamCone,
 }
 
 export function CategoryIcon({ category, ...props }: { category: ActivityCategory } & LucideProps) {
