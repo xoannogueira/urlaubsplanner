@@ -54,6 +54,8 @@ export interface Trip {
   options: TripOption[]
   packing: PackingList
   party: TripParty
+  /** Voreinstellungen für die Suchen (fehlt bei älteren Antworten) */
+  searchSettings?: SearchSettings
 }
 
 export interface PackingItem {
@@ -190,4 +192,30 @@ export interface Place {
 export interface LatLng {
   latitude: number
   longitude: number
+}
+
+/** Startpunkt zu Hause für Bus & Bahn */
+export interface HomePlace {
+  name: string
+  latitude: number
+  longitude: number
+}
+
+/** Voreinstellungen für die Suchen einer Reise (bzw. für neue Reisen). Alles optional. */
+export interface SearchSettings {
+  homeAirports?: string[] | null
+  cabin?: string | null
+  nonstop?: boolean
+  withBag?: boolean
+  departFrom?: number | null
+  departTo?: number | null
+  hotelRooms?: number | null
+  hotelMinRating?: number | null
+  hotelMinStars?: number | null
+  hotelMaxPrice?: number | null
+  hotelRefundableOnly?: boolean
+  activityRadius?: number | null
+  foodRadius?: number | null
+  transitHour?: number | null
+  transitHome?: HomePlace | null
 }

@@ -14,6 +14,7 @@ import { SearchCosts } from '../setup/SearchCosts'
 import { useSetup } from '../setup/setupContext'
 import { InstallationSection } from './InstallationSection'
 import { ConnectivitySection } from './ConnectivitySection'
+import { SearchDefaultsSection } from './SearchDefaultsSection'
 import { KEY_URL, SIGN_UP_URL, Warning } from '../setup/SetupWizard'
 
 /** API-Key, verbleibende Suchen, was Suchen kosten und wo die Daten liegen. */
@@ -148,6 +149,13 @@ export function SettingsPage() {
                   Jetzt nach Updates suchen
                 </Button>
               )}
+            </Section>
+
+            <Section
+              title="Vorgaben für neue Reisen"
+              description="Jede neue Reise übernimmt diese Einstellungen für die Suchen. Pro Reise änderst du sie direkt in der Suche mit „Als Standard merken“."
+            >
+              <SearchDefaultsSection />
             </Section>
 
             <ConnectivitySection />

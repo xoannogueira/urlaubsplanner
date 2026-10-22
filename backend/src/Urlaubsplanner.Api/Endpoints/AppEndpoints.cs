@@ -141,6 +141,8 @@ public static partial class AppEndpoints
 
         var settings = app.MapGroup("/api/settings").WithTags("Einstellungen");
         settings.MapGet("/", GetSettings);
+        settings.MapGet("/search-defaults", (SearchDefaultsStore store) => TypedResults.Ok(store.Get()));
+        settings.MapPut("/search-defaults", (Urlaubsplanner.Domain.Trips.SearchSettings request, SearchDefaultsStore store) => TypedResults.Ok(store.Set(request)));
         settings.MapPut("/serpapi", SetSerpApiKey);
         settings.MapDelete("/serpapi", RemoveSerpApiKey);
         return app;

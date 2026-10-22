@@ -46,6 +46,7 @@ import {
 import { toLatLng } from '../../lib/geo'
 import { stageMarkers } from '../../lib/mapData'
 import { TransitAnreise } from '../transit/TransitAnreise'
+import { RememberButton } from '../../components/RememberButton'
 import { AirportPicker } from './AirportPicker'
 import { FlightDatesDialog } from './FlightDatesDialog'
 import { FlightResultCard } from './FlightResultCard'
@@ -146,11 +147,18 @@ function ModeButton({ active, onClick, icon, children }: { active: boolean; onCl
 /** Flugsuche für die ganze Reise: Hinflug zur ersten Etappe, Rückflug von der letzten. */
 function FlightSearch({ trip }: { trip: Trip }) {
   const status = useFlightSearchStatus()
+  // Heimatflughäfen aus den Sucheinstellungen der Reise (sonst, wie bisher, aus diesem Browser).
+  const homeCodes = trip.searchSettings?.homeAirports ?? []
+  const homeLookup = useAirportLookup(homeCodes)
   if (status.data && !status.data.configured) return <SetupHint provider={status.data.provider} />
-  return <SearchArea trip={trip} status={status.data ?? null} />
+  if (homeCodes.length > 0 && homeLookup.isPending) return <Skeleton className="h-64" />
+  const initialHome =
+    homeCodes.length > 0 ? homeCodes.map((c) => homeLookup.data?.find((a) => a.code === c)).filter((a): a is Airport => !!a) : null
+  return <SearchArea trip={trip} status={status.data ?? null} initialHome={initialHome && initialHome.length > 0 ? initialHome : null} />
 }
 
-function SearchArea({ trip, status }: { trip: Trip; status: FlightSearchStatus | null }) {
+function SearchArea({ trip, status, initialHome }: { trip: Trip; status: FlightSearchStatus | null; initialHome: Airport[] | null }) {
+  const preset = trip.searchSettings
   // Google Flights (SerpApi): alle Flughäfen in einer Suche, Rückflug wird nach dem Hinflug gewählt.
   const google = status?.provider === 'serpapi'
   const actions = useTripActions(trip.id)
@@ -160,8 +168,8 @@ function SearchArea({ trip, status }: { trip: Trip; status: FlightSearchStatus |
   const lastCenter = useMemo(() => toLatLng(lastStage), [lastStage])
 
   const [type, setType] = useState<TripType>(() => suggestTripType(trip.stages))
-  const [cabin, setCabin] = useState<CabinClass>('Economy')
-  const [home, setHome] = useState<Airport[]>(loadHome)
+  const [cabin, setCabin] = useState<CabinClass>(() => (preset?.cabin as CabinClass | null | undefined) ?? 'Economy')
+  const [home, setHome] = useState<Airport[]>(() => initialHome ?? loadHome())
   // null = noch nicht angefasst → Vorschlag (Heimat bzw. nächster Flughafen der Etappe)
   const [outFrom, setOutFrom] = useState<Airport[] | null>(null)
   const [outTo, setOutTo] = useState<Airport[] | null>(null)
@@ -173,7 +181,12 @@ function SearchArea({ trip, status }: { trip: Trip; status: FlightSearchStatus |
   const [radiusIn, setRadiusIn] = useState(150)
 
   const [params, setParams] = useState<FlightSearchParams | null>(null)
-  const [filters, setFilters] = useState<FlightFilters>(noFlightFilters)
+  const [filters, setFilters] = useState<FlightFilters>(() => ({
+    ...noFlightFilters,
+    nonstop: preset?.nonstop ?? false,
+    withBag: preset?.withBag ?? false,
+    departure: preset?.departFrom != null && preset.departTo != null ? [{ from: preset.departFrom, to: preset.departTo }] : [],
+  }))
   const [sort, setSort] = useState<FlightSort>('best')
   const [timeValue, setTimeValue] = useState<TimeValue>(storedTimeValue)
   const [timesOpen, setTimesOpen] = useState(false)
@@ -418,6 +431,20 @@ function SearchArea({ trip, status }: { trip: Trip; status: FlightSearchStatus |
                   : `${requests} Abfragen (eine pro Flughafen-Kombination)`)}
           </span>
           {status?.quota && <QuotaBadge quota={status.quota} />}
+          <div className="flex-1" />
+          <RememberButton
+            onRemember={() => {
+              const slot = filters.departure[0]
+              return actions.setSearchSettings.mutateAsync({
+                homeAirports: origins.map((a) => a.code),
+                cabin,
+                nonstop: filters.nonstop,
+                withBag: filters.withBag,
+                departFrom: slot && (slot.from > 0 || slot.to < 24) ? slot.from : null,
+                departTo: slot && (slot.from > 0 || slot.to < 24) ? slot.to : null,
+              })
+            }}
+          />
         </div>
       </section>
 

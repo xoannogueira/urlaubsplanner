@@ -15,6 +15,7 @@ import { useTripActions } from '../../api/trips'
 import type { LatLng, Stage, Trip } from '../../api/types'
 import { TripMap } from '../../components/map/TripMap'
 import type { MapPin } from '../../components/map/types'
+import { RememberButton } from '../../components/RememberButton'
 import { Button } from '../../components/ui/Button'
 import { EmptyState, ErrorState, Skeleton } from '../../components/ui/Feedback'
 import { activityOptionInput, categoryLabels, routeFromHotelUrl, stageHotel } from '../../lib/activities'
@@ -110,7 +111,8 @@ function Suggestions({
   const actions = useTripActions(trip.id)
   const hotel = stageHotel(trip, stage.id)
   const food = theme === 'Food'
-  const [radius, setRadius] = useState(defaultRadius[theme])
+  const saved = food ? trip.searchSettings?.foodRadius : trip.searchSettings?.activityRadius
+  const [radius, setRadius] = useState(() => (saved && radiusOptions[theme].includes(saved) ? saved : defaultRadius[theme]))
   const [category, setCategory] = useState<ActivityCategory | null>(null)
   const [query, setQuery] = useState('')
   const [sort, setSort] = useState<ActivitySort>('Popular')
@@ -221,6 +223,10 @@ function Suggestions({
             ))}
           </select>
         </label>
+        <RememberButton
+          label="Umkreis merken"
+          onRemember={() => actions.setSearchSettings.mutateAsync(food ? { foodRadius: radius } : { activityRadius: radius })}
+        />
       </section>
 
       {error ? (

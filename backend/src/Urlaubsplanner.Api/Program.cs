@@ -73,6 +73,7 @@ if (string.IsNullOrWhiteSpace(builder.Configuration["Activities:CacheDirectory"]
 builder.Services.AddSingleton<ActivityPrefetcher>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<ActivityPrefetcher>());
 builder.Services.AddSingleton<AppSettingsStore>();
+builder.Services.AddSingleton<SearchDefaultsStore>();
 builder.Services.AddSingleton<Urlaubsplanner.Api.Packing.PackingTemplateStore>();
 builder.Services.AddSingleton<AppInstallation>();
 

@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, json } from './client'
+import type { SearchSettings } from './types'
 
 export interface AppInfo {
   app: string
@@ -173,3 +174,16 @@ export interface ConnectivityResult {
 
 /** Prüft, ob die App die Dienste für die Suchen erreicht (z. B. wenn ein Antivirenprogramm blockiert). */
 export const checkConnectivity = () => api<ConnectivityResult[]>('/app/connectivity')
+
+/** Vorgaben für neue Reisen (Heimatflughafen, Zimmer, Direktflüge …). */
+export function useSearchDefaults() {
+  return useQuery({ queryKey: ['settings', 'search-defaults'], queryFn: () => api<SearchSettings>('/settings/search-defaults') })
+}
+
+export function useSetSearchDefaults() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (settings: SearchSettings) => api<SearchSettings>('/settings/search-defaults', { method: 'PUT', ...json(settings) }),
+    onSuccess: (data) => queryClient.setQueryData(['settings', 'search-defaults'], data),
+  })
+}

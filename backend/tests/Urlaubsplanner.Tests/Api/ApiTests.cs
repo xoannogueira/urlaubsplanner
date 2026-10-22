@@ -457,4 +457,28 @@ public sealed class ApiTests : IDisposable
         Assert.Equal(HttpStatusCode.NoContent, (await _client.DeleteAsync($"/api/packing-templates/{id}")).StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, (await _client.DeleteAsync($"/api/packing-templates/{id}")).StatusCode);
     }
+
+    [Fact]
+    public async Task Sucheinstellungen_pro_Reise_und_Vorgaben_fuer_neue_Reisen()
+    {
+        var preset = await _client.PutAsJsonAsync("/api/settings/search-defaults", new { homeAirports = new[] { "str", "FRA" }, hotelRooms = 1, nonstop = true });
+        Assert.Equal(HttpStatusCode.OK, preset.StatusCode);
+
+        var created = await (await _client.PostAsJsonAsync("/api/trips", new { name = "Lissabon", travelers = 2 })).Content.ReadFromJsonAsync<JsonElement>();
+        var settings = created.GetProperty("searchSettings");
+        Assert.Equal(["STR", "FRA"], settings.GetProperty("homeAirports").EnumerateArray().Select(a => a.GetString()));
+        Assert.True(settings.GetProperty("nonstop").GetBoolean());
+
+        var id = created.GetProperty("id").GetGuid();
+        var changed = await _client.PutAsJsonAsync($"/api/trips/{id}/search-settings", new { homeAirports = new[] { "MUC" }, foodRadius = 1000, transitHome = new { name = "Stuttgart Hbf", latitude = 48.78, longitude = 9.18 } });
+        Assert.Equal(HttpStatusCode.OK, changed.StatusCode);
+        var trip = await _client.GetFromJsonAsync<JsonElement>($"/api/trips/{id}");
+        Assert.Equal(1000, trip.GetProperty("searchSettings").GetProperty("foodRadius").GetInt32());
+        Assert.Equal("Stuttgart Hbf", trip.GetProperty("searchSettings").GetProperty("transitHome").GetProperty("name").GetString());
+
+        var bad = await _client.PutAsJsonAsync($"/api/trips/{id}/search-settings", new { homeAirports = new[] { "Stuttgart" } });
+        Assert.Equal(HttpStatusCode.BadRequest, bad.StatusCode);
+        var badHours = await _client.PutAsJsonAsync($"/api/trips/{id}/search-settings", new { departFrom = 18, departTo = 8 });
+        Assert.Equal(HttpStatusCode.BadRequest, badHours.StatusCode);
+    }
 }
