@@ -10,11 +10,18 @@ import { AirportPicker } from '../flights/AirportPicker'
 /** Vorgaben, die jede neue Reise übernimmt (pro Reise änderbar mit „Als Standard merken“ in der jeweiligen Suche). */
 export function SearchDefaultsSection() {
   const defaults = useSearchDefaults()
-  const codes = defaults.data?.homeAirports ?? []
+  if (defaults.isPending) return <Skeleton className="h-48" />
+  return <Loader settings={defaults.data ?? {}} />
+}
+
+/** Flughäfen einmalig nachschlagen – nach dem Speichern bleibt das Formular stehen. */
+function Loader({ settings }: { settings: SearchSettings }) {
+  const [initial] = useState(settings)
+  const codes = initial.homeAirports ?? []
   const airports = useAirportLookup(codes)
-  if (defaults.isPending || (codes.length > 0 && airports.isPending)) return <Skeleton className="h-48" />
-  const initial = codes.map((c) => airports.data?.find((a) => a.code === c)).filter((a): a is Airport => !!a)
-  return <Form key={codes.join(',')} settings={defaults.data ?? {}} initialAirports={initial} />
+  if (codes.length > 0 && airports.isPending) return <Skeleton className="h-48" />
+  const found = codes.map((c) => airports.data?.find((a) => a.code === c)).filter((a): a is Airport => !!a)
+  return <Form settings={initial} initialAirports={found} />
 }
 
 function Form({ settings, initialAirports }: { settings: SearchSettings; initialAirports: Airport[] }) {
