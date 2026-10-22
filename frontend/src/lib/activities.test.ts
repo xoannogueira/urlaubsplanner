@@ -1,7 +1,16 @@
 import { describe, expect, it } from 'vitest'
 import type { ActivitySuggestion } from '../api/activities'
 import type { TripOption } from '../api/types'
-import { activityOptionInput, fameLabel, openingHoursDe, routeFromHotelUrl, stageHotel, ticketsUrl } from './activities'
+import {
+  activityOptionInput,
+  fameLabel,
+  googleReviewsUrl,
+  isFood,
+  openingHoursDe,
+  routeFromHotelUrl,
+  stageHotel,
+  ticketsUrl,
+} from './activities'
 
 const activity = (patch: Partial<ActivitySuggestion>): ActivitySuggestion => ({
   id: 'node/1',
@@ -109,5 +118,18 @@ describe('Route vom Hotel', () => {
   it('nimmt Name und Adresse, wenn das Hotel keinen Ort auf der Karte hat', () => {
     const url = new URL(routeFromHotelUrl(hotel({ latitude: null, longitude: null }), { latitude: 38.69, longitude: -9.21 }))
     expect(url.searchParams.get('origin')).toBe('Hotel Azul, Rua X 1, Lissabon')
+  })
+})
+
+describe('Essen & Trinken', () => {
+  it('merkt Küche, Ernährung und Telefon, verlinkt Google-Bewertungen', () => {
+    const r = activity({ name: 'Taberna', category: 'Restaurant', cuisine: 'Portugiesisch', diet: 'vegetarische Auswahl', phone: '+351 1' })
+    expect(isFood(r)).toBe(true)
+    expect(ticketsUrl(r)).toBeNull()
+    const input = activityOptionInput(r, 's1')
+    expect(input.url).toBe(googleReviewsUrl(r))
+    expect(input.url).toContain('Taberna')
+    expect(input.notes).toBe('Küche: Portugiesisch\nVegetarische Auswahl\nTelefon: +351 1')
+    expect(input.locationName).toBe('Restaurant')
   })
 })

@@ -3,7 +3,18 @@ import { api, json } from './client'
 import { adjustTripToFlight, announceAdjustment } from './flightAdjust'
 import { periodExtendedMessage } from '../lib/dates'
 import { newMismatchMessage } from '../lib/hotelFit'
-import type { OptionInput, OptionStatus, PackingList, StageInput, Trip, TripInput, TripListItem, TripParty, TripSummary } from './types'
+import type {
+  OptionInput,
+  OptionStatus,
+  PackingList,
+  SearchSettings,
+  StageInput,
+  Trip,
+  TripInput,
+  TripListItem,
+  TripParty,
+  TripSummary,
+} from './types'
 
 export const tripKeys = {
   all: ['trips'] as const,
@@ -141,6 +152,15 @@ export function useTripActions(tripId: string) {
   })
 
   /** Neuer Reisezeitraum – erste und letzte Etappe wandern mit. */
+  /** Teil der Sucheinstellungen ändern („Als Standard merken“) – der Rest bleibt. */
+  const setSearchSettings = useMutation({
+    mutationFn: (patch: SearchSettings) => {
+      const current = queryClient.getQueryData<Trip>(tripKeys.detail(tripId))?.searchSettings ?? {}
+      return api<Trip>(`${base}/search-settings`, { method: 'PUT', ...json({ ...current, ...patch }) })
+    },
+    onSuccess,
+  })
+
   const changePeriod = useMutation({
     mutationFn: async (period: { startDate: string; endDate: string }) => {
       const before = queryClient.getQueryData<Trip>(tripKeys.detail(tripId))
@@ -193,6 +213,7 @@ export function useTripActions(tripId: string) {
     confirmPrice,
     removeOption,
     changePeriod,
+    setSearchSettings,
     setPacking,
     setParty,
   }

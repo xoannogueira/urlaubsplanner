@@ -1,5 +1,6 @@
 using Urlaubsplanner.Api.Activities;
 using Urlaubsplanner.Api.Contracts;
+using Urlaubsplanner.Api.Desktop;
 using Urlaubsplanner.Domain.Trips;
 
 namespace Urlaubsplanner.Api.Endpoints;
@@ -58,6 +59,8 @@ public static class TripEndpoints
         // Packliste und Mitreisende/Kosten: die App schickt jeweils den ganzen Stand.
         trips.MapPut("/{tripId:guid}/packing", (Guid tripId, PackingList request, ITripRepository repo, TimeProvider clock, CancellationToken ct) =>
             Change(repo, tripId, trip => trip.SetPacking(request, clock.GetUtcNow()), ct));
+        trips.MapPut("/{tripId:guid}/search-settings", (Guid tripId, SearchSettings request, ITripRepository repo, TimeProvider clock, CancellationToken ct) =>
+            Change(repo, tripId, trip => trip.SetSearchSettings(request, clock.GetUtcNow()), ct));
         trips.MapPut("/{tripId:guid}/party", (Guid tripId, TripParty request, ITripRepository repo, TimeProvider clock, CancellationToken ct) =>
             Change(repo, tripId, trip => trip.SetParty(request, clock.GetUtcNow()), ct));
 
@@ -70,9 +73,15 @@ public static class TripEndpoints
         return TypedResults.Ok(trips.Select(TripListItem.From).ToList());
     }
 
-    private static async Task<IResult> CreateTrip(TripRequest request, ITripRepository repo, TimeProvider clock, CancellationToken ct)
+    private static async Task<IResult> CreateTrip(TripRequest request, ITripRepository repo, TimeProvider clock, SearchDefaultsStore defaults, CancellationToken ct)
     {
         var trip = Trip.Create(request.ToData(), clock.GetUtcNow());
+        // Neue Reise übernimmt die allgemeinen Vorgaben (Heimatflughafen, Zimmer …) aus den Einstellungen.
+        if (defaults.Get() is { IsEmpty: false } preset)
+        {
+            trip.SetSearchSettings(preset, clock.GetUtcNow());
+        }
+
         await repo.AddAsync(trip, ct);
         return TypedResults.Created($"/api/trips/{trip.Id}", TripResponse.From(trip));
     }

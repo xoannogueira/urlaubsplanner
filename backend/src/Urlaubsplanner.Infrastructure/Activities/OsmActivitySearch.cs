@@ -102,13 +102,16 @@ public sealed partial class OsmActivitySearch(
         try
         {
             var elements = await QueryOverpassAsync(request, CancellationToken.None).ConfigureAwait(false);
-            var candidates = ToCandidates(elements, request.Center)
+            var candidates = ToCandidates(elements, request.Center, request.Theme)
                 .Where(c => c.DistanceKm * 1000 <= request.RadiusMeters) // Rechteck → Kreis
                 .ToList();
 
             // Alle Orte mit Wikidata-Eintrag abfragen (früher nur die ersten 150 – in Großstädten fehlten dann viele Fotos),
             // in Paketen, damit die einzelne Abfrage klein bleibt.
-            var wikidataIds = candidates.Select(c => c.WikidataId).OfType<string>().Distinct().Take(MaxWikidataIds).ToList();
+            // Restaurants & Cafés haben selten Wikidata – dort keine Abfrage.
+            var wikidataIds = request.Theme == ActivityTheme.Food
+                ? []
+                : candidates.Select(c => c.WikidataId).OfType<string>().Distinct().Take(MaxWikidataIds).ToList();
             var wikidata = new Dictionary<string, WikidataInfo>(StringComparer.Ordinal);
             var complete = true;
             foreach (var chunk in wikidataIds.Chunk(WikidataChunk))
@@ -148,13 +151,15 @@ public sealed partial class OsmActivitySearch(
 
     private static string CacheKey(ActivitySearchRequest request) => string.Create(
         CultureInfo.InvariantCulture,
-        $"activities:{request.Center.Latitude:F3},{request.Center.Longitude:F3}:{request.RadiusMeters}");
+        $"activities:{request.Theme}:{request.Center.Latitude:F3},{request.Center.Longitude:F3}:{request.RadiusMeters}");
 
     private string? CacheFile(ActivitySearchRequest request) => string.IsNullOrWhiteSpace(_options.CacheDirectory)
         ? null
         : Path.Combine(
             _options.CacheDirectory,
-            string.Create(CultureInfo.InvariantCulture, $"{request.Center.Latitude:F3}_{request.Center.Longitude:F3}_{request.RadiusMeters}.json"));
+            string.Create(
+                CultureInfo.InvariantCulture,
+                $"{(request.Theme == ActivityTheme.Food ? "essen_" : string.Empty)}{request.Center.Latitude:F3}_{request.Center.Longitude:F3}_{request.RadiusMeters}.json"));
 
     private bool IsFresh(string file) =>
         File.Exists(file) && clock.GetUtcNow() - File.GetLastWriteTimeUtc(file) < TimeSpan.FromDays(_options.CacheDays);
@@ -207,6 +212,12 @@ public sealed partial class OsmActivitySearch(
     {
         var (south, west, north, east) = BoundingBox(request);
         var bbox = string.Create(CultureInfo.InvariantCulture, $"[bbox:{south:F5},{west:F5},{north:F5},{east:F5}]");
+        if (request.Theme == ActivityTheme.Food)
+        {
+            // Restaurants, Cafés, Bars und Eisdielen mit Namen (ohne Imbissketten/Fast Food).
+            return $"[out:json][timeout:25]{bbox};(nwr[\"amenity\"~\"^(restaurant|cafe|bar|pub|biergarten|ice_cream)$\"][\"name\"];);out center tags 800;";
+        }
+
         var parts = new[]
         {
             "nwr[\"tourism\"~\"^(attraction|museum|gallery|viewpoint|zoo|aquarium|theme_park)$\"][\"name\"];",
@@ -362,7 +373,7 @@ public sealed partial class OsmActivitySearch(
         return result;
     }
 
-    internal static List<Candidate> ToCandidates(IEnumerable<OverpassElement> elements, Coordinates center)
+    internal static List<Candidate> ToCandidates(IEnumerable<OverpassElement> elements, Coordinates center, ActivityTheme theme = ActivityTheme.Sights)
     {
         var list = new List<Candidate>();
         foreach (var e in elements)
@@ -371,7 +382,8 @@ public sealed partial class OsmActivitySearch(
             var name = Tag(tags, "name:de") ?? Tag(tags, "name");
             var lat = e.Lat ?? e.Center?.Lat;
             var lon = e.Lon ?? e.Center?.Lon;
-            if (name is null || lat is null || lon is null || Classify(tags) is not { } category)
+            var kind = theme == ActivityTheme.Food ? ClassifyFood(tags) : Classify(tags);
+            if (name is null || lat is null || lon is null || kind is not { } category)
             {
                 continue;
             }
@@ -394,7 +406,10 @@ public sealed partial class OsmActivitySearch(
                     "no" => true,
                     "yes" => false,
                     _ => null,
-                }));
+                },
+                theme == ActivityTheme.Food ? FoodTags.Cuisine(Tag(tags, "cuisine")) : null,
+                theme == ActivityTheme.Food ? FoodTags.Diet(tags) : null,
+                theme == ActivityTheme.Food ? Tag(tags, "phone") ?? Tag(tags, "contact:phone") : null));
         }
 
         // Doppelte zusammenfassen: gleicher Wikidata-Eintrag, oder gleicher Name in unmittelbarer Nähe (Gebäude + Punkt).
@@ -424,7 +439,11 @@ public sealed partial class OsmActivitySearch(
                 var popularity = info?.Sitelinks ?? 0;
                 var image = c.ImageUrl ?? info?.ImageUrl;
                 var wikipedia = info?.WikipediaUrl ?? c.WikipediaUrl;
-                var score = (10 * Math.Log2(1 + popularity)) + Weight(c.Category) + (image is null ? 0 : 4) + (wikipedia is null ? 0 : 3) - (c.DistanceKm * 0.5);
+                // Essen & Trinken: Nähe zählt viel mehr, dazu ob man etwas über den Ort weiß (Küche, Öffnungszeiten, Website).
+                var food = FoodTags.IsFood(c.Category);
+                var score = food
+                    ? (c.Cuisine is null ? 0 : 2) + (c.OpeningHours is null ? 0 : 1) + (c.Website is null ? 0 : 1) + (c.Diet is null ? 0 : 1) - (c.DistanceKm * 4)
+                    : (10 * Math.Log2(1 + popularity)) + Weight(c.Category) + (image is null ? 0 : 4) + (wikipedia is null ? 0 : 3) - (c.DistanceKm * 0.5);
                 var suggestion = new ActivitySuggestion(
                     c.Id,
                     c.Name,
@@ -439,7 +458,10 @@ public sealed partial class OsmActivitySearch(
                     c.OpeningHours,
                     c.FreeEntry,
                     popularity,
-                    c.WikidataId);
+                    c.WikidataId,
+                    c.Cuisine,
+                    c.Diet,
+                    c.Phone);
                 return (suggestion, score);
             })
             .OrderByDescending(x => x.score)
@@ -468,6 +490,15 @@ public sealed partial class OsmActivitySearch(
             _ => null,
         };
     }
+
+    internal static ActivityCategory? ClassifyFood(IReadOnlyDictionary<string, string> tags) => Tag(tags, "amenity") switch
+    {
+        "restaurant" => ActivityCategory.Restaurant,
+        "cafe" => ActivityCategory.Cafe,
+        "bar" or "pub" or "biergarten" => ActivityCategory.Bar,
+        "ice_cream" => ActivityCategory.IceCream,
+        _ => null,
+    };
 
     private static int Weight(ActivityCategory category) => category switch
     {
@@ -546,7 +577,10 @@ internal sealed record Candidate(
     string? ImageUrl,
     string? Website,
     string? OpeningHours,
-    bool? FreeEntry);
+    bool? FreeEntry,
+    string? Cuisine = null,
+    string? Diet = null,
+    string? Phone = null);
 
 internal sealed record WikidataInfo(string? Label, string? Description, string? ImageUrl, int Sitelinks, string? WikipediaUrl);
 

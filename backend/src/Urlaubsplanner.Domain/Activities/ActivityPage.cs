@@ -39,7 +39,8 @@ public static class ActivityPaging
         var matching = all
             .Where(a => q.Length == 0 ||
                 a.Name.Contains(q, StringComparison.OrdinalIgnoreCase) ||
-                (a.Description?.Contains(q, StringComparison.OrdinalIgnoreCase) ?? false))
+                (a.Description?.Contains(q, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                (a.Cuisine?.Contains(q, StringComparison.OrdinalIgnoreCase) ?? false))
             .ToList();
         var categories = matching
             .GroupBy(a => a.Category)

@@ -25,6 +25,7 @@ public static class ActivityEndpoints
 
     /// <summary>
     /// GET /api/activities?lat=38.72&amp;lon=-9.14&amp;radiusMeters=5000&amp;offset=0&amp;limit=10&amp;category=Museum&amp;q=…&amp;sort=Distance
+    /// (&amp;theme=Food für Restaurants, Cafés, Bars und Eis)
     /// Die Suche selbst läuft einmal und bleibt einen Tag im Cache – weitere Seiten kosten keine neue Abfrage.
     /// </summary>
     private static async Task<IResult> Search(
@@ -36,6 +37,7 @@ public static class ActivityEndpoints
         ActivityCategory? category,
         string? q,
         ActivitySort? sort,
+        ActivityTheme? theme,
         IActivitySearch search,
         CancellationToken ct)
     {
@@ -46,7 +48,12 @@ public static class ActivityEndpoints
                 title: "Eingabe ungültig");
         }
 
-        var request = ActivitySearchRequest.Create(lat.Value, lon.Value, radiusMeters ?? ActivitySearchRequest.DefaultRadiusMeters);
+        var t = theme ?? ActivityTheme.Sights;
+        var request = ActivitySearchRequest.Create(
+            lat.Value,
+            lon.Value,
+            radiusMeters ?? (t == ActivityTheme.Food ? ActivitySearchRequest.DefaultFoodRadiusMeters : ActivitySearchRequest.DefaultRadiusMeters),
+            t);
         var result = await search.SearchAsync(request, ct);
         var page = ActivityPaging.Page(
             result.Activities,

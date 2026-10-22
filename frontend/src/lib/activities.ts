@@ -13,7 +13,18 @@ export const categoryLabels: Record<ActivityCategory, { plural: string; singular
   Beach: { plural: 'Strände', singular: 'Strand' },
   Zoo: { plural: 'Zoos & Aquarien', singular: 'Zoo / Aquarium' },
   ThemePark: { plural: 'Freizeitparks', singular: 'Freizeitpark' },
+  Restaurant: { plural: 'Restaurants', singular: 'Restaurant' },
+  Cafe: { plural: 'Cafés', singular: 'Café' },
+  Bar: { plural: 'Bars & Kneipen', singular: 'Bar / Kneipe' },
+  IceCream: { plural: 'Eisdielen', singular: 'Eisdiele' },
 }
+
+export const foodCategories: ActivityCategory[] = ['Restaurant', 'Cafe', 'Bar', 'IceCream']
+export const isFood = (a: Pick<ActivitySuggestion, 'category'>) => foodCategories.includes(a.category)
+
+/** Bewertungen gibt es kostenlos nur bei Google selbst – der Link sucht den Ort dort (es werden keine Daten abgefragt). */
+export const googleReviewsUrl = (a: Pick<ActivitySuggestion, 'name' | 'latitude' | 'longitude'>) =>
+  `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${a.name} ${a.latitude.toFixed(5)},${a.longitude.toFixed(5)}`)}`
 
 const days: Record<string, string> = { Mo: 'Mo', Tu: 'Di', We: 'Mi', Th: 'Do', Fr: 'Fr', Sa: 'Sa', Su: 'So' }
 
@@ -55,7 +66,7 @@ export function activityOptionInput(a: ActivitySuggestion, stageId: string | nul
     title: a.name,
     status: 'Favorite',
     stageId,
-    url: a.wikipediaUrl ?? a.website ?? googleMapsUrl(a),
+    url: a.wikipediaUrl ?? a.website ?? (isFood(a) ? googleReviewsUrl(a) : googleMapsUrl(a)),
     price: a.freeEntry ? 0 : null,
     pricePerPerson: true,
     startDate: null,
@@ -65,6 +76,9 @@ export function activityOptionInput(a: ActivitySuggestion, stageId: string | nul
     longitude: a.longitude,
     notes: [
       a.description,
+      a.cuisine ? `Küche: ${a.cuisine}` : null,
+      a.diet ? `${a.diet.charAt(0).toUpperCase()}${a.diet.slice(1)}` : null,
+      a.phone ? `Telefon: ${a.phone}` : null,
       hours ? `Öffnungszeiten: ${hours}` : null,
       a.freeEntry ? 'Eintritt frei' : null,
       a.website && a.website !== a.wikipediaUrl ? a.website : null,

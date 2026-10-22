@@ -52,6 +52,9 @@ public sealed class Trip
 
     public TripParty Party { get; private set; } = TripParty.Empty;
 
+    /// <summary>Voreinstellungen für die Suchen (Heimatflughafen, Zimmer, Umkreis …).</summary>
+    public SearchSettings SearchSettings { get; private set; } = SearchSettings.Empty;
+
     public static Trip Create(TripData data, DateTimeOffset now)
     {
         var trip = new Trip(Guid.NewGuid(), now, [], []);
@@ -72,11 +75,13 @@ public sealed class Trip
         IEnumerable<Stage> stages,
         IEnumerable<TripOption> options,
         PackingList? packing = null,
-        TripParty? party = null) =>
+        TripParty? party = null,
+        SearchSettings? searchSettings = null) =>
         new Trip(id, createdAt, stages.ToList(), options.ToList())
         {
             Packing = packing ?? PackingList.Empty,
             Party = party ?? TripParty.Empty,
+            SearchSettings = searchSettings ?? SearchSettings.Empty,
             Name = name,
             Travelers = travelers,
             StartDate = startDate,
@@ -269,6 +274,13 @@ public sealed class Trip
         StartDate = StartDate is { } start && start < first ? start : first;
         EndDate = EndDate is { } end && end > last ? end : last;
         return this;
+    }
+
+    /// <summary>Ersetzt die Sucheinstellungen (die App schickt immer alle).</summary>
+    public void SetSearchSettings(SearchSettings settings, DateTimeOffset now)
+    {
+        SearchSettings = SearchSettings.Validate(settings);
+        Touch(now);
     }
 
     private Stage FindStage(Guid stageId) =>

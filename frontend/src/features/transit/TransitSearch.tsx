@@ -19,6 +19,7 @@ import {
   CircleDot,
 } from 'lucide-react'
 import { useMemo, useState, type ReactNode } from 'react'
+import { RememberButton } from '../../components/RememberButton'
 import { ApiError } from '../../api/client'
 import { useTransitPlan, type TransitItinerary, type TransitLeg, type TransitQuery } from '../../api/transit'
 import { useTripActions } from '../../api/trips'
@@ -64,12 +65,14 @@ interface TransitSearchProps {
   defaults: TransitSearchDefaults
   /** Gleich suchen (z. B. beim Aufklappen eines Transfer-Vorschlags) */
   autoSearch?: boolean
+  /** Anreise: Startpunkt und Uhrzeit als Standard der Reise merken */
+  onRemember?: (from: TransitPoint | null, hour: number) => Promise<unknown>
 }
 
 const pad = (n: number) => String(n).padStart(2, '0')
 
 /** Verbindungen mit Bus & Bahn suchen und merken (Transitous – kostenlos). */
-export function TransitSearch({ trip, scope, stageId, defaults, autoSearch = false }: TransitSearchProps) {
+export function TransitSearch({ trip, scope, stageId, defaults, autoSearch = false, onRemember }: TransitSearchProps) {
   const actions = useTripActions(trip.id)
   const [fromText, setFromText] = useState(defaults.from?.name ?? '')
   const [from, setFrom] = useState<LatLng | null>(defaults.from?.location ?? null)
@@ -181,6 +184,12 @@ export function TransitSearch({ trip, scope, stageId, defaults, autoSearch = fal
           <span className={clsx('text-sm', problem ? 'text-star' : 'text-muted')}>
             {problem ?? 'Kostenlos – zählt nicht zu den Google-Suchen'}
           </span>
+          {onRemember && (
+            <RememberButton
+              label="Start & Uhrzeit als Standard merken"
+              onRemember={() => onRemember(from ? { name: fromText, location: from } : null, Number(time.slice(0, 2)))}
+            />
+          )}
         </div>
       </form>
 

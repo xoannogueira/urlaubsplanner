@@ -1,13 +1,21 @@
 import clsx from 'clsx'
 import { LoaderCircle, Search, SearchX } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { PAGE_SIZE, useActivityPages, type ActivityCategory, type ActivitySort, type ActivitySuggestion } from '../../api/activities'
+import {
+  PAGE_SIZE,
+  useActivityPages,
+  type ActivityCategory,
+  type ActivitySort,
+  type ActivitySuggestion,
+  type ActivityTheme,
+} from '../../api/activities'
 import { ApiError } from '../../api/client'
 import { useDebouncedValue } from '../../api/places'
 import { useTripActions } from '../../api/trips'
 import type { LatLng, Stage, Trip } from '../../api/types'
 import { TripMap } from '../../components/map/TripMap'
 import type { MapPin } from '../../components/map/types'
+import { RememberButton } from '../../components/RememberButton'
 import { Button } from '../../components/ui/Button'
 import { EmptyState, ErrorState, Skeleton } from '../../components/ui/Feedback'
 import { activityOptionInput, categoryLabels, routeFromHotelUrl, stageHotel } from '../../lib/activities'
@@ -16,7 +24,11 @@ import { stageMarkers } from '../../lib/mapData'
 import { ActivityCard } from './ActivityCard'
 import { CategoryIcon } from './CategoryIcon'
 
-const radiusOptions = [2000, 5000, 10_000, 20_000, 50_000]
+const radiusOptions: Record<ActivityTheme, number[]> = {
+  Sights: [2000, 5000, 10_000, 20_000, 50_000],
+  Food: [500, 1000, 1500, 3000, 5000, 10_000],
+}
+const defaultRadius: Record<ActivityTheme, number> = { Sights: 5000, Food: 1500 }
 
 interface ActivitySuggestionsViewProps {
   trip: Trip
@@ -24,9 +36,18 @@ interface ActivitySuggestionsViewProps {
   onEditStage: () => void
 }
 
-/** Vorschläge für eine Etappe aus OpenStreetMap und Wikidata – kostenlos, deshalb lädt die Liste sofort. */
+/**
+ * Vorschläge für eine Etappe aus OpenStreetMap und Wikidata – kostenlos, deshalb lädt die Liste sofort.
+ * Umschalter: Sehenswertes oder Essen & Trinken (Restaurants, Cafés, Bars, Eis – rund ums Hotel, sonst um die Etappe).
+ */
 export function ActivitySuggestionsView({ trip, stage, onEditStage }: ActivitySuggestionsViewProps) {
-  const center = useMemo(() => toLatLng(stage), [stage])
+  const [theme, setTheme] = useState<ActivityTheme>('Sights')
+  const hotelAt = toLatLng(stageHotel(trip, stage?.id))
+  // Essen & Trinken rund ums Hotel, sonst um die Etappe. Als Zahlen vergleichen, damit die Karte nicht ständig neu springt.
+  const point = theme === 'Food' && hotelAt ? hotelAt : toLatLng(stage)
+  const lat = point?.latitude
+  const lon = point?.longitude
+  const center = useMemo(() => (lat != null && lon != null ? { latitude: lat, longitude: lon } : null), [lat, lon])
 
   if (!stage) {
     return (
@@ -52,13 +73,46 @@ export function ActivitySuggestionsView({ trip, stage, onEditStage }: ActivitySu
     )
   }
 
-  return <Suggestions key={stage.id} trip={trip} stage={stage} center={center} />
+  return (
+    <div className="flex flex-col gap-4">
+      <div role="radiogroup" aria-label="Art der Vorschläge" className="flex w-fit rounded-xl bg-surface-2 p-1">
+        <ViewButton active={theme === 'Sights'} onClick={() => setTheme('Sights')}>
+          Sehenswertes
+        </ViewButton>
+        <ViewButton active={theme === 'Food'} onClick={() => setTheme('Food')}>
+          Essen & Trinken
+        </ViewButton>
+      </div>
+      <Suggestions
+        key={`${stage.id}-${theme}`}
+        trip={trip}
+        stage={stage}
+        center={center}
+        theme={theme}
+        nearHotel={theme === 'Food' && hotelAt !== null}
+      />
+    </div>
+  )
 }
 
-function Suggestions({ trip, stage, center }: { trip: Trip; stage: Stage; center: LatLng }) {
+function Suggestions({
+  trip,
+  stage,
+  center,
+  theme,
+  nearHotel,
+}: {
+  trip: Trip
+  stage: Stage
+  center: LatLng
+  theme: ActivityTheme
+  nearHotel: boolean
+}) {
   const actions = useTripActions(trip.id)
   const hotel = stageHotel(trip, stage.id)
-  const [radius, setRadius] = useState(5000)
+  const food = theme === 'Food'
+  const saved = food ? trip.searchSettings?.foodRadius : trip.searchSettings?.activityRadius
+  const [radius, setRadius] = useState(() => (saved && radiusOptions[theme].includes(saved) ? saved : defaultRadius[theme]))
   const [category, setCategory] = useState<ActivityCategory | null>(null)
   const [query, setQuery] = useState('')
   const [sort, setSort] = useState<ActivitySort>('Popular')
@@ -68,7 +122,7 @@ function Suggestions({ trip, stage, center }: { trip: Trip; stage: Stage; center
 
   const debouncedQuery = useDebouncedValue(query, 300)
   const filter = useMemo(() => ({ category, query: debouncedQuery, sort }), [category, debouncedQuery, sort])
-  const suggestions = useActivityPages(center, radius, filter)
+  const suggestions = useActivityPages(center, radius, filter, theme)
   const pages = suggestions.data?.pages
   const shown = useMemo(() => pages?.flatMap((p) => p.activities) ?? [], [pages])
   const total = pages?.[0]?.total ?? 0
@@ -133,9 +187,13 @@ function Suggestions({ trip, stage, center }: { trip: Trip; stage: Stage; center
         className="flex flex-wrap items-end gap-x-6 gap-y-4 rounded-[18px] border border-line bg-surface p-5"
       >
         <div className="flex min-w-[220px] flex-1 flex-col gap-1">
-          <span className="text-[13px] font-bold text-muted">Vorschläge für</span>
+          <span className="text-[13px] font-bold text-muted">{food ? 'Essen & Trinken in' : 'Vorschläge für'}</span>
           <span className="text-lg font-extrabold">{stage.name}</span>
-          <span className="text-sm text-muted">Sehenswürdigkeiten, Museen, Aussichtspunkte, Natur und mehr – bekannteste zuerst</span>
+          <span className="text-sm text-muted">
+            {food
+              ? `Restaurants, Cafés, Bars und Eis ${nearHotel ? `rund um ${hotel?.title ?? 'dein Hotel'}` : 'rund um die Etappe'} – nahe und gut beschriebene zuerst. Bewertungen gibt es per Link bei Google.`
+              : 'Sehenswürdigkeiten, Museen, Aussichtspunkte, Natur und mehr – bekannteste zuerst'}
+          </span>
         </div>
         <label className="relative flex flex-col gap-1.5">
           <span className="text-[13px] font-bold text-muted">Suchen</span>
@@ -144,7 +202,7 @@ function Suggestions({ trip, stage, center }: { trip: Trip; stage: Stage; center
             type="search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="z. B. Kloster"
+            placeholder={food ? 'z. B. Fisch, Pizza, vegan' : 'z. B. Kloster'}
             className="h-11 w-56 rounded-xl border border-line bg-surface-2 pl-9 pr-3 text-[15px]"
           />
         </label>
@@ -158,13 +216,17 @@ function Suggestions({ trip, stage, center }: { trip: Trip; stage: Stage; center
             onChange={(e) => setRadius(Number(e.target.value))}
             className="h-11 rounded-xl border border-line bg-surface-2 px-3 text-[15px] font-semibold"
           >
-            {radiusOptions.map((r) => (
+            {radiusOptions[theme].map((r) => (
               <option key={r} value={r}>
-                {r / 1000} km
+                {r < 1000 ? `${r} m` : `${(r / 1000).toLocaleString('de-DE')} km`}
               </option>
             ))}
           </select>
         </label>
+        <RememberButton
+          label="Umkreis merken"
+          onRemember={() => actions.setSearchSettings.mutateAsync(food ? { foodRadius: radius } : { activityRadius: radius })}
+        />
       </section>
 
       {error ? (
@@ -173,8 +235,9 @@ function Suggestions({ trip, stage, center }: { trip: Trip; stage: Stage; center
         <div className="grid gap-3" aria-busy="true">
           <p className="flex items-center gap-2 text-sm text-muted">
             <LoaderCircle size={15} className="shrink-0 animate-spin text-accent" />
-            Suche Vorschläge in OpenStreetMap und Wikipedia … beim ersten Mal kann das bis zu 30 Sekunden dauern, danach sind sie
-            gespeichert.
+            {food
+              ? 'Suche Restaurants und Cafés in OpenStreetMap … beim ersten Mal kann das ein paar Sekunden dauern, danach sind sie gespeichert.'
+              : 'Suche Vorschläge in OpenStreetMap und Wikipedia … beim ersten Mal kann das bis zu 30 Sekunden dauern, danach sind sie gespeichert.'}
           </p>
           {[0, 1, 2].map((i) => (
             <Skeleton key={i} className="h-36" />
@@ -190,7 +253,7 @@ function Suggestions({ trip, stage, center }: { trip: Trip; stage: Stage; center
               <LoaderCircle size={18} className="shrink-0 animate-spin" />
               <span>
                 {radiusChanging
-                  ? `Hole neue Vorschläge für ${radius / 1000} km … das kann bei großem Umkreis bis zu 20 Sekunden dauern.`
+                  ? `Hole neue Vorschläge für ${radius < 1000 ? `${radius} m` : `${(radius / 1000).toLocaleString('de-DE')} km`} … das kann bei großem Umkreis bis zu 20 Sekunden dauern.`
                   : 'Aktualisiere Vorschläge …'}
               </span>
             </div>
@@ -222,7 +285,7 @@ function Suggestions({ trip, stage, center }: { trip: Trip; stage: Stage; center
                 onChange={(e) => setSort(e.target.value as ActivitySort)}
                 className="h-10 rounded-xl border border-line bg-surface px-3 font-semibold text-text"
               >
-                <option value="Popular">Bekanntheit</option>
+                <option value="Popular">{food ? 'Empfohlen' : 'Bekanntheit'}</option>
                 <option value="Distance">Entfernung</option>
               </select>
             </label>
@@ -244,7 +307,9 @@ function Suggestions({ trip, stage, center }: { trip: Trip; stage: Stage; center
                   title={allCount === 0 && !debouncedQuery ? 'Keine Vorschläge gefunden' : 'Nichts passt zur Suche'}
                   text={
                     allCount === 0 && !debouncedQuery
-                      ? 'Versuch einen größeren Umkreis – bei Regionen oder ganzen Ländern z. B. 50 km.'
+                      ? food
+                        ? 'Versuch einen größeren Umkreis, z. B. 3 km.'
+                        : 'Versuch einen größeren Umkreis – bei Regionen oder ganzen Ländern z. B. 50 km.'
                       : 'Ändere den Suchtext oder die Kategorie.'
                   }
                 />
@@ -282,7 +347,7 @@ function Suggestions({ trip, stage, center }: { trip: Trip; stage: Stage; center
                 <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer" className="underline">
                   OpenStreetMap
                 </a>
-                -Mitwirkende · Beschreibungen und Fotos: Wikidata / Wikimedia Commons
+                -Mitwirkende{food ? '' : ' · Beschreibungen und Fotos: Wikidata / Wikimedia Commons'}
               </p>
             </section>
             <aside aria-label="Karte" className={clsx('sticky top-4 min-w-0 flex-[1_1_420px]', view === 'list' && 'max-xl:hidden')}>

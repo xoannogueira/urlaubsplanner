@@ -126,6 +126,10 @@ public static partial class AppEndpoints
 
         // Automatische Updates: Stand abfragen und bereitliegendes Update sofort installieren.
         group.MapGet("/update", (AppUpdater updater) => TypedResults.Ok(updater.Status));
+        group.MapPost("/update/check", (AppUpdater updater) =>
+            updater.RequestCheck()
+                ? Results.Accepted()
+                : Results.Problem(statusCode: StatusCodes.Status409Conflict, title: "Gerade nicht möglich", detail: "Es wird schon gesucht, ein Update liegt bereit oder Updates sind aus."));
         group.MapPost("/update/restart", (AppUpdater updater) =>
             updater.RequestRestart()
                 ? Results.Accepted()
@@ -137,6 +141,8 @@ public static partial class AppEndpoints
 
         var settings = app.MapGroup("/api/settings").WithTags("Einstellungen");
         settings.MapGet("/", GetSettings);
+        settings.MapGet("/search-defaults", (SearchDefaultsStore store) => TypedResults.Ok(store.Get()));
+        settings.MapPut("/search-defaults", (Urlaubsplanner.Domain.Trips.SearchSettings request, SearchDefaultsStore store) => TypedResults.Ok(store.Set(request)));
         settings.MapPut("/serpapi", SetSerpApiKey);
         settings.MapDelete("/serpapi", RemoveSerpApiKey);
         return app;

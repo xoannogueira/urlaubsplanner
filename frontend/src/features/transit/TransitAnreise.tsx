@@ -1,6 +1,7 @@
 import clsx from 'clsx'
 import { useState } from 'react'
 import type { Airport } from '../../api/airports'
+import { useTripActions } from '../../api/trips'
 import type { Trip } from '../../api/types'
 import { toLatLng } from '../../lib/geo'
 import type { TransitPoint } from '../../lib/transit'
@@ -15,9 +16,19 @@ export function TransitAnreise({ trip, home }: { trip: Trip; home: Airport[] }) 
   const stages = [...trip.stages].sort((a, b) => a.startDate.localeCompare(b.startDate))
   const first = stages[0]
   const last = stages[stages.length - 1]
-  const homePoint: TransitPoint | null = home[0]
-    ? { name: home[0].city || home[0].name, location: { latitude: home[0].latitude, longitude: home[0].longitude } }
-    : null
+  const actions = useTripActions(trip.id)
+  const preset = trip.searchSettings
+  // Startpunkt: gemerkter Ort (z. B. „Stuttgart Hbf“), sonst die Stadt des Heimatflughafens.
+  const homePoint: TransitPoint | null = preset?.transitHome
+    ? { name: preset.transitHome.name, location: { latitude: preset.transitHome.latitude, longitude: preset.transitHome.longitude } }
+    : home[0]
+      ? { name: home[0].city || home[0].name, location: { latitude: home[0].latitude, longitude: home[0].longitude } }
+      : null
+  const remember = (from: TransitPoint | null, hour: number) =>
+    actions.setSearchSettings.mutateAsync({
+      transitHour: hour,
+      transitHome: from ? { name: from.name, latitude: from.location.latitude, longitude: from.location.longitude } : null,
+    })
   const stagePoint = (s: (typeof stages)[number] | undefined): TransitPoint | null => {
     const at = s ? toLatLng(s) : null
     return s && at ? { name: s.name, location: at } : null
@@ -43,10 +54,13 @@ export function TransitAnreise({ trip, home }: { trip: Trip; home: Airport[] }) 
             from: homePoint,
             to: stagePoint(first),
             date: first?.startDate ?? trip.startDate ?? '',
-            hour: 8,
+            hour: preset?.transitHour ?? 8,
             minute: 0,
             arriveBy: false,
           }}
+          // Gemerkter Startpunkt: gleich suchen (kostenlos)
+          autoSearch={!!preset?.transitHome && !!stagePoint(first)}
+          onRemember={remember}
         />
       ) : (
         <TransitSearch

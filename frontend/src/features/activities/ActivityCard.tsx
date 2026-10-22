@@ -1,9 +1,9 @@
 import clsx from 'clsx'
-import { BookOpen, Check, Clock, ExternalLink, Globe, Heart, MapPin, Route, Sparkles, Ticket } from 'lucide-react'
+import { BookOpen, Check, Clock, ExternalLink, Globe, Heart, Leaf, MapPin, Phone, Route, Sparkles, Star, Ticket } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { useActivityPhoto, type ActivitySuggestion } from '../../api/activities'
 import { buttonClass } from '../../components/ui/buttonStyles'
-import { categoryLabels, fameLabel, googleMapsUrl, openingHoursDe, ticketsUrl } from '../../lib/activities'
+import { categoryLabels, fameLabel, googleMapsUrl, googleReviewsUrl, isFood, openingHoursDe, ticketsUrl } from '../../lib/activities'
 import { formatDistance } from '../../lib/geo'
 import { CategoryIcon } from './CategoryIcon'
 
@@ -96,6 +96,17 @@ export function ActivityCard({ activity: a, saved, saving, selected, onSelect, o
         </div>
 
         {a.description && <p className="line-clamp-2 text-[13px] leading-relaxed text-muted">{a.description}</p>}
+        {(a.cuisine || a.diet) && (
+          <p className="flex flex-wrap items-center gap-1.5 text-[13px]">
+            {a.cuisine && <span className="font-semibold">{a.cuisine}</span>}
+            {a.diet && (
+              <span className="flex items-center gap-1 rounded-md bg-accent-soft px-2 py-0.5 text-xs font-semibold text-accent">
+                <Leaf size={12} />
+                {a.diet}
+              </span>
+            )}
+          </p>
+        )}
 
         {(hours || a.freeEntry) && (
           <div className="flex flex-wrap gap-1.5 text-xs font-semibold">
@@ -121,10 +132,29 @@ export function ActivityCard({ activity: a, saved, saving, selected, onSelect, o
               Wikipedia
             </a>
           )}
-          <a href={googleMapsUrl(a)} target="_blank" rel="noopener noreferrer" className={buttonClass('secondary', 'sm')}>
-            Maps
-            <ExternalLink size={14} />
-          </a>
+          {isFood(a) ? (
+            <a
+              href={googleReviewsUrl(a)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={buttonClass('secondary', 'sm')}
+              title="Öffnet Google Maps mit Bewertungen und Fotos"
+            >
+              <Star size={14} />
+              Bewertungen (Google)
+            </a>
+          ) : (
+            <a href={googleMapsUrl(a)} target="_blank" rel="noopener noreferrer" className={buttonClass('secondary', 'sm')}>
+              Maps
+              <ExternalLink size={14} />
+            </a>
+          )}
+          {a.phone && (
+            <a href={`tel:${a.phone.replace(/[^+\d]/g, '')}`} className={buttonClass('secondary', 'sm')}>
+              <Phone size={14} />
+              Anrufen
+            </a>
+          )}
           {routeFromHotel && (
             <a
               href={routeFromHotel.url}

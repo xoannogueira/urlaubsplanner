@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, json } from './client'
+import type { SearchSettings } from './types'
 
 export interface AppInfo {
   app: string
@@ -73,6 +74,8 @@ export interface UpdateStatus {
   progress: number | null
   /** Für Menschen: warum es keine Updates gibt bzw. was schiefging */
   hint: string | null
+  /** Wann zuletzt nachgesehen wurde */
+  checkedAt?: string | null
 }
 
 /** Stand der automatischen Updates – nur in der Desktop-App; während Prüfen/Laden öfter nachfragen. */
@@ -84,6 +87,18 @@ export function useUpdateStatus(enabled: boolean) {
     refetchInterval: (query) => {
       const state = query.state.data?.state
       return state === 'Checking' || state === 'Downloading' || state === undefined ? 4_000 : 5 * 60_000
+    },
+  })
+}
+
+/** „Jetzt nach Updates suchen“ – danach den Stand häufiger abfragen. */
+export function useCheckForUpdate() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: () => api<void>('/app/update/check', { method: 'POST' }),
+    onSuccess: () => {
+      queryClient.setQueryData<UpdateStatus>(['app', 'update'], (s) => (s ? { ...s, state: 'Checking', hint: null } : s))
+      void queryClient.invalidateQueries({ queryKey: ['app', 'update'] })
     },
   })
 }
@@ -159,3 +174,16 @@ export interface ConnectivityResult {
 
 /** Prüft, ob die App die Dienste für die Suchen erreicht (z. B. wenn ein Antivirenprogramm blockiert). */
 export const checkConnectivity = () => api<ConnectivityResult[]>('/app/connectivity')
+
+/** Vorgaben für neue Reisen (Heimatflughafen, Zimmer, Direktflüge …). */
+export function useSearchDefaults() {
+  return useQuery({ queryKey: ['settings', 'search-defaults'], queryFn: () => api<SearchSettings>('/settings/search-defaults') })
+}
+
+export function useSetSearchDefaults() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (settings: SearchSettings) => api<SearchSettings>('/settings/search-defaults', { method: 'PUT', ...json(settings) }),
+    onSuccess: (data) => queryClient.setQueryData(['settings', 'search-defaults'], data),
+  })
+}

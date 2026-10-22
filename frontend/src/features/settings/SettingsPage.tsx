@@ -1,7 +1,7 @@
-import { ArrowLeft, BookOpen, CircleCheck, ExternalLink, FolderOpen, KeyRound, Trash2 } from 'lucide-react'
+import { ArrowLeft, BookOpen, CircleCheck, ExternalLink, FolderOpen, KeyRound, RefreshCw, Trash2 } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 import { Link } from 'react-router'
-import { useAppInfo, useRemoveSerpApiKey, useSettings, useUpdateStatus } from '../../api/app'
+import { useAppInfo, useCheckForUpdate, useRemoveSerpApiKey, useSettings, useUpdateStatus } from '../../api/app'
 import { useFlightSearchStatus } from '../../api/flights'
 import { Logo, ThemeToggle } from '../../components/layout/Brand'
 import { Button } from '../../components/ui/Button'
@@ -14,6 +14,7 @@ import { SearchCosts } from '../setup/SearchCosts'
 import { useSetup } from '../setup/setupContext'
 import { InstallationSection } from './InstallationSection'
 import { ConnectivitySection } from './ConnectivitySection'
+import { SearchDefaultsSection } from './SearchDefaultsSection'
 import { KEY_URL, SIGN_UP_URL, Warning } from '../setup/SetupWizard'
 
 /** API-Key, verbleibende Suchen, was Suchen kosten und wo die Daten liegen. */
@@ -21,6 +22,7 @@ export function SettingsPage() {
   const settings = useSettings()
   const info = useAppInfo()
   const update = useUpdateStatus(info.data?.desktop ?? false)
+  const check = useCheckForUpdate()
   const status = useFlightSearchStatus()
   const remove = useRemoveSerpApiKey()
   const { openSetup } = useSetup()
@@ -136,6 +138,24 @@ export function SettingsPage() {
                 {info.data && ` · Version ${info.data.version}`}
                 {update.data && ` · ${updateText(update.data.state, update.data.available, update.data.progress)}`}
               </p>
+              {update.data && (update.data.state === 'UpToDate' || update.data.state === 'Failed') && (
+                <Button
+                  size="sm"
+                  className="w-fit"
+                  icon={<RefreshCw size={14} />}
+                  disabled={check.isPending}
+                  onClick={() => check.mutate()}
+                >
+                  Jetzt nach Updates suchen
+                </Button>
+              )}
+            </Section>
+
+            <Section
+              title="Vorgaben für neue Reisen"
+              description="Jede neue Reise übernimmt diese Einstellungen für die Suchen. Pro Reise änderst du sie direkt in der Suche mit „Als Standard merken“."
+            >
+              <SearchDefaultsSection />
             </Section>
 
             <ConnectivitySection />

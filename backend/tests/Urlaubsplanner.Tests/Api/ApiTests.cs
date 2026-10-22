@@ -457,4 +457,62 @@ public sealed class ApiTests : IDisposable
         Assert.Equal(HttpStatusCode.NoContent, (await _client.DeleteAsync($"/api/packing-templates/{id}")).StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, (await _client.DeleteAsync($"/api/packing-templates/{id}")).StatusCode);
     }
+
+    [Fact]
+    public async Task Sucheinstellungen_pro_Reise_und_Vorgaben_fuer_neue_Reisen()
+    {
+        var preset = await _client.PutAsJsonAsync("/api/settings/search-defaults", new { homeAirports = new[] { "str", "FRA" }, hotelRooms = 1, nonstop = true });
+        Assert.Equal(HttpStatusCode.OK, preset.StatusCode);
+
+        var created = await (await _client.PostAsJsonAsync("/api/trips", new { name = "Lissabon", travelers = 2 })).Content.ReadFromJsonAsync<JsonElement>();
+        var settings = created.GetProperty("searchSettings");
+        Assert.Equal(["STR", "FRA"], settings.GetProperty("homeAirports").EnumerateArray().Select(a => a.GetString()));
+        Assert.True(settings.GetProperty("nonstop").GetBoolean());
+
+        var id = created.GetProperty("id").GetGuid();
+        var changed = await _client.PutAsJsonAsync($"/api/trips/{id}/search-settings", new { homeAirports = new[] { "MUC" }, foodRadius = 1000, transitHome = new { name = "Stuttgart Hbf", latitude = 48.78, longitude = 9.18 } });
+        Assert.Equal(HttpStatusCode.OK, changed.StatusCode);
+        var trip = await _client.GetFromJsonAsync<JsonElement>($"/api/trips/{id}");
+        Assert.Equal(1000, trip.GetProperty("searchSettings").GetProperty("foodRadius").GetInt32());
+        Assert.Equal("Stuttgart Hbf", trip.GetProperty("searchSettings").GetProperty("transitHome").GetProperty("name").GetString());
+
+        var bad = await _client.PutAsJsonAsync($"/api/trips/{id}/search-settings", new { homeAirports = new[] { "Stuttgart" } });
+        Assert.Equal(HttpStatusCode.BadRequest, bad.StatusCode);
+        var badHours = await _client.PutAsJsonAsync($"/api/trips/{id}/search-settings", new { departFrom = 18, departTo = 8 });
+        Assert.Equal(HttpStatusCode.BadRequest, badHours.StatusCode);
+    }
+
+    [Fact]
+    public async Task Preiswaechter_hoechstens_drei_Fluege()
+    {
+        var trip = await (await _client.PostAsJsonAsync("/api/trips", new { name = "Barcelona", travelers = 2 })).Content.ReadFromJsonAsync<JsonElement>();
+        var id = trip.GetProperty("id").GetGuid();
+        var optionIds = new List<Guid>();
+        for (var i = 0; i < 4; i++)
+        {
+            var t = await (await _client.PostAsJsonAsync($"/api/trips/{id}/options", new
+            {
+                kind = "Flight",
+                title = $"STR → BCN {i}",
+                status = "Favorite",
+                price = 300 + i,
+                pricePerPerson = false,
+                provider = "serpapi",
+                externalId = $"STR-BCN@2027-05-1{i}:VY1817#Basic",
+            })).Content.ReadFromJsonAsync<JsonElement>();
+            optionIds.Add(t.GetProperty("options")[i].GetProperty("id").GetGuid());
+        }
+
+        for (var i = 0; i < 3; i++)
+        {
+            var added = await _client.PostAsJsonAsync("/api/price-watches", new { tripId = id, optionId = optionIds[i] });
+            Assert.Equal(HttpStatusCode.OK, added.StatusCode);
+        }
+
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync("/api/price-watches", new { tripId = id, optionId = optionIds[3] })).StatusCode);
+        var list = await _client.GetFromJsonAsync<JsonElement>("/api/price-watches");
+        Assert.Equal(3, list.GetArrayLength());
+        Assert.Equal(300m, list[0].GetProperty("startPrice").GetDecimal());
+        Assert.Equal(HttpStatusCode.NoContent, (await _client.DeleteAsync($"/api/price-watches/{optionIds[0]}")).StatusCode);
+    }
 }

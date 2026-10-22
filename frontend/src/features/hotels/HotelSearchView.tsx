@@ -1,6 +1,7 @@
 import clsx from 'clsx'
 import { CalendarSearch, KeyRound, Minus, Plus, Search, SearchX, TriangleAlert } from 'lucide-react'
 import { useCallback, useMemo, useState, type ReactNode } from 'react'
+import { RememberButton } from '../../components/RememberButton'
 import { ApiError } from '../../api/client'
 import {
   mergeHotelPages,
@@ -94,10 +95,16 @@ function SearchArea({
   // Google Hotels: Preise mehrerer Anbieter, keine Zimmeraufteilung, 20 Hotels pro Seite.
   const google = status?.provider === 'serpapi'
   const actions = useTripActions(trip.id)
-  const [rooms, setRooms] = useState(() => Math.min(defaultRooms(trip.travelers), trip.travelers))
+  const preset = trip.searchSettings
+  const [rooms, setRooms] = useState(() => Math.min(preset?.hotelRooms ?? defaultRooms(trip.travelers), trip.travelers))
   const [radius, setRadius] = useState(3000)
   const [params, setParams] = useState<HotelSearchParams | null>(null)
-  const [filters, setFilters] = useState<HotelFilters>(noFilters)
+  const [filters, setFilters] = useState<HotelFilters>(() => ({
+    refundableOnly: preset?.hotelRefundableOnly ?? noFilters.refundableOnly,
+    minRating: preset?.hotelMinRating ?? noFilters.minRating,
+    minStars: preset?.hotelMinStars ?? noFilters.minStars,
+    maxPrice: preset?.hotelMaxPrice ?? noFilters.maxPrice,
+  }))
   const [sort, setSort] = useState<HotelSort>('price')
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [savingId, setSavingId] = useState<string | null>(null)
@@ -276,6 +283,17 @@ function SearchArea({
           {search.isFetching && !search.isFetchingNextPage ? 'Suche läuft …' : 'Hotels suchen'}
         </Button>
         {status?.quota && <QuotaBadge quota={status.quota} />}
+        <RememberButton
+          onRemember={() =>
+            actions.setSearchSettings.mutateAsync({
+              hotelRooms: google ? null : rooms,
+              hotelMinRating: filters.minRating,
+              hotelMinStars: filters.minStars,
+              hotelMaxPrice: filters.maxPrice,
+              hotelRefundableOnly: filters.refundableOnly,
+            })
+          }
+        />
       </section>
 
       {!params ? (

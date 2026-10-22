@@ -13,6 +13,19 @@ public enum ActivityCategory
     Beach,
     Zoo,
     ThemePark,
+
+    // Essen & Trinken
+    Restaurant,
+    Cafe,
+    Bar,
+    IceCream,
+}
+
+/// <summary>Was gesucht wird: Sehenswertes oder Essen & Trinken.</summary>
+public enum ActivityTheme
+{
+    Sights,
+    Food,
 }
 
 /// <summary>Vorschläge rund um einen Punkt (meist den Ort einer Etappe).</summary>
@@ -24,21 +37,29 @@ public sealed record ActivitySearchRequest
     /// <summary>Umkreis, mit dem die Vorschläge zuerst angezeigt (und im Hintergrund vorgeladen) werden.</summary>
     public const int DefaultRadiusMeters = 5000;
 
-    private ActivitySearchRequest(Coordinates center, int radiusMeters)
+    /// <summary>Essen & Trinken: kleinerer Umkreis (in Städten gibt es sonst Tausende) und höchstens 10 km.</summary>
+    public const int DefaultFoodRadiusMeters = 1500;
+    public const int MaxFoodRadiusMeters = 10_000;
+
+    private ActivitySearchRequest(Coordinates center, int radiusMeters, ActivityTheme theme)
     {
         Center = center;
         RadiusMeters = radiusMeters;
+        Theme = theme;
     }
 
     public Coordinates Center { get; }
 
     public int RadiusMeters { get; }
 
-    public static ActivitySearchRequest Create(double latitude, double longitude, int radiusMeters)
+    public ActivityTheme Theme { get; }
+
+    public static ActivitySearchRequest Create(double latitude, double longitude, int radiusMeters, ActivityTheme theme = ActivityTheme.Sights)
     {
         var center = Coordinates.TryCreate(latitude, longitude)
             ?? throw new DomainException("latitude", "Ungültige Koordinaten.");
-        return new ActivitySearchRequest(center, Math.Clamp(radiusMeters, MinRadiusMeters, MaxRadiusMeters));
+        var max = theme == ActivityTheme.Food ? MaxFoodRadiusMeters : MaxRadiusMeters;
+        return new ActivitySearchRequest(center, Math.Clamp(radiusMeters, MinRadiusMeters, max), theme);
     }
 }
 
@@ -47,6 +68,8 @@ public sealed record ActivitySearchRequest
 /// <param name="Popularity">Anzahl Wikipedia-Sprachversionen – grobes Maß, wie bekannt ein Ort ist (0 = keine).</param>
 /// <param name="FreeEntry">true = Eintritt frei, false = kostet Eintritt, null = unbekannt.</param>
 /// <param name="OpeningHours">Öffnungszeiten im OpenStreetMap-Format, z. B. „Tu-Su 10:00-18:00“.</param>
+/// <param name="Cuisine">Essen & Trinken: Küche auf Deutsch, z. B. „Portugiesisch, Fisch“.</param>
+/// <param name="Diet">Essen & Trinken: „vegan“, „vegetarisch“ oder „vegetarische Auswahl“.</param>
 public sealed record ActivitySuggestion(
     string Id,
     string Name,
@@ -61,7 +84,10 @@ public sealed record ActivitySuggestion(
     string? OpeningHours,
     bool? FreeEntry,
     int Popularity,
-    string? WikidataId);
+    string? WikidataId,
+    string? Cuisine = null,
+    string? Diet = null,
+    string? Phone = null);
 
 public sealed record ActivitySearchResult(IReadOnlyList<ActivitySuggestion> Activities, DateTimeOffset FetchedAt);
 

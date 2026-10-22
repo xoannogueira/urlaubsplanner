@@ -36,7 +36,8 @@ public enum UpdateState
 }
 
 /// <param name="Hint">Für Menschen: warum es keine Updates gibt bzw. was schiefging.</param>
-public sealed record UpdateStatus(string Current, string? Available, UpdateState State, int? Progress, string? Hint);
+/// <param name="CheckedAt">Wann zuletzt erfolgreich nachgesehen wurde.</param>
+public sealed record UpdateStatus(string Current, string? Available, UpdateState State, int? Progress, string? Hint, DateTimeOffset? CheckedAt = null);
 
 /// <summary>
 /// Automatische Updates der Desktop-App: prüft beim Start das neueste GitHub-Release, lädt die passende Zip im
@@ -52,7 +53,12 @@ public sealed partial class AppUpdater(
 {
     public const string HttpClientName = "updates";
 
+    /// <summary>Bleibt die App lange offen, wird in diesem Abstand erneut nachgesehen.</summary>
+    public static readonly TimeSpan RecheckInterval = TimeSpan.FromHours(6);
+
     private readonly Lock _gate = new();
+    private readonly SemaphoreSlim _checkNow = new(0, 1);
+    private DateTimeOffset? _checkedAt;
     private readonly InstallTarget? _target = paths.Desktop ? InstallTarget.Detect(AppContext.BaseDirectory) : null;
     private UpdateStatus _status = new(CurrentVersionText, null, UpdateState.Off, null, null);
 
@@ -88,6 +94,33 @@ public sealed partial class AppUpdater(
         return true;
     }
 
+    /// <summary>„Jetzt nach Updates suchen“: false, wenn gerade gesucht/geladen wird, ein Update bereitliegt oder Updates aus sind.</summary>
+    public bool RequestCheck()
+    {
+        var state = Status.State;
+        if (_target is null || state is UpdateState.Off or UpdateState.Checking or UpdateState.Downloading or UpdateState.Ready)
+        {
+            return false;
+        }
+
+        try
+        {
+            _checkNow.Release();
+        }
+        catch (SemaphoreFullException)
+        {
+            // Läuft schon an.
+        }
+
+        return true;
+    }
+
+    public override void Dispose()
+    {
+        _checkNow.Dispose();
+        base.Dispose();
+    }
+
     private string UpdateDirectory => Path.Combine(paths.DataDirectory, "update");
 
     private string ExtractedDirectory => Path.Combine(UpdateDirectory, "neu");
@@ -112,16 +145,35 @@ public sealed partial class AppUpdater(
         {
             // Erst die App in Ruhe starten lassen.
             await Task.Delay(TimeSpan.FromSeconds(3), stoppingToken).ConfigureAwait(false);
-            await CheckAndDownloadAsync(_target, stoppingToken).ConfigureAwait(false);
+            // Beim Start nachsehen, danach alle paar Stunden oder auf Knopfdruck – bis ein Update bereitliegt.
+            while (!stoppingToken.IsCancellationRequested)
+            {
+                await CheckOnceAsync(_target, stoppingToken).ConfigureAwait(false);
+                if (Status.State == UpdateState.Ready)
+                {
+                    return;
+                }
+
+                await _checkNow.WaitAsync(RecheckInterval, stoppingToken).ConfigureAwait(false);
+            }
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
         {
             // App wird beendet.
         }
-        catch (Exception e) when (e is HttpRequestException or IOException or InvalidDataException or JsonException or TaskCanceledException or UnauthorizedAccessException)
+    }
+
+    private async Task CheckOnceAsync(InstallTarget target, CancellationToken stoppingToken)
+    {
+        try
+        {
+            await CheckAndDownloadAsync(target, stoppingToken).ConfigureAwait(false);
+        }
+        catch (Exception e) when (e is HttpRequestException or IOException or InvalidDataException or JsonException or UnauthorizedAccessException
+            or TaskCanceledException && !stoppingToken.IsCancellationRequested)
         {
             LogUpdateFailed(e);
-            Set(UpdateState.Failed, Status.Available, null, "Die Suche nach Updates hat nicht geklappt – nächster Versuch beim nächsten Start.");
+            Set(UpdateState.Failed, Status.Available, null, "Die Suche nach Updates hat nicht geklappt – „Nochmal versuchen“ oder später automatisch.");
         }
     }
 
@@ -131,6 +183,11 @@ public sealed partial class AppUpdater(
         using var http = httpFactory.CreateClient(HttpClientName);
         var release = await http.GetFromJsonAsync<Release>(new Uri($"repos/{options.Value.Repository}/releases/latest", UriKind.Relative), ct).ConfigureAwait(false);
         var latest = ParseVersion(release?.TagName);
+        lock (_gate)
+        {
+            _checkedAt = DateTimeOffset.UtcNow;
+        }
+
         if (release is null || latest is null || latest <= CurrentVersion)
         {
             Set(UpdateState.UpToDate, latest?.ToString(3), null, null);
@@ -278,7 +335,7 @@ public sealed partial class AppUpdater(
     {
         lock (_gate)
         {
-            _status = new UpdateStatus(CurrentVersionText, available, state, progress, hint);
+            _status = new UpdateStatus(CurrentVersionText, available, state, progress, hint, _checkedAt);
         }
     }
 
