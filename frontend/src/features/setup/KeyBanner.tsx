@@ -3,16 +3,18 @@ import { useSettings } from '../../api/app'
 import { useFlightSearchStatus } from '../../api/flights'
 import { Button } from '../../components/ui/Button'
 import { useSetup } from './setupContext'
+import { PriceDropBanner } from './PriceDropBanner'
 import { UpdateBanner } from './UpdateBanner'
 
 /** Ab so wenigen restlichen Google-Suchen warnen. */
 export const LOW_QUOTA = 25
 
-/** Hinweise oben auf jeder Seite: neue App-Version, fehlender API-Key, wenig Suchen übrig. */
+/** Hinweise oben auf jeder Seite: neue App-Version, gefallene Flugpreise, fehlender API-Key, wenig Suchen übrig. */
 export function KeyBanner() {
   return (
     <>
       <UpdateBanner />
+      <PriceDropBanner />
       <KeyHint />
     </>
   )

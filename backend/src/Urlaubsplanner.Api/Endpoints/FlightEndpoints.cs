@@ -178,20 +178,42 @@ public static class FlightEndpoints
     /// <summary>Gemerkten Flug erneut suchen: gibt es exakt diese Flüge noch, und was kostet der Tarif jetzt?</summary>
     private static async Task<IResult> Recheck(FlightRecheckBody body, IFlightSearch search, TimeProvider clock, CancellationToken ct)
     {
-        var legs = FlightSignature.ParseLegs(body.Signature)
+        var outcome = await RecheckAsync(search, body.Signature, body.Adults, body.Cabin ?? CabinClass.Economy, Today(clock), ct);
+        var result = outcome.Result;
+        return TypedResults.Ok(new
+        {
+            Available = outcome.Journey is not null,
+            Journey = outcome.Journey is null ? null : JourneyResponse.From(outcome.Journey),
+            outcome.Fare,
+            // Andere Verbindungen derselben Strecke, falls der Flug weg ist.
+            Alternatives = result.Journeys.Count,
+            CheapestPrice = result.Journeys.Count > 0 ? result.Journeys.Min(j => j.TotalPrice) : (decimal?)null,
+        });
+    }
+
+    /// <summary>Gemeinsam für „Preis prüfen“ und den Preiswächter.</summary>
+    internal static async Task<(FlightJourney? Journey, FlightFare? Fare, FlightSearchResult Result)> RecheckAsync(
+        IFlightSearch search,
+        string signature,
+        int adults,
+        CabinClass cabin,
+        DateOnly today,
+        CancellationToken ct)
+    {
+        var legs = FlightSignature.ParseLegs(signature)
             ?? throw new DomainException("signature", "Dieser Flug lässt sich nicht erneut prüfen.");
-        var request = FlightSearchRequest.Create(legs, body.Adults, body.Cabin ?? CabinClass.Economy, Today(clock));
+        var request = FlightSearchRequest.Create(legs, adults, cabin, today);
         if (!search.IsConfigured)
         {
             throw new FlightSearchNotConfiguredException();
         }
 
-        var parts = body.Signature.Split('#', 2);
+        var parts = signature.Split('#', 2);
         FlightSearchResult result;
         FlightJourney? journey;
         if (search is IStepwiseFlightSearch stepwise)
         {
-            (journey, result) = await stepwise.FindAsync(request, body.Signature, ct);
+            (journey, result) = await stepwise.FindAsync(request, signature, ct);
         }
         else
         {
@@ -202,16 +224,7 @@ public static class FlightEndpoints
         // Gemerkter Tarif, sonst der günstigste (z. B. Flug mit LiteAPI gemerkt, jetzt über Google geprüft).
         var fare = journey?.Fares.FirstOrDefault(f => parts.Length > 1 && string.Equals(f.Family, parts[1], StringComparison.OrdinalIgnoreCase))
             ?? journey?.Fares[0];
-
-        return TypedResults.Ok(new
-        {
-            Available = journey is not null,
-            Journey = journey is null ? null : JourneyResponse.From(journey),
-            Fare = fare,
-            // Andere Verbindungen derselben Strecke, falls der Flug weg ist.
-            Alternatives = result.Journeys.Count,
-            CheapestPrice = result.Journeys.Count > 0 ? result.Journeys.Min(j => j.TotalPrice) : (decimal?)null,
-        });
+        return (journey, fare, result);
     }
 
     private static async Task<List<(FlightSearchRequest Request, FlightSearchResult? Result)>> RunAll(
@@ -244,7 +257,7 @@ public static class FlightEndpoints
         return [.. await Task.WhenAll(tasks)];
     }
 
-    private static DateOnly Today(TimeProvider clock) => DateOnly.FromDateTime(clock.GetLocalNow().DateTime);
+    internal static DateOnly Today(TimeProvider clock) => DateOnly.FromDateTime(clock.GetLocalNow().DateTime);
 }
 
 /// <summary>Verbindung für das Frontend, inkl. Gesamtpreis des günstigsten Tarifs.</summary>

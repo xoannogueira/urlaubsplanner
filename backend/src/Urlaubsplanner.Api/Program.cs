@@ -74,6 +74,8 @@ builder.Services.AddSingleton<ActivityPrefetcher>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<ActivityPrefetcher>());
 builder.Services.AddSingleton<AppSettingsStore>();
 builder.Services.AddSingleton<SearchDefaultsStore>();
+builder.Services.AddSingleton<Urlaubsplanner.Api.PriceWatch.PriceWatchStore>();
+builder.Services.AddHostedService<Urlaubsplanner.Api.PriceWatch.PriceWatcher>();
 builder.Services.AddSingleton<Urlaubsplanner.Api.Packing.PackingTemplateStore>();
 builder.Services.AddSingleton<AppInstallation>();
 
@@ -116,6 +118,7 @@ app.MapActivityEndpoints();
 app.MapTransitEndpoints();
 app.MapWeatherEndpoints();
 app.MapPackingTemplateEndpoints();
+app.MapPriceWatchEndpoints();
 
 // Im Produktivbetrieb liefert die API auch das gebaute Frontend aus (frontend/dist → wwwroot).
 // .mjs (z. B. der Web-Worker der Karte) kennt ASP.NET nicht von Haus aus – ohne Eintrag würde er nicht ausgeliefert.

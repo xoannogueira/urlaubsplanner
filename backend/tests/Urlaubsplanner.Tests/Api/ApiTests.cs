@@ -481,4 +481,38 @@ public sealed class ApiTests : IDisposable
         var badHours = await _client.PutAsJsonAsync($"/api/trips/{id}/search-settings", new { departFrom = 18, departTo = 8 });
         Assert.Equal(HttpStatusCode.BadRequest, badHours.StatusCode);
     }
+
+    [Fact]
+    public async Task Preiswaechter_hoechstens_drei_Fluege()
+    {
+        var trip = await (await _client.PostAsJsonAsync("/api/trips", new { name = "Barcelona", travelers = 2 })).Content.ReadFromJsonAsync<JsonElement>();
+        var id = trip.GetProperty("id").GetGuid();
+        var optionIds = new List<Guid>();
+        for (var i = 0; i < 4; i++)
+        {
+            var t = await (await _client.PostAsJsonAsync($"/api/trips/{id}/options", new
+            {
+                kind = "Flight",
+                title = $"STR → BCN {i}",
+                status = "Favorite",
+                price = 300 + i,
+                pricePerPerson = false,
+                provider = "serpapi",
+                externalId = $"STR-BCN@2027-05-1{i}:VY1817#Basic",
+            })).Content.ReadFromJsonAsync<JsonElement>();
+            optionIds.Add(t.GetProperty("options")[i].GetProperty("id").GetGuid());
+        }
+
+        for (var i = 0; i < 3; i++)
+        {
+            var added = await _client.PostAsJsonAsync("/api/price-watches", new { tripId = id, optionId = optionIds[i] });
+            Assert.Equal(HttpStatusCode.OK, added.StatusCode);
+        }
+
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync("/api/price-watches", new { tripId = id, optionId = optionIds[3] })).StatusCode);
+        var list = await _client.GetFromJsonAsync<JsonElement>("/api/price-watches");
+        Assert.Equal(3, list.GetArrayLength());
+        Assert.Equal(300m, list[0].GetProperty("startPrice").GetDecimal());
+        Assert.Equal(HttpStatusCode.NoContent, (await _client.DeleteAsync($"/api/price-watches/{optionIds[0]}")).StatusCode);
+    }
 }

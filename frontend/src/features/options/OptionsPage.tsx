@@ -24,6 +24,7 @@ import { canRecheckFlight, parseSignature, savedFlightArcs } from '../../lib/fli
 import { ActivitySuggestionsView } from '../activities/ActivitySuggestionsView'
 import { useAirportLookup } from '../../api/airports'
 import { FlightRecheck } from '../flights/FlightRecheck'
+import { PriceWatchControl } from '../flights/PriceWatchControl'
 import { FlightSearchView } from '../flights/FlightSearchView'
 import { HotelRecheck } from '../hotels/HotelRecheck'
 import { HotelSearchView } from '../hotels/HotelSearchView'
@@ -302,7 +303,10 @@ export function OptionsPage({ kind }: { kind: OptionKind }) {
                         canRecheck(option, undefined, hotelStatus.data?.provider) ? (
                           <HotelRecheck trip={trip} option={option} />
                         ) : canRecheckFlight(option) ? (
-                          <FlightRecheck trip={trip} option={option} />
+                          <>
+                            <FlightRecheck trip={trip} option={option} />
+                            <PriceWatchControl trip={trip} option={option} />
+                          </>
                         ) : undefined
                       }
                     />
