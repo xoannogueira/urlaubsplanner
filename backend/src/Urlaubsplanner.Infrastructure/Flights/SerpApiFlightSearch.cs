@@ -137,9 +137,27 @@ public sealed partial class SerpApiFlightSearch(
             throw new FlightSearchUnavailableException("Google Flights (SerpApi) ist gerade nicht erreichbar.", e);
         }
 
-        var result = new FlightSearchResult(ToJourneys(body, context, known), false, clock.GetUtcNow());
+        var result = new FlightSearchResult(ToJourneys(body, context, known), false, clock.GetUtcNow(), Insights(body?.PriceInsights));
         cache.Set(cacheKey, result, CacheDuration);
         return result;
+    }
+
+    internal static FlightPriceInsights? Insights(PriceInsightsData? data)
+    {
+        if (data is null)
+        {
+            return null;
+        }
+
+        var history = (data.PriceHistory ?? [])
+            .Where(p => p.Count >= 2 && p[0] > 0 && p[1] > 0)
+            .Select(p => new PricePoint(DateOnly.FromDateTime(DateTimeOffset.FromUnixTimeSeconds((long)p[0]).UtcDateTime), (decimal)p[1]))
+            .GroupBy(p => p.Date)
+            .Select(g => g.Last())
+            .OrderBy(p => p.Date)
+            .ToList();
+        var range = data.TypicalPriceRange is { Count: 2 } r ? r : null;
+        return new FlightPriceInsights(data.LowestPrice, data.PriceLevel, range?[0], range?[1], history);
     }
 
     private static SearchResponse? TryParse(string text)
@@ -381,7 +399,10 @@ public sealed partial class SerpApiFlightSearch(
 }
 
 // Antwortformat von search.json?engine=google_flights (nur die Felder, die wir brauchen).
-internal sealed record SearchResponse(List<ItineraryData>? BestFlights, List<ItineraryData>? OtherFlights, string? Error);
+internal sealed record SearchResponse(List<ItineraryData>? BestFlights, List<ItineraryData>? OtherFlights, string? Error, PriceInsightsData? PriceInsights = null);
+
+/// <summary>„price_insights“: price_history ist eine Liste aus [Unix-Zeit, Preis].</summary>
+internal sealed record PriceInsightsData(decimal? LowestPrice, string? PriceLevel, List<decimal>? TypicalPriceRange, List<List<double>>? PriceHistory);
 
 internal sealed record ItineraryData(List<FlightData>? Flights, int? TotalDuration, decimal? Price, string? DepartureToken);
 

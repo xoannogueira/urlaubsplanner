@@ -285,7 +285,16 @@ public sealed record FlightJourney(
     public decimal TotalPrice => Fares[0].TotalPrice;
 }
 
-public sealed record FlightSearchResult(IReadOnlyList<FlightJourney> Journeys, bool Sandbox, DateTimeOffset FetchedAt);
+/// <summary>Ein Tagespreis aus dem Preisverlauf von Google Flights.</summary>
+public sealed record PricePoint(DateOnly Date, decimal Price);
+
+/// <summary>
+/// Preiseinschätzung von Google Flights zu einer Suche: günstigster Preis, Einstufung („low“, „typical“, „high“),
+/// üblicher Bereich und Verlauf der letzten Wochen (ein Preis pro Tag, nicht nach Airline getrennt).
+/// </summary>
+public sealed record FlightPriceInsights(decimal? Lowest, string? Level, decimal? TypicalLow, decimal? TypicalHigh, IReadOnlyList<PricePoint> History);
+
+public sealed record FlightSearchResult(IReadOnlyList<FlightJourney> Journeys, bool Sandbox, DateTimeOffset FetchedAt, FlightPriceInsights? Insights = null);
 
 public interface IFlightSearch
 {
