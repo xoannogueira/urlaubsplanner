@@ -1,5 +1,19 @@
 import clsx from 'clsx'
-import { BedDouble, Compass, House, ExternalLink, List, Map as MapIcon, MapPinOff, Plane, Plus, Search, TrainFront, X } from 'lucide-react'
+import {
+  BedDouble,
+  Compass,
+  House,
+  ExternalLink,
+  List,
+  Map as MapIcon,
+  MapPinOff,
+  Plane,
+  Plus,
+  Search,
+  TrainFront,
+  X,
+  BarChart3,
+} from 'lucide-react'
 import { useNavigate } from 'react-router'
 import { useCallback, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useTripActions } from '../../api/trips'
@@ -25,6 +39,7 @@ import { ActivitySuggestionsView } from '../activities/ActivitySuggestionsView'
 import { useAirportLookup } from '../../api/airports'
 import { FlightRecheck } from '../flights/FlightRecheck'
 import { PriceWatchControl } from '../flights/PriceWatchControl'
+import { PriceStatsView } from '../flights/PriceStatsView'
 import { FlightSearchView } from '../flights/FlightSearchView'
 import { HotelRecheck } from '../hotels/HotelRecheck'
 import { HotelSearchView } from '../hotels/HotelSearchView'
@@ -59,9 +74,10 @@ export function OptionsPage({ kind }: { kind: OptionKind }) {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [view, setView] = useState<'list' | 'map'>('list')
   // Hotels und Flüge: gespeicherte Einträge oder Live-Suche
-  const [mode, setMode] = useState<'saved' | 'search'>('saved')
+  const [mode, setMode] = useState<'saved' | 'search' | 'stats'>('saved')
   const searchable = kind === 'Hotel' || kind === 'Flight' || kind === 'Activity' || kind === 'Transport'
   const searching = searchable && mode === 'search'
+  const stats = kind === 'Flight' && mode === 'stats'
   const navigate = useNavigate()
   // Die Suche braucht eine konkrete Etappe: die gewählte, sonst die erste mit Ort.
   const searchStage = trip.stages.find((s) => s.id === stageFilter) ?? trip.stages.find((s) => s.latitude != null) ?? trip.stages[0] ?? null
@@ -146,7 +162,7 @@ export function OptionsPage({ kind }: { kind: OptionKind }) {
       {searchable && (
         <div role="tablist" aria-label={labels.plural} className="flex self-start rounded-xl bg-surface-2 p-1">
           <ModeTab
-            active={!searching}
+            active={!searching && !stats}
             onClick={() => setMode('saved')}
             icon={
               kind === 'Flight' ? (
@@ -171,189 +187,208 @@ export function OptionsPage({ kind }: { kind: OptionKind }) {
                   ? 'Verbindungen'
                   : 'Hotels suchen'}
           </ModeTab>
+          {kind === 'Flight' && (
+            <ModeTab active={stats} onClick={() => setMode('stats')} icon={<BarChart3 size={16} />}>
+              Preis-Statistik
+            </ModeTab>
+          )}
         </div>
       )}
       {/* Flüge werden für die ganze Reise gesucht – dort keine Etappen-Auswahl. */}
-      <div
-        role="tablist"
-        aria-label="Etappen"
-        className={clsx(
-          '-mx-1 flex gap-2.5 overflow-x-auto px-1 pb-1',
-          searching && (kind === 'Flight' || kind === 'Transport') && 'hidden',
-        )}
-      >
-        {!searching && (
-          <StageTab active={stageFilter === ALL} onClick={() => setStageFilter(ALL)} title="Alle" sub={`${ofKind.length} gespeichert`} />
-        )}
-        {trip.stages.map((s) => {
-          const chosen = count((o) => o.stageId === s.id && (o.status === 'Selected' || o.status === 'Booked'))
-          return (
-            <StageTab
-              key={s.id}
-              active={searching ? searchStage?.id === s.id : stageFilter === s.id}
-              onClick={() => setStageFilter(s.id)}
-              title={s.name}
-              sub={`${formatDateRange(s.startDate, s.endDate)} · ${nightsLabel(s.nights)}`}
-              dot={chosen > 0 ? 'done' : 'open'}
-            />
-          )
-        })}
-        {!searching && (
-          <StageTab
-            active={stageFilter === GENERAL}
-            onClick={() => setStageFilter(GENERAL)}
-            title="Ganze Reise"
-            sub={`${count((o) => !o.stageId)} ohne Etappe`}
-          />
-        )}
-      </div>
-
-      {searching && kind === 'Flight' ? (
-        <FlightSearchView trip={trip} />
-      ) : searching && kind === 'Transport' ? (
-        <TransfersView trip={trip} />
-      ) : searching && kind === 'Activity' ? (
-        <ActivitySuggestionsView trip={trip} stage={searchStage} onEditStage={() => void navigate(`/trips/${trip.id}`)} />
-      ) : searching ? (
-        <HotelSearchView trip={trip} stage={searchStage} onEditStage={() => void navigate(`/trips/${trip.id}`)} />
+      {stats ? (
+        <PriceStatsView trip={trip} />
       ) : (
         <>
-          <div className="flex flex-wrap items-center gap-2.5">
-            <Chip active={statusFilter === 'all'} onClick={() => setStatusFilter('all')}>
-              Alle
-            </Chip>
-            <Chip active={statusFilter === 'Favorite'} onClick={() => setStatusFilter('Favorite')}>
-              Favoriten · {count((o) => o.status === 'Favorite')}
-            </Chip>
-            <Chip active={statusFilter === 'chosen'} onClick={() => setStatusFilter('chosen')}>
-              Ausgewählt & gebucht · {count((o) => o.status === 'Selected' || o.status === 'Booked')}
-            </Chip>
-            <div className="flex-1" />
-            {showMap && (
-              <div role="radiogroup" aria-label="Ansicht" className="flex rounded-xl bg-surface-2 p-1 xl:hidden">
-                <ViewButton active={view === 'list'} onClick={() => setView('list')} icon={<List size={16} />}>
-                  Liste
-                </ViewButton>
-                <ViewButton active={view === 'map'} onClick={showMapView} icon={<MapIcon size={16} />}>
-                  Karte
-                </ViewButton>
-              </div>
+          <div
+            role="tablist"
+            aria-label="Etappen"
+            className={clsx(
+              '-mx-1 flex gap-2.5 overflow-x-auto px-1 pb-1',
+              searching && (kind === 'Flight' || kind === 'Transport') && 'hidden',
             )}
-            {kind === 'Hotel' && (
-              <Button icon={<House size={16} />} onClick={() => setPrivateDialog({})}>
-                Bei Familie/Freunden
-              </Button>
+          >
+            {!searching && (
+              <StageTab
+                active={stageFilter === ALL}
+                onClick={() => setStageFilter(ALL)}
+                title="Alle"
+                sub={`${ofKind.length} gespeichert`}
+              />
             )}
-            {kind === 'Transport' && (
-              <Button icon={<Plus size={16} strokeWidth={2.5} />} onClick={() => setRentalDialog({})}>
-                Mietwagen
-              </Button>
+            {trip.stages.map((s) => {
+              const chosen = count((o) => o.stageId === s.id && (o.status === 'Selected' || o.status === 'Booked'))
+              return (
+                <StageTab
+                  key={s.id}
+                  active={searching ? searchStage?.id === s.id : stageFilter === s.id}
+                  onClick={() => setStageFilter(s.id)}
+                  title={s.name}
+                  sub={`${formatDateRange(s.startDate, s.endDate)} · ${nightsLabel(s.nights)}`}
+                  dot={chosen > 0 ? 'done' : 'open'}
+                />
+              )
+            })}
+            {!searching && (
+              <StageTab
+                active={stageFilter === GENERAL}
+                onClick={() => setStageFilter(GENERAL)}
+                title="Ganze Reise"
+                sub={`${count((o) => !o.stageId)} ohne Etappe`}
+              />
             )}
-            <Button variant="primary" icon={<Plus size={16} strokeWidth={2.5} />} onClick={() => setDialog({})}>
-              {labels.singular} speichern
-            </Button>
           </div>
 
-          <div className="flex flex-wrap items-start gap-6">
-            <section aria-label={labels.plural} className={clsx('min-w-0 flex-[1_1_520px]', showMap && view === 'map' && 'max-xl:hidden')}>
-              {visible.length === 0 ? (
-                <EmptyState
-                  icon={icons[kind]}
-                  title={ofKind.length === 0 ? `Noch keine ${labels.plural}` : 'Nichts passt zum Filter'}
-                  text={
-                    ofKind.length === 0
-                      ? `Speichere ${labels.plural} als Link mit Preis, markiere Favoriten und wähle am Ende aus, was gebucht wird.`
-                      : 'Ändere die Etappe oder den Statusfilter.'
-                  }
-                  action={
-                    ofKind.length === 0 && (
-                      <Button variant="primary" onClick={() => setDialog({})}>
-                        {labels.singular} speichern
-                      </Button>
-                    )
-                  }
-                />
-              ) : (
-                <div
-                  className={clsx(
-                    'grid gap-4',
-                    // Flüge und Bus & Bahn untereinander – mehr Platz für Zeiten, Strecke und Flugnummer
-                    kind === 'Flight' || kind === 'Transport' ? 'grid-cols-1' : 'grid-cols-[repeat(auto-fill,minmax(300px,1fr))]',
-                  )}
+          {searching && kind === 'Flight' ? (
+            <FlightSearchView trip={trip} />
+          ) : searching && kind === 'Transport' ? (
+            <TransfersView trip={trip} />
+          ) : searching && kind === 'Activity' ? (
+            <ActivitySuggestionsView trip={trip} stage={searchStage} onEditStage={() => void navigate(`/trips/${trip.id}`)} />
+          ) : searching ? (
+            <HotelSearchView trip={trip} stage={searchStage} onEditStage={() => void navigate(`/trips/${trip.id}`)} />
+          ) : (
+            <>
+              <div className="flex flex-wrap items-center gap-2.5">
+                <Chip active={statusFilter === 'all'} onClick={() => setStatusFilter('all')}>
+                  Alle
+                </Chip>
+                <Chip active={statusFilter === 'Favorite'} onClick={() => setStatusFilter('Favorite')}>
+                  Favoriten · {count((o) => o.status === 'Favorite')}
+                </Chip>
+                <Chip active={statusFilter === 'chosen'} onClick={() => setStatusFilter('chosen')}>
+                  Ausgewählt & gebucht · {count((o) => o.status === 'Selected' || o.status === 'Booked')}
+                </Chip>
+                <div className="flex-1" />
+                {showMap && (
+                  <div role="radiogroup" aria-label="Ansicht" className="flex rounded-xl bg-surface-2 p-1 xl:hidden">
+                    <ViewButton active={view === 'list'} onClick={() => setView('list')} icon={<List size={16} />}>
+                      Liste
+                    </ViewButton>
+                    <ViewButton active={view === 'map'} onClick={showMapView} icon={<MapIcon size={16} />}>
+                      Karte
+                    </ViewButton>
+                  </div>
+                )}
+                {kind === 'Hotel' && (
+                  <Button icon={<House size={16} />} onClick={() => setPrivateDialog({})}>
+                    Bei Familie/Freunden
+                  </Button>
+                )}
+                {kind === 'Transport' && (
+                  <Button icon={<Plus size={16} strokeWidth={2.5} />} onClick={() => setRentalDialog({})}>
+                    Mietwagen
+                  </Button>
+                )}
+                <Button variant="primary" icon={<Plus size={16} strokeWidth={2.5} />} onClick={() => setDialog({})}>
+                  {labels.singular} speichern
+                </Button>
+              </div>
+
+              <div className="flex flex-wrap items-start gap-6">
+                <section
+                  aria-label={labels.plural}
+                  className={clsx('min-w-0 flex-[1_1_520px]', showMap && view === 'map' && 'max-xl:hidden')}
                 >
-                  {visible.map((option) => (
-                    <OptionCard
-                      key={option.id}
-                      option={option}
-                      stage={option.stageId ? stageById.get(option.stageId) : undefined}
-                      travelers={trip.travelers}
-                      onStatus={(status) => setStatus(option, status)}
-                      onEdit={() =>
-                        isRentalCar(option)
-                          ? setRentalDialog({ option })
-                          : isPrivateStay(option)
-                            ? setPrivateDialog({ option })
-                            : setDialog({ option })
+                  {visible.length === 0 ? (
+                    <EmptyState
+                      icon={icons[kind]}
+                      title={ofKind.length === 0 ? `Noch keine ${labels.plural}` : 'Nichts passt zum Filter'}
+                      text={
+                        ofKind.length === 0
+                          ? `Speichere ${labels.plural} als Link mit Preis, markiere Favoriten und wähle am Ende aus, was gebucht wird.`
+                          : 'Ändere die Etappe oder den Statusfilter.'
                       }
-                      onDelete={() => setToDelete(option)}
-                      selected={showMap && option.id === selectedId}
-                      routeFromHotel={activityRoute(trip, option)}
-                      onSelect={showMap && toLatLng(option) ? () => setSelectedId(option.id) : undefined}
-                      extra={
-                        canRecheck(option, undefined, hotelStatus.data?.provider) ? (
-                          <HotelRecheck trip={trip} option={option} />
-                        ) : canRecheckFlight(option) ? (
-                          <>
-                            <FlightRecheck trip={trip} option={option} />
-                            <PriceWatchControl trip={trip} option={option} />
-                          </>
-                        ) : undefined
+                      action={
+                        ofKind.length === 0 && (
+                          <Button variant="primary" onClick={() => setDialog({})}>
+                            {labels.singular} speichern
+                          </Button>
+                        )
                       }
                     />
-                  ))}
-                </div>
-              )}
-            </section>
-
-            {showMap && (
-              <aside
-                ref={mapRef}
-                aria-label="Karte"
-                className={clsx(
-                  'sticky top-4 flex min-w-0 scroll-mt-4 flex-[1_1_420px] flex-col gap-2',
-                  view === 'list' && 'max-xl:hidden',
-                )}
-              >
-                <div className="relative">
-                  <TripMap
-                    label={`Karte: ${labels.plural}`}
-                    pins={pins}
-                    arcs={flightArcs.arcs}
-                    airports={flightArcs.airports}
-                    stages={mapStages}
-                    selectedId={selectedId}
-                    onSelect={selectFromMap}
-                    fitTo="pins"
-                    className="h-[calc(100dvh-140px)] max-h-[860px] min-h-[420px] max-xl:h-[calc(100dvh-90px)]"
-                  />
-                  {selected && <SelectedOverlay option={selected} onClose={() => setSelectedId(null)} />}
-                  {pins.length === 0 && mapStages.length === 0 && (
-                    <p className="pointer-events-none absolute inset-x-6 top-1/2 -translate-y-1/2 rounded-xl bg-surface px-4 py-3 text-center text-sm text-muted shadow">
-                      Wähle beim Speichern einen Ort aus der Liste – dann erscheint hier ein Pin mit Preis.
-                    </p>
+                  ) : (
+                    <div
+                      className={clsx(
+                        'grid gap-4',
+                        // Flüge und Bus & Bahn untereinander – mehr Platz für Zeiten, Strecke und Flugnummer
+                        kind === 'Flight' || kind === 'Transport' ? 'grid-cols-1' : 'grid-cols-[repeat(auto-fill,minmax(300px,1fr))]',
+                      )}
+                    >
+                      {visible.map((option) => (
+                        <OptionCard
+                          key={option.id}
+                          option={option}
+                          stage={option.stageId ? stageById.get(option.stageId) : undefined}
+                          travelers={trip.travelers}
+                          onStatus={(status) => setStatus(option, status)}
+                          onEdit={() =>
+                            isRentalCar(option)
+                              ? setRentalDialog({ option })
+                              : isPrivateStay(option)
+                                ? setPrivateDialog({ option })
+                                : setDialog({ option })
+                          }
+                          onDelete={() => setToDelete(option)}
+                          selected={showMap && option.id === selectedId}
+                          routeFromHotel={activityRoute(trip, option)}
+                          onSelect={showMap && toLatLng(option) ? () => setSelectedId(option.id) : undefined}
+                          extra={
+                            canRecheck(option, undefined, hotelStatus.data?.provider) ? (
+                              <HotelRecheck trip={trip} option={option} />
+                            ) : canRecheckFlight(option) ? (
+                              <>
+                                <FlightRecheck trip={trip} option={option} />
+                                <PriceWatchControl trip={trip} option={option} />
+                              </>
+                            ) : undefined
+                          }
+                        />
+                      ))}
+                    </div>
                   )}
-                </div>
-                {withoutLocation > 0 && (
-                  <p className="flex items-center gap-1.5 text-xs text-muted">
-                    <MapPinOff size={13} />
-                    {withoutLocation === 1
-                      ? '1 Eintrag hat keinen Ort und fehlt auf der Karte.'
-                      : `${withoutLocation} Einträge haben keinen Ort und fehlen auf der Karte.`}
-                  </p>
+                </section>
+
+                {showMap && (
+                  <aside
+                    ref={mapRef}
+                    aria-label="Karte"
+                    className={clsx(
+                      'sticky top-4 flex min-w-0 scroll-mt-4 flex-[1_1_420px] flex-col gap-2',
+                      view === 'list' && 'max-xl:hidden',
+                    )}
+                  >
+                    <div className="relative">
+                      <TripMap
+                        label={`Karte: ${labels.plural}`}
+                        pins={pins}
+                        arcs={flightArcs.arcs}
+                        airports={flightArcs.airports}
+                        stages={mapStages}
+                        selectedId={selectedId}
+                        onSelect={selectFromMap}
+                        fitTo="pins"
+                        className="h-[calc(100dvh-140px)] max-h-[860px] min-h-[420px] max-xl:h-[calc(100dvh-90px)]"
+                      />
+                      {selected && <SelectedOverlay option={selected} onClose={() => setSelectedId(null)} />}
+                      {pins.length === 0 && mapStages.length === 0 && (
+                        <p className="pointer-events-none absolute inset-x-6 top-1/2 -translate-y-1/2 rounded-xl bg-surface px-4 py-3 text-center text-sm text-muted shadow">
+                          Wähle beim Speichern einen Ort aus der Liste – dann erscheint hier ein Pin mit Preis.
+                        </p>
+                      )}
+                    </div>
+                    {withoutLocation > 0 && (
+                      <p className="flex items-center gap-1.5 text-xs text-muted">
+                        <MapPinOff size={13} />
+                        {withoutLocation === 1
+                          ? '1 Eintrag hat keinen Ort und fehlt auf der Karte.'
+                          : `${withoutLocation} Einträge haben keinen Ort und fehlen auf der Karte.`}
+                      </p>
+                    )}
+                  </aside>
                 )}
-              </aside>
-            )}
-          </div>
+              </div>
+            </>
+          )}
         </>
       )}
 
