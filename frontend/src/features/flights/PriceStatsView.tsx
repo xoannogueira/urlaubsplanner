@@ -1,6 +1,10 @@
 import clsx from 'clsx'
 import { BarChart3, Info } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useMemo, useState } from 'react'
+import { PriceCalendarSection } from './PriceCalendarSection'
+import { Card, DataTable, Toggle } from '../../components/charts/ChartParts'
+import { useWidth } from '../../hooks/useWidth'
+import { euro, niceTicks, roundedTop } from '../../lib/chart'
 import { usePriceRoutes, usePriceStats, type PriceHistory } from '../../api/priceStats'
 import type { Trip } from '../../api/types'
 import { EmptyState, ErrorState, Skeleton } from '../../components/ui/Feedback'
@@ -18,27 +22,21 @@ import {
   type TripKind,
 } from '../../lib/priceStats'
 
-/** Breite des Containers in Pixeln – Diagramme zeichnen in echter Größe, damit die Schrift nicht mitwächst. */
-function useWidth(fallback = 520) {
-  const ref = useRef<HTMLDivElement>(null)
-  const [width, setWidth] = useState(fallback)
-  useEffect(() => {
-    const el = ref.current
-    if (!el) return
-    const observer = new ResizeObserver(([entry]) => setWidth(Math.max(280, Math.round(entry.contentRect.width))))
-    observer.observe(el)
-    return () => observer.disconnect()
-  }, [])
-  return { ref, width }
-}
-
-const euro = (n: number) => `${Math.round(n).toLocaleString('de-DE')} €`
-
 /**
  * Preis-Statistik einer Flugstrecke aus dem eigenen Preisarchiv (jede Suche legt ihre Preise ab) und dem
  * Preisverlauf, den Google bei jeder Suche mitliefert. Alles pro Person, Hin & zurück und Nur-Hinflug getrennt.
  */
 export function PriceStatsView({ trip }: { trip: Trip }) {
+  return (
+    <div className="flex flex-col gap-5">
+      <PriceCalendarSection trip={trip} />
+      <ArchiveStats trip={trip} />
+    </div>
+  )
+}
+
+/** Auswertung des Preisarchivs (alle gesehenen Preise) für eine Strecke. */
+function ArchiveStats({ trip }: { trip: Trip }) {
   const routes = usePriceRoutes()
   // Vorauswahl: Strecke des ersten gemerkten Flugs dieser Reise, sonst die zuletzt gesuchte.
   const preferred = useMemo(() => {
@@ -147,35 +145,6 @@ function RouteStats({ origin, destination }: { origin: string; destination: stri
         Es liegt nur auf diesem Computer.
       </p>
     </div>
-  )
-}
-
-function Card({ title, note, children }: { title: string; note: string; children: ReactNode }) {
-  return (
-    <section className="flex min-w-0 flex-col gap-3 rounded-[18px] border border-line bg-surface p-5">
-      <div className="flex flex-col gap-0.5">
-        <h2 className="text-[17px] font-extrabold">{title}</h2>
-        <p className="text-[13px] text-muted">{note}</p>
-      </div>
-      {children}
-    </section>
-  )
-}
-
-function Toggle({ active, onClick, children }: { active: boolean; onClick: () => void; children: string }) {
-  return (
-    <button
-      type="button"
-      role="radio"
-      aria-checked={active}
-      onClick={onClick}
-      className={clsx(
-        'h-9 cursor-pointer rounded-lg px-3 text-sm font-bold',
-        active ? 'bg-accent text-accent-ink' : 'text-muted hover:text-text',
-      )}
-    >
-      {children}
-    </button>
   )
 }
 
@@ -426,52 +395,4 @@ function HistoryPanel({ histories }: { histories: PriceHistory[] }) {
   )
 }
 
-function DataTable({ head, rows }: { head: string[]; rows: string[][] }) {
-  return (
-    <details className="text-xs">
-      <summary className="cursor-pointer font-semibold text-muted">Als Tabelle</summary>
-      <table className="mt-2 w-full text-left">
-        <thead>
-          <tr>
-            {head.map((h) => (
-              <th key={h} className="py-1 pr-3 font-semibold text-muted">
-                {h}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((r, i) => (
-            <tr key={i} className="border-t border-line">
-              {r.map((c, j) => (
-                <td key={j} className="py-1 pr-3 font-mono tabular-nums">
-                  {c}
-                </td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </details>
-  )
-}
-
 const levelDe = (level: string) => ({ low: 'niedrig', typical: 'üblich', high: 'hoch' })[level] ?? level
-
-/** Säule mit runden Ecken oben, unten gerade (am Boden verankert). */
-function roundedTop(x: number, y: number, w: number, h: number, r: number): string {
-  const rr = Math.min(r, w / 2, h)
-  return `M${x},${y + h} L${x},${y + rr} Q${x},${y} ${x + rr},${y} L${x + w - rr},${y} Q${x + w},${y} ${x + w},${y + rr} L${x + w},${y + h} Z`
-}
-
-/** 3–5 runde Achsenwerte. */
-function niceTicks(min: number, max: number): number[] {
-  const span = Math.max(1, max - min)
-  const raw = span / 4
-  const mag = 10 ** Math.floor(Math.log10(raw))
-  const stepSize = [1, 2, 5, 10].map((m) => m * mag).find((s) => s >= raw) ?? 10 * mag
-  const start = Math.floor(min / stepSize) * stepSize
-  const ticks: number[] = []
-  for (let t = start; t <= max + stepSize * 0.999; t += stepSize) ticks.push(Math.round(t))
-  return ticks
-}

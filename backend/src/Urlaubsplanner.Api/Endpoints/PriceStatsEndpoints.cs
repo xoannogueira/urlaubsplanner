@@ -26,10 +26,11 @@ public static class PriceStatsEndpoints
                 .ToList()));
 
         // Alle Einträge einer Strecke plus Preisverläufe – das Frontend rechnet die Diagramme daraus.
-        group.MapGet("/", (string? origin, string? destination, PriceArchive archive) =>
+        group.MapGet("/", (string? origin, string? destination, PriceArchive archive, TimeProvider clock) =>
         {
             var from = Code(origin, "origin");
             var to = Code(destination, "destination");
+            archive.Touch(from, to, clock.GetUtcNow());
             return TypedResults.Ok(new { Records = archive.Records(from, to), Histories = archive.Histories(from, to) });
         });
         return app;
