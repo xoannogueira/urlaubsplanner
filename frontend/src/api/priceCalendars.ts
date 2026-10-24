@@ -24,6 +24,8 @@ export interface PriceCalendarRequest {
   nights: number | null
   pattern: CalendarPattern
   source: PriceSource
+  /** Reise, aus der geladen wird – der Kalender erscheint nur dort */
+  tripId: string
 }
 
 export interface CalendarDay {
@@ -55,6 +57,8 @@ export interface PriceCalendar {
   days: CalendarDay[]
   problem: string | null
   source: PriceSource
+  /** null bei älteren Kalendern – dann nach Strecke zugeordnet */
+  tripId: string | null
 }
 
 const key = ['price-calendars'] as const

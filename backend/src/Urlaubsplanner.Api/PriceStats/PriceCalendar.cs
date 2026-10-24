@@ -47,6 +47,7 @@ public enum CalendarState
 }
 
 /// <param name="Nights">Reisedauer bei Hin & zurück; null = nur Hinflug.</param>
+/// <param name="TripId">Reise, aus der der Kalender geladen wurde – er erscheint nur dort.</param>
 public sealed record PriceCalendarRequest(
     IReadOnlyList<string> Origins,
     IReadOnlyList<string> Destinations,
@@ -54,7 +55,8 @@ public sealed record PriceCalendarRequest(
     DateOnly To,
     int? Nights,
     CalendarPattern Pattern,
-    PriceSource Source = PriceSource.Google);
+    PriceSource Source = PriceSource.Google,
+    Guid? TripId = null);
 
 /// <summary>Ergebnis für einen Abflugtag: günstigster Preis pro Person mit Airline.</summary>
 /// <param name="Route">Strecke des günstigsten Preises, z. B. „FRA-BCN“ (wichtig bei mehreren Flughäfen).</param>
@@ -84,7 +86,8 @@ public sealed record PriceCalendar(
     int Total,
     IReadOnlyList<CalendarDay> Days,
     string? Problem,
-    PriceSource Source = PriceSource.Google);
+    PriceSource Source = PriceSource.Google,
+    Guid? TripId = null);
 
 public static class PriceCalendarRules
 {
