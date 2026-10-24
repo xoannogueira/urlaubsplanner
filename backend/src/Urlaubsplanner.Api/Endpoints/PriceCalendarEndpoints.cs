@@ -18,6 +18,10 @@ public static class PriceCalendarEndpoints
         group.MapGet("/", (PriceCalendarStore store) => TypedResults.Ok(store.List()));
         group.MapGet("/{id:guid}", (Guid id, PriceCalendarStore store, TimeProvider clock) =>
             store.Update(id, c => c with { LastUsedAt = clock.GetUtcNow() }) is { } calendar ? Results.Ok(calendar) : Results.NotFound());
+        // Kostenlose Quelle (Aviasales): Stand der Prüfung beim Start, auf Wunsch neu prüfen.
+        app.MapGet("/api/price-source", (PriceSourceMonitor monitor) => TypedResults.Ok(monitor.Current)).WithTags("Preiskalender");
+        app.MapPost("/api/price-source/check", async (PriceSourceMonitor monitor, CancellationToken ct) => TypedResults.Ok(await monitor.CheckAsync(ct)))
+            .WithTags("Preiskalender");
         group.MapPost("/{id:guid}/cancel", (Guid id, PriceCalendarRunner runner) => runner.Cancel(id) ? Results.Accepted() : Results.NotFound());
         group.MapDelete("/{id:guid}", (Guid id, PriceCalendarStore store, PriceCalendarRunner runner) =>
         {

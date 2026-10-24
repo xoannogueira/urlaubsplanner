@@ -1,4 +1,6 @@
 import type { CalendarDay, CalendarPattern, PriceCalendar } from '../api/priceCalendars'
+import { shiftDate } from './flights'
+import { googleFlightsUrl } from './googleFlights'
 import { WEEKDAYS } from './priceStats'
 
 export const patternLabels: Record<CalendarPattern, string> = {
@@ -131,3 +133,27 @@ export function byMonth(days: CalendarDay[]): Group[] {
 
 /** Die günstigsten Abflugtage. */
 export const cheapestDays = (days: CalendarDay[], n = 5) => [...priced(days)].sort((a, b) => a.cheapest - b.cheapest).slice(0, n)
+
+/**
+ * Link zu Google Flights für einen Tag aus dem Kalender – zum genauen Nachprüfen eines Aviasales-Richtpreises,
+ * kostet keine Suche. Nimmt die Strecke des günstigsten Preises, sonst die erste gewählte.
+ */
+export function checkOnGoogleUrl(
+  c: Pick<PriceCalendar, 'origins' | 'destinations' | 'nights'>,
+  day: Pick<CalendarDay, 'date' | 'route'>,
+): string | null {
+  const [origin, destination] = day.route?.split('-') ?? [c.origins[0], c.destinations[0]]
+  if (!origin || !destination) return null
+  const out = `${origin}-${destination}@${day.date}:`
+  const signature = c.nights ? `${out}|${destination}-${origin}@${shiftDate(day.date, c.nights)}:` : out
+  return googleFlightsUrl(signature, 1)
+}
+
+/** Wie viele Aviasales-Abfragen ein Kalender braucht: pro Monat und Strecke eine, bei Hin & zurück auch zurück. */
+export function aviasalesRequests(from: string, to: string, nights: number | null, routes: number): number {
+  const months = (end: string) =>
+    (Number(end.slice(0, 4)) - Number(from.slice(0, 4))) * 12 + Number(end.slice(5, 7)) - Number(from.slice(5, 7)) + 1
+  const outbound = months(to)
+  const inbound = nights ? months(shiftDate(to, nights)) : 0
+  return (outbound + inbound) * routes
+}

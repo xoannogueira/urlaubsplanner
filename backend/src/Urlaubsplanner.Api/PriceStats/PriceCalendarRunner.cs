@@ -5,18 +5,23 @@ using Urlaubsplanner.Domain.Flights;
 namespace Urlaubsplanner.Api.PriceStats;
 
 /// <summary>
-/// Lädt einen Preiskalender: eine Google-Suche pro Abflugtag, nacheinander mit kurzer Pause (schont Kontingent und
-/// Server). Jeder Tag wird sofort gespeichert und landet auch im Preisarchiv. Es läuft immer nur ein Kalender.
+/// Lädt einen Preiskalender. Google: eine Suche pro Abflugtag, nacheinander mit kurzer Pause (schont Kontingent und
+/// Server); jeder Tag wird sofort gespeichert und landet auch im Preisarchiv. Aviasales: eine kostenlose Abfrage pro
+/// Monat und Strecke, Richtpreise – nicht im Preisarchiv, weil nicht live gesucht. Es läuft immer nur ein Kalender.
 /// </summary>
 public sealed partial class PriceCalendarRunner(
     PriceCalendarStore store,
     PriceArchive archive,
     IServiceScopeFactory scopes,
     TimeProvider clock,
+    PriceSourceMonitor sourceMonitor,
     ILogger<PriceCalendarRunner> logger) : IDisposable
 {
     /// <summary>Pause zwischen zwei Suchen.</summary>
     public static TimeSpan Pause { get; set; } = TimeSpan.FromSeconds(1.5);
+
+    /// <summary>Pause zwischen zwei Aviasales-Abfragen (kostenlos, aber nicht unnötig belasten).</summary>
+    public static TimeSpan AviasalesPause { get; set; } = TimeSpan.FromSeconds(0.5);
 
     private readonly Lock _gate = new();
     private CancellationTokenSource? _running;
@@ -32,16 +37,32 @@ public sealed partial class PriceCalendarRunner(
 
         using (var scope = scopes.CreateScope())
         {
-            var search = scope.ServiceProvider.GetRequiredService<IFlightSearch>();
-            if (search is not IMultiAirportFlightSearch || !search.IsConfigured)
+            if (request.Source == PriceSource.Aviasales)
             {
-                throw new DomainException("origins", "Preiskalender gehen nur mit der Google-Flugsuche (SerpApi-Key in den Einstellungen).");
-            }
+                if (!scope.ServiceProvider.GetRequiredService<IIndicativeFares>().IsConfigured)
+                {
+                    throw new DomainException("source", PriceSourceMonitor.Describe(IndicativeSourceState.Missing));
+                }
 
-            if (search is IFlightSearchQuota q && await q.GetQuotaAsync(ct).ConfigureAwait(false) is { } quota
-                && dates.Count > quota.Left - PriceCalendarRules.KeepForNormalSearches)
+                // Weiß die App schon, dass der Token abgelehnt wird, gar nicht erst anfangen.
+                if (sourceMonitor.Current.State == IndicativeSourceState.Rejected)
+                {
+                    throw new DomainException("source", sourceMonitor.Current.Message);
+                }
+            }
+            else
             {
-                throw new DomainException("pattern", $"Das wären {dates.Count} Google-Suchen, übrig sind noch {quota.Left} diesen Monat. Kürzerer Zeitraum oder seltener suchen.");
+                var search = scope.ServiceProvider.GetRequiredService<IFlightSearch>();
+                if (search is not IMultiAirportFlightSearch || !search.IsConfigured)
+                {
+                    throw new DomainException("origins", "Preiskalender mit Google gehen nur mit der Google-Flugsuche (SerpApi-Key in den Einstellungen).");
+                }
+
+                if (search is IFlightSearchQuota q && await q.GetQuotaAsync(ct).ConfigureAwait(false) is { } quota
+                    && dates.Count > quota.Left - PriceCalendarRules.KeepForNormalSearches)
+                {
+                    throw new DomainException("pattern", $"Das wären {dates.Count} Google-Suchen, übrig sind noch {quota.Left} diesen Monat. Kürzerer Zeitraum oder seltener suchen.");
+                }
             }
         }
 
@@ -66,12 +87,15 @@ public sealed partial class PriceCalendarRunner(
                 CalendarState.Running,
                 dates.Count,
                 [],
-                null);
+                null,
+                request.Source);
             store.Save(calendar);
             _running = new CancellationTokenSource();
             _runningId = calendar.Id;
             var token = _running.Token;
-            _ = Task.Run(() => RunAsync(calendar, request, dates, token), CancellationToken.None);
+            _ = request.Source == PriceSource.Aviasales
+                ? Task.Run(() => RunAviasalesAsync(calendar, request, dates, token), CancellationToken.None)
+                : Task.Run(() => RunAsync(calendar, request, dates, token), CancellationToken.None);
             return calendar;
         }
     }
@@ -141,6 +165,97 @@ public sealed partial class PriceCalendarRunner(
         }
     }
 
+    /// <summary>
+    /// Aviasales: pro Monat und Strecke eine Abfrage (einfache Flüge), dann für jeden gewünschten Abflugtag der
+    /// günstigste Preis über alle Strecken (z. B. FRA oder STR nach BCN). Hin &amp; zurück = günstigster Hinflug +
+    /// günstigster Rückflug nach der Reisedauer. Tage ohne Daten bleiben leer – das ist kein Fehler.
+    /// </summary>
+    private async Task RunAviasalesAsync(PriceCalendar calendar, PriceCalendarRequest request, IReadOnlyList<DateOnly> dates, CancellationToken ct)
+    {
+        var loaded = new Dictionary<(string, string, DateOnly), IReadOnlyList<IndicativeFare>>();
+
+        async Task<IReadOnlyList<IndicativeFare>> FaresAsync(string origin, string destination, DateOnly day)
+        {
+            var month = new DateOnly(day.Year, day.Month, 1);
+            if (!loaded.TryGetValue((origin, destination, month), out var fares))
+            {
+                ct.ThrowIfCancellationRequested();
+                using var scope = scopes.CreateScope();
+                fares = await scope.ServiceProvider.GetRequiredService<IIndicativeFares>().MonthAsync(origin, destination, month, ct).ConfigureAwait(false);
+                loaded[(origin, destination, month)] = fares;
+                await Task.Delay(AviasalesPause, clock, ct).ConfigureAwait(false);
+            }
+
+            return fares;
+        }
+
+        try
+        {
+            var routes = calendar.Origins.SelectMany(o => calendar.Destinations.Where(d => d != o).Select(d => (Origin: o, Destination: d))).ToList();
+            foreach (var monthDates in dates.GroupBy(d => (d.Year, d.Month)))
+            {
+                var days = new List<CalendarDay>();
+                foreach (var date in monthDates)
+                {
+                    var options = new List<(decimal Price, string? Airline, int? Stops, string Route)>();
+                    foreach (var (origin, destination) in routes)
+                    {
+                        var outbound = (await FaresAsync(origin, destination, date).ConfigureAwait(false)).FirstOrDefault(f => f.Date == date);
+                        if (outbound is null)
+                        {
+                            continue;
+                        }
+
+                        if (request.Nights is { } nights)
+                        {
+                            var back = date.AddDays(nights);
+                            var inbound = (await FaresAsync(destination, origin, back).ConfigureAwait(false)).FirstOrDefault(f => f.Date == back);
+                            if (inbound is not null)
+                            {
+                                options.Add((outbound.Price + inbound.Price, outbound.Airline, Math.Max(outbound.Stops ?? 0, inbound.Stops ?? 0), $"{origin}-{destination}"));
+                            }
+                        }
+                        else
+                        {
+                            options.Add((outbound.Price, outbound.Airline, outbound.Stops, $"{origin}-{destination}"));
+                        }
+                    }
+
+                    var cheapest = options.Count > 0 ? options.MinBy(o => o.Price) : default((decimal Price, string? Airline, int? Stops, string Route)?);
+                    days.Add(new CalendarDay(date, cheapest?.Price, cheapest?.Airline, cheapest?.Stops, options.Count, null, cheapest?.Route));
+                }
+
+                store.Update(calendar.Id, c => c with { Days = [.. c.Days, .. days] });
+            }
+
+            var result = store.Get(calendar.Id);
+            store.Update(calendar.Id, c => c with
+            {
+                State = CalendarState.Done,
+                Problem = result is not null && result.Days.All(d => d.Cheapest is null) ? "Aviasales hat für diesen Zeitraum keine Preise – probier die Google-Suche." : null,
+            });
+        }
+        catch (IndicativeFaresException e)
+        {
+            LogAviasalesFailed(e);
+            sourceMonitor.Report(e.State);
+            store.Update(calendar.Id, c => c with { State = CalendarState.Failed, Problem = PriceSourceMonitor.Describe(e.State) });
+        }
+        catch (OperationCanceledException)
+        {
+            store.Update(calendar.Id, c => c with { State = CalendarState.Cancelled, Problem = "Abgebrochen." });
+        }
+        finally
+        {
+            lock (_gate)
+            {
+                _running?.Dispose();
+                _running = null;
+                _runningId = null;
+            }
+        }
+    }
+
     private async Task<CalendarDay> SearchDayAsync(PriceCalendarRequest request, DateOnly date, CancellationToken ct)
     {
         using var scope = scopes.CreateScope();
@@ -167,6 +282,9 @@ public sealed partial class PriceCalendarRunner(
             return new CalendarDay(date, null, null, null, 0, e.Message);
         }
     }
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Preiskalender: Aviasales-Abfrage fehlgeschlagen")]
+    private partial void LogAviasalesFailed(Exception exception);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Preiskalender: Suche für {Date} fehlgeschlagen")]
     private partial void LogFailed(DateOnly date, Exception exception);
