@@ -14,6 +14,8 @@ interface AirportPickerProps {
   suggestions?: Airport[]
   /** z. B. „Nähe Lissabon“ */
   suggestionLabel?: string
+  /** Weitere Vorschläge, z. B. „Gemerkte Flüge“ – je Gruppe eine Zeile. */
+  moreSuggestions?: { label: string; airports: Airport[] }[]
   placeholder?: string
 }
 
@@ -21,7 +23,15 @@ interface AirportPickerProps {
  * Ein oder mehrere Flughäfen wählen: tippen (Code, Stadt, Name oder Ort wie „Lissabon“) oder Vorschläge
  * aus dem Umkreis antippen. Jeder zusätzliche Flughafen ist eine zusätzliche Suche.
  */
-export function AirportPicker({ label, value, onChange, suggestions = [], suggestionLabel, placeholder }: AirportPickerProps) {
+export function AirportPicker({
+  label,
+  value,
+  onChange,
+  suggestions = [],
+  suggestionLabel,
+  moreSuggestions = [],
+  placeholder,
+}: AirportPickerProps) {
   const inputId = useId()
   const listId = useId()
   const [text, setText] = useState('')
@@ -151,32 +161,37 @@ export function AirportPicker({ label, value, onChange, suggestions = [], sugges
           </ul>
         )}
       </div>
-      {suggestions.length > 0 && (
-        <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label={suggestionLabel ?? 'Flughäfen in der Nähe'}>
-          {suggestionLabel && <span className="text-xs text-muted">{suggestionLabel}:</span>}
-          {suggestions.map((a) => {
-            const on = chosen.has(a.code)
-            return (
-              <button
-                key={a.code}
-                type="button"
-                aria-pressed={on}
-                disabled={!on && full}
-                title={a.name}
-                onClick={() => (on ? remove(a.code) : add(a))}
-                className={clsx(
-                  'flex h-7 items-center gap-1 rounded-full border px-2.5 text-xs font-semibold enabled:cursor-pointer disabled:opacity-40',
-                  on ? 'border-accent bg-accent-soft text-accent' : 'border-line hover:bg-surface-3',
-                )}
-              >
-                {!on && <Plus size={12} />}
-                <span className="font-mono">{a.code}</span>
-                {a.distanceKm != null && <span className="font-normal text-muted">{formatDistance(a.distanceKm)}</span>}
-              </button>
-            )
-          })}
-        </div>
-      )}
+      {[
+        { label: suggestionLabel ?? 'Flughäfen in der Nähe', airports: suggestions, showLabel: !!suggestionLabel },
+        ...moreSuggestions.map((g) => ({ ...g, showLabel: true })),
+      ]
+        .filter((g) => g.airports.length > 0)
+        .map((g) => (
+          <div key={g.label} className="flex flex-wrap items-center gap-1.5" role="group" aria-label={g.label}>
+            {g.showLabel && <span className="text-xs text-muted">{g.label}:</span>}
+            {g.airports.map((a) => {
+              const on = chosen.has(a.code)
+              return (
+                <button
+                  key={a.code}
+                  type="button"
+                  aria-pressed={on}
+                  disabled={!on && full}
+                  title={a.name}
+                  onClick={() => (on ? remove(a.code) : add(a))}
+                  className={clsx(
+                    'flex h-7 items-center gap-1 rounded-full border px-2.5 text-xs font-semibold enabled:cursor-pointer disabled:opacity-40',
+                    on ? 'border-accent bg-accent-soft text-accent' : 'border-line hover:bg-surface-3',
+                  )}
+                >
+                  {!on && <Plus size={12} />}
+                  <span className="font-mono">{a.code}</span>
+                  {a.distanceKm != null && <span className="font-normal text-muted">{formatDistance(a.distanceKm)}</span>}
+                </button>
+              )
+            })}
+          </div>
+        ))}
     </div>
   )
 }

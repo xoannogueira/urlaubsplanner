@@ -1,11 +1,13 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 const PREFIX = 'urlaubsplanner.suche.'
+const EVENT = 'urlaubsplanner-suche'
 /** Entwürfe, die so lange nicht angefasst wurden, räumt die App weg. */
 const MAX_AGE_DAYS = 90
 
 interface Stored {
-  basis: string
+  /** null = von außen vorbelegt (z. B. aus dem Preiskalender) – gilt für jede Grundlage */
+  basis: string | null
   overrides: Record<string, unknown>
   savedAt: number
 }
@@ -16,7 +18,7 @@ function read(key: string): Stored | null {
     if (!raw) return null
     const parsed = JSON.parse(raw) as Partial<Stored>
     if (!parsed || typeof parsed.overrides !== 'object' || parsed.overrides === null) return null
-    return { basis: parsed.basis ?? '', overrides: parsed.overrides, savedAt: parsed.savedAt ?? 0 }
+    return { basis: parsed.basis === undefined ? '' : parsed.basis, overrides: parsed.overrides, savedAt: parsed.savedAt ?? 0 }
   } catch {
     return null
   }
@@ -28,6 +30,20 @@ function write(key: string, stored: Stored | null) {
     else localStorage.setItem(PREFIX + key, JSON.stringify(stored))
   } catch {
     // Ohne Speicher gilt der Entwurf nur, solange die Ansicht offen ist.
+  }
+}
+
+/**
+ * Eine Suchmaske von außen vorbelegen (z. B. „In der Flugsuche öffnen“ aus dem Preiskalender). Offene Masken
+ * übernehmen die Werte sofort.
+ */
+export function updateSearchDraft(key: string, patch: Record<string, unknown>) {
+  const stored = read(key)
+  write(key, { basis: stored?.basis ?? null, overrides: { ...(stored?.overrides ?? {}), ...patch }, savedAt: Date.now() })
+  try {
+    window.dispatchEvent(new CustomEvent(EVENT, { detail: key }))
+  } catch {
+    // ohne Fenster (Tests) egal
   }
 }
 
@@ -93,6 +109,7 @@ export function useSearchDraft<T extends Record<string, unknown>>(
     const stored = read(key)
     if (!stored) return { basis, overrides: {}, savedAt: 0 }
     if (stored.basis === basis) return stored
+    if (stored.basis === null) return { ...stored, basis }
     // Grundlage geändert: betroffene Felder wieder vorschlagen, Rest behalten.
     const overrides = { ...stored.overrides }
     for (const k of options.basisKeys ?? []) delete overrides[k as string]
@@ -105,6 +122,16 @@ export function useSearchDraft<T extends Record<string, unknown>>(
     current = { key, basis, stored: load() }
     setState(current)
   }
+
+  // Von außen vorbelegt (updateSearchDraft): neu lesen.
+  useEffect(() => {
+    const onChange = (e: Event) => {
+      if ((e as CustomEvent<string>).detail !== key) return
+      setState((s) => ({ ...s, stored: load() }))
+    }
+    window.addEventListener(EVENT, onChange)
+    return () => window.removeEventListener(EVENT, onChange)
+  })
 
   const update = (change: (overrides: Record<string, unknown>) => Record<string, unknown>) =>
     setState((s) => {

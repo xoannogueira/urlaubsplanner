@@ -274,7 +274,9 @@ public sealed partial class PriceCalendarRunner(
             }
 
             var airline = cheapest?.Legs[0].Segments.Select(s => s.CarrierName ?? s.CarrierCode).FirstOrDefault();
-            return new CalendarDay(date, cheapest?.Fares[0].PricePerAdult, airline, cheapest?.Legs[0].Stops, result.Journeys.Count, null);
+            var route = cheapest is null ? null : $"{cheapest.Legs[0].Origin}-{cheapest.Legs[0].Destination}";
+            var flight = cheapest is null ? null : string.Join(" + ", cheapest.Legs[0].Segments.Select(s => s.CarrierCode + s.FlightNumber));
+            return new CalendarDay(date, cheapest?.Fares[0].PricePerAdult, airline, cheapest?.Legs[0].Stops, result.Journeys.Count, null, route, string.IsNullOrEmpty(flight) ? null : flight);
         }
         catch (Exception e) when (e is FlightSearchUnavailableException or FlightSearchNotConfiguredException or DomainException or HttpRequestException)
         {

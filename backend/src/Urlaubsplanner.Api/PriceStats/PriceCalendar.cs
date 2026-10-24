@@ -57,8 +57,17 @@ public sealed record PriceCalendarRequest(
     PriceSource Source = PriceSource.Google);
 
 /// <summary>Ergebnis für einen Abflugtag: günstigster Preis pro Person mit Airline.</summary>
-/// <param name="Route">Strecke des günstigsten Preises, z. B. „FRA-BCN“ (bei mehreren Flughäfen; Aviasales).</param>
-public sealed record CalendarDay(DateOnly Date, decimal? Cheapest, string? Airline, int? Stops, int Options, string? Problem, string? Route = null);
+/// <param name="Route">Strecke des günstigsten Preises, z. B. „FRA-BCN“ (wichtig bei mehreren Flughäfen).</param>
+/// <param name="Flight">Flugnummer(n) des günstigsten Hinflugs, z. B. „EW2520“ (nur Google).</param>
+public sealed record CalendarDay(
+    DateOnly Date,
+    decimal? Cheapest,
+    string? Airline,
+    int? Stops,
+    int Options,
+    string? Problem,
+    string? Route = null,
+    string? Flight = null);
 
 /// <summary>Ein gespeicherter Preiskalender: Strecke, Zeitraum, Fortschritt und Tagespreise.</summary>
 public sealed record PriceCalendar(
