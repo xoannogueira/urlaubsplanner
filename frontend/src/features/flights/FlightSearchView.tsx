@@ -2,6 +2,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import clsx from 'clsx'
 import {
   ArrowLeftRight,
+  Bookmark,
   ArrowRight,
   CalendarSearch,
   Clock,
@@ -13,7 +14,7 @@ import {
   TriangleAlert,
   Undo2,
 } from 'lucide-react'
-import { useCallback, useMemo, useState, type ReactNode } from 'react'
+import { useId, useMemo, useState, type ReactNode } from 'react'
 import { useAirportLookup, useNearbyAirports, type Airport } from '../../api/airports'
 import { ApiError } from '../../api/client'
 import {
@@ -56,7 +57,7 @@ import {
   type FlightSort,
   type TripType,
 } from '../../lib/flights'
-import { toLatLng } from '../../lib/geo'
+import { formatDistance, toLatLng } from '../../lib/geo'
 import { stageMarkers } from '../../lib/mapData'
 import { TransitAnreise } from '../transit/TransitAnreise'
 import { RememberButton } from '../../components/RememberButton'
@@ -65,6 +66,16 @@ import { isFreshResult, useSearchDraft } from '../../hooks/useSearchDraft'
 import { AirportPicker } from './AirportPicker'
 import { FlightDatesDialog } from './FlightDatesDialog'
 import { FlightResultCard } from './FlightResultCard'
+import {
+  flightDraftKey,
+  flightSegments,
+  savedFlightLegs,
+  segmentDraftKey,
+  stageArriving,
+  stageLeaving,
+  type FlightSegment,
+  type SavedLeg,
+} from '../../lib/flightSegments'
 
 const HOME_KEY = 'urlaubsplanner.homeAirports'
 /** So lange gilt ein Ergebnis als frisch (wie staleTime der Flugsuche) – länger zeigen würde neu suchen. */
@@ -171,33 +182,83 @@ function FlightSearch({ trip }: { trip: Trip }) {
   if (homeCodes.length > 0 && homeLookup.isPending) return <Skeleton className="h-64" />
   const initialHome =
     homeCodes.length > 0 ? homeCodes.map((c) => homeLookup.data?.find((a) => a.code === c)).filter((a): a is Airport => !!a) : null
-  return <SearchArea trip={trip} status={status.data ?? null} initialHome={initialHome && initialHome.length > 0 ? initialHome : null} />
+  return <SegmentChoice trip={trip} status={status.data ?? null} initialHome={initialHome && initialHome.length > 0 ? initialHome : null} />
 }
 
-function SearchArea({ trip, status, initialHome }: { trip: Trip; status: FlightSearchStatus | null; initialHome: Airport[] | null }) {
+/**
+ * Welcher Flug? An- & Rückreise oder ein Weiterflug zwischen zwei weit entfernten Etappen (z. B. Osaka → Okinawa).
+ * Jede Strecke hat ihre eigene, gemerkte Suchmaske.
+ */
+function SegmentChoice({ trip, status, initialHome }: { trip: Trip; status: FlightSearchStatus | null; initialHome: Airport[] | null }) {
+  const segments = flightSegments(trip.stages)
+  const choice = useSearchDraft(segmentDraftKey(trip.id), { segment: 'trip' })
+  const segment = segments.find((s) => s.id === choice.values.segment) ?? segments[0]
+  return (
+    <div className="flex flex-col gap-4">
+      {segments.length > 1 && (
+        <div role="radiogroup" aria-label="Welcher Flug?" className="flex flex-wrap gap-2">
+          {segments.map((s) => (
+            <button
+              key={s.id}
+              type="button"
+              role="radio"
+              aria-checked={segment.id === s.id}
+              onClick={() => choice.set('segment', s.id)}
+              className={clsx(
+                'flex cursor-pointer flex-col rounded-xl border px-3.5 py-2 text-left text-sm',
+                segment.id === s.id ? 'border-accent bg-accent-soft/40' : 'border-line bg-surface-2 hover:bg-surface-3',
+              )}
+            >
+              <span className="font-bold">{s.kind === 'hop' ? `${s.from.name} → ${s.to.name}` : 'An- & Rückreise'}</span>
+              <span className="text-xs text-muted">
+                {s.kind === 'hop'
+                  ? `Weiterflug · ${formatShortDate(s.date)} · ${formatDistance(s.distanceKm)}`
+                  : 'Hin- und Rückflug der Reise'}
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+      <SearchArea key={segment.id} trip={trip} status={status} initialHome={initialHome} segment={segment} />
+    </div>
+  )
+}
+
+function SearchArea({
+  trip,
+  status,
+  initialHome,
+  segment,
+}: {
+  trip: Trip
+  status: FlightSearchStatus | null
+  initialHome: Airport[] | null
+  segment: FlightSegment
+}) {
   const preset = trip.searchSettings
   // Google Flights (SerpApi): alle Flughäfen in einer Suche, Rückflug wird nach dem Hinflug gewählt.
   const google = status?.provider === 'serpapi'
   const actions = useTripActions(trip.id)
-  const firstStage = trip.stages[0] ?? null
-  const lastStage = trip.stages[trip.stages.length - 1] ?? null
-  const firstCenter = useMemo(() => toLatLng(firstStage), [firstStage])
-  const lastCenter = useMemo(() => toLatLng(lastStage), [lastStage])
+  const hop = segment.kind === 'hop' ? segment : null
+  const stages = trip.stages
+  const ordered = [...stages].sort((a, b) => a.startDate.localeCompare(b.startDate))
+  const firstStage = hop ? hop.to : (ordered[0] ?? null)
+  const lastStage = ordered[ordered.length - 1] ?? null
 
   const queryClient = useQueryClient()
   // Eingaben merken (pro Reise): Standardwerte aus Reise und Etappen, eigene Änderungen bleiben auch beim Tab-Wechsel.
   // Ändert sich der Reisezeitraum, werden nur die Daten neu vorgeschlagen.
   const draft = useSearchDraft(
-    `${trip.id}.flug`,
+    flightDraftKey(trip.id, segment),
     {
-      type: suggestTripType(trip.stages),
+      type: hop ? ('oneway' as TripType) : suggestTripType(trip.stages),
       cabin: (preset?.cabin as CabinClass | null | undefined) ?? ('Economy' as CabinClass),
       // null = noch nicht angefasst → Vorschlag (Heimat bzw. nächster Flughafen der Etappe)
       outFrom: null as Airport[] | null,
       outTo: null as Airport[] | null,
       inFrom: null as Airport[] | null,
       inTo: null as Airport[] | null,
-      outDate: firstStage?.startDate ?? trip.startDate ?? '',
+      outDate: hop ? hop.date : (firstStage?.startDate ?? trip.startDate ?? ''),
       inDate: lastStage?.endDate ?? trip.endDate ?? '',
       radiusOut: 150,
       radiusIn: 150,
@@ -211,12 +272,14 @@ function SearchArea({ trip, status, initialHome }: { trip: Trip; status: FlightS
       last: null as FlightSearchParams | null,
     },
     {
-      basis: [firstStage?.startDate, lastStage?.endDate, trip.startDate, trip.endDate].join('|'),
+      basis: hop ? hop.date : [firstStage?.startDate, lastStage?.endDate, trip.startDate, trip.endDate].join('|'),
       basisKeys: ['outDate', 'inDate', 'last'],
       quietKeys: ['last', 'sort'],
     },
   )
-  const { type, cabin, outFrom, outTo, inFrom, inTo, outDate, inDate, radiusOut, radiusIn, filters, sort } = draft.values
+  const { cabin, outFrom, outTo, inFrom, inTo, outDate, inDate, radiusOut, radiusIn, filters, sort } = draft.values
+  // Weiterflug: immer nur ein einfacher Flug.
+  const type: TripType = hop ? 'oneway' : draft.values.type
   const setType = (v: TripType) => draft.set('type', v)
   const setCabin = (v: CabinClass) => draft.set('cabin', v)
   const setOutFrom = (v: Airport[]) => draft.set('outFrom', v)
@@ -243,13 +306,38 @@ function SearchArea({ trip, status, initialHome }: { trip: Trip; status: FlightS
   const [datesOpen, setDatesOpen] = useState(false)
   const [view, setView] = useState<'list' | 'map'>('list')
 
-  const nearOut = useNearbyAirports(firstCenter, radiusOut)
-  const nearIn = useNearbyAirports(lastCenter, radiusIn)
+  // Vorschläge passend zum Datum: Wo ist man an dem Tag (z. B. 02.05. = Wechsel Osaka → Okinawa)?
+  const midTrip = !!ordered[0] && outDate > ordered[0].startDate
+  const outFromStage = hop ? hop.from : midTrip ? stageLeaving(stages, outDate) : null
+  const outToStage = hop ? hop.to : stageArriving(stages, outDate)
+  const inFromStage = stageLeaving(stages, inDate) ?? lastStage
+  const inToStage = lastStage && inDate && inDate < lastStage.endDate ? stageArriving(stages, inDate) : null
+  const nearOutFrom = useNearbyAirports(toLatLng(outFromStage), radiusOut)
+  const nearOut = useNearbyAirports(toLatLng(outToStage), radiusOut)
+  const nearIn = useNearbyAirports(toLatLng(inFromStage), radiusIn)
+  const nearInTo = useNearbyAirports(toLatLng(inToStage !== inFromStage ? inToStage : null), radiusIn)
+  const firstCenter = toLatLng(outToStage)
+  const lastCenter = toLatLng(inFromStage)
 
-  const origins = outFrom ?? home
+  // Weiterflug: Abflug am nächsten Flughafen der vorigen Etappe statt am Heimatflughafen.
+  const origins = outFrom ?? (hop ? defaultPick(nearOutFrom.data) : home)
   const destinations = outTo ?? defaultPick(nearOut.data)
   const returnFrom = inFrom ?? defaultPick(nearIn.data)
   const returnTo = inTo ?? home
+
+  // Gemerkte Flüge: deren Flughäfen als Vorschlag, deren Strecken zum Übernehmen (z. B. Tokio → Frankfurt).
+  const savedLegs = useMemo(() => savedFlightLegs(trip.options), [trip.options])
+  const savedLookup = useAirportLookup(savedLegs.flatMap((l) => [l.origin, l.destination]))
+  const savedAirport = (code: string) => savedLookup.data?.find((a) => a.code === code) ?? null
+  const savedGroup = (savedLookup.data ?? []).length > 0 ? [{ label: 'Aus gemerkten Flügen', airports: savedLookup.data ?? [] }] : []
+  const nearGroup = (stage: { name: string } | null, airports: Airport[] | undefined) =>
+    stage && airports && airports.length > 0 ? [{ label: `Nähe ${stage.name}`, airports }] : []
+  const takeSaved = (leg: SavedLeg, which: 'out' | 'in') => {
+    const from = savedAirport(leg.origin)
+    const to = savedAirport(leg.destination)
+    if (!from || !to) return
+    draft.patch(which === 'out' ? { outFrom: [from], outTo: [to], outDate: leg.date } : { inFrom: [from], inTo: [to], inDate: leg.date })
+  }
   const adults = Math.min(trip.travelers, MAX_ADULTS)
   // Airlines verkaufen ab heute bis ca. 11 Monate im Voraus.
   const today = todayIso()
@@ -317,6 +405,8 @@ function SearchArea({ trip, status, initialHome }: { trip: Trip; status: FlightS
 
   const changeOrigins = (airports: Airport[]) => {
     setOutFrom(airports)
+    // Bei Weiterflügen ist „Von“ nicht der Heimatflughafen.
+    if (hop) return
     setHome(airports)
     saveHome(airports)
   }
@@ -342,9 +432,8 @@ function SearchArea({ trip, status, initialHome }: { trip: Trip; status: FlightS
     runSearch(dates)
   }
 
-  const selectFromMap = useCallback((id: string | null) => {
-    setSelectedId(id)
-  }, [])
+  // Der State-Setter ist stabil – die Karte muss nicht neu verbinden.
+  const selectFromMap = setSelectedId
 
   const cheapest = flights[0]?.journey ?? null
   const datesParams =
@@ -368,7 +457,7 @@ function SearchArea({ trip, status, initialHome }: { trip: Trip; status: FlightS
     <div className="flex flex-col gap-5">
       <section aria-label="Flugsuche" className="flex flex-col gap-4 rounded-[18px] border border-line bg-surface p-5">
         <div className="flex flex-wrap items-center gap-3">
-          <div role="radiogroup" aria-label="Reiseart" className="flex rounded-xl bg-surface-2 p-1">
+          <div role="radiogroup" aria-label="Reiseart" className={clsx('flex rounded-xl bg-surface-2 p-1', hop && 'hidden')}>
             {tripTypes.map((t) => (
               <button
                 key={t.value}
@@ -405,19 +494,31 @@ function SearchArea({ trip, status, initialHome }: { trip: Trip; status: FlightS
           )}
         </div>
 
-        <LegForm title="Hinflug">
+        <LegForm
+          title={hop ? `Weiterflug ${hop.from.name} → ${hop.to.name}` : 'Hinflug'}
+          actions={<SavedLegChips legs={savedLegs} onPick={(leg) => takeSaved(leg, 'out')} />}
+        >
           <RoutePair
             label="Hinflug"
             disabled={origins.length === 0 && destinations.length === 0}
             onSwap={() => draft.patch({ outFrom: destinations, outTo: origins })}
-            from={<AirportPicker label="Von" value={origins} onChange={changeOrigins} placeholder="z. B. Stuttgart" />}
+            from={
+              <AirportPicker
+                label="Von"
+                value={origins}
+                onChange={changeOrigins}
+                placeholder="z. B. Stuttgart"
+                moreSuggestions={[...nearGroup(outFromStage, nearOutFrom.data), ...savedGroup]}
+              />
+            }
             to={
               <AirportPicker
                 label="Nach"
                 value={destinations}
                 onChange={setOutTo}
                 suggestions={nearOut.data}
-                suggestionLabel={firstStage ? `Nähe ${firstStage.name}` : undefined}
+                suggestionLabel={outToStage ? `Nähe ${outToStage.name}` : undefined}
+                moreSuggestions={savedGroup}
               />
             }
           />
@@ -450,13 +551,16 @@ function SearchArea({ trip, status, initialHome }: { trip: Trip; status: FlightS
           <LegForm
             title="Rückflug (über andere Flughäfen)"
             actions={
-              <LegAction
-                icon={<Undo2 size={13} aria-hidden="true" />}
-                disabled={origins.length === 0 && destinations.length === 0}
-                onClick={() => draft.patch({ inFrom: destinations, inTo: origins })}
-              >
-                Hinflug umgedreht übernehmen
-              </LegAction>
+              <>
+                <LegAction
+                  icon={<Undo2 size={13} aria-hidden="true" />}
+                  disabled={origins.length === 0 && destinations.length === 0}
+                  onClick={() => draft.patch({ inFrom: destinations, inTo: origins })}
+                >
+                  Hinflug umgedreht übernehmen
+                </LegAction>
+                <SavedLegChips legs={savedLegs} onPick={(leg) => takeSaved(leg, 'in')} />
+              </>
             }
           >
             <RoutePair
@@ -469,10 +573,19 @@ function SearchArea({ trip, status, initialHome }: { trip: Trip; status: FlightS
                   value={returnFrom}
                   onChange={setInFrom}
                   suggestions={nearIn.data}
-                  suggestionLabel={lastStage ? `Nähe ${lastStage.name}` : undefined}
+                  suggestionLabel={inFromStage ? `Nähe ${inFromStage.name}` : undefined}
+                  moreSuggestions={savedGroup}
                 />
               }
-              to={<AirportPicker label="Nach" value={returnTo} onChange={setInTo} placeholder="z. B. Stuttgart" />}
+              to={
+                <AirportPicker
+                  label="Nach"
+                  value={returnTo}
+                  onChange={setInTo}
+                  placeholder="z. B. Stuttgart"
+                  moreSuggestions={[...nearGroup(inToStage !== inFromStage ? inToStage : null, nearInTo.data), ...savedGroup]}
+                />
+              }
             />
             <DateAndRadius
               label="Rückflug am"
@@ -774,10 +887,14 @@ function ReturnRoute({ from, to }: { from: Airport[]; to: Airport[] }) {
 }
 
 function LegForm({ title, actions, children }: { title: string; actions?: ReactNode; children: ReactNode }) {
+  // Name der Gruppe nur aus der Überschrift – nicht aus den Knöpfen daneben.
+  const titleId = useId()
   return (
-    <fieldset className="flex flex-col gap-2">
+    <fieldset className="flex flex-col gap-2" aria-labelledby={titleId}>
       <legend className="mb-1 flex flex-wrap items-center gap-x-3 gap-y-1">
-        <span className="text-sm font-extrabold">{title}</span>
+        <span id={titleId} className="text-sm font-extrabold">
+          {title}
+        </span>
         {actions}
       </legend>
       <div className="grid gap-3 md:grid-cols-[1fr_1fr_auto]">{children}</div>
@@ -817,6 +934,31 @@ function RoutePair({
       </button>
       {to}
     </div>
+  )
+}
+
+/** Strecken gemerkter Flüge zum Übernehmen (Flughäfen und Datum), z. B. „HND → FRA · 19.05.“. */
+function SavedLegChips({ legs, onPick }: { legs: SavedLeg[]; onPick: (leg: SavedLeg) => void }) {
+  if (legs.length === 0) return null
+  return (
+    <span className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Aus gemerkten Flügen übernehmen">
+      <span className="text-xs text-muted">Gemerkt:</span>
+      {legs.slice(0, 4).map((leg) => (
+        <button
+          key={`${leg.origin}-${leg.destination}-${leg.date}`}
+          type="button"
+          onClick={() => onPick(leg)}
+          title="Flughäfen und Datum übernehmen"
+          className="inline-flex cursor-pointer items-center gap-1 rounded-full border border-line px-2.5 py-0.5 text-xs font-semibold hover:bg-surface-3"
+        >
+          <Bookmark size={11} aria-hidden="true" />
+          <span className="font-mono">
+            {leg.origin} → {leg.destination}
+          </span>
+          <span className="font-normal text-muted">{formatShortDate(leg.date)}</span>
+        </button>
+      ))}
+    </span>
   )
 }
 

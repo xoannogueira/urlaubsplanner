@@ -56,7 +56,7 @@ public sealed class PriceCalendarTests : IDisposable
             Calls++;
             var date = request.Legs[0].Date;
             var dep = date.ToDateTime(new TimeOnly(9, 15));
-            var segment = new FlightSegment("STR", null, "LIS", null, dep, dep.AddHours(3), 180, "EW", "Eurowings", null, "EW2604", null);
+            var segment = new FlightSegment("STR", null, "LIS", null, dep, dep.AddHours(3), 180, "EW", "Eurowings", null, "2604", null);
             var price = 100m + date.Day; // je Tag anders
             var fare = new FlightFare("Basic", null, price, price, "EUR", null, null, null, false, false, null, null);
             var journey = new FlightJourney($"STR-LIS@{date:yyyy-MM-dd}:EW2604", [new FlightJourneyLeg("STR", "LIS", dep, dep.AddHours(3), 180, 0, [segment])], 180, [fare], "b", "g");
@@ -132,6 +132,8 @@ public sealed class PriceCalendarTests : IDisposable
         Assert.Equal(CalendarState.Done, done.State);
         Assert.Equal(7, done.Days.Count);
         Assert.All(done.Days, d => Assert.Equal("Eurowings", d.Airline));
+        Assert.All(done.Days, d => Assert.Equal("STR-LIS", d.Route));
+        Assert.All(done.Days, d => Assert.Equal("EW2604", d.Flight));
         Assert.Equal(7, search.Calls);
         Assert.Equal(7, archive.Records("STR", "LIS").Count);
         Assert.All(archive.Records("STR", "LIS"), r => Assert.Equal("kalender", r.Source));

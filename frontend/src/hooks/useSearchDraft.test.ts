@@ -1,6 +1,6 @@
 import { act, renderHook } from '@testing-library/react'
 import { beforeEach, describe, expect, it } from 'vitest'
-import { cleanupSearchDrafts, clearSearchDrafts, useSearchDraft } from './useSearchDraft'
+import { cleanupSearchDrafts, clearSearchDrafts, updateSearchDraft, useSearchDraft } from './useSearchDraft'
 
 type Form = { from: string; date: string; radius: number; last: string | null }
 const defaults: Form = { from: 'STR', date: '2026-12-10', radius: 150, last: null }
@@ -61,5 +61,16 @@ describe('useSearchDraft', () => {
     expect(localStorage.length).toBe(1)
     cleanupSearchDrafts(Date.now() + 100 * 86_400_000)
     expect(localStorage.length).toBe(0)
+  })
+
+  it('von außen vorbelegt: offene Maske übernimmt sofort, gilt auch bei anderer Grundlage', () => {
+    const { result, unmount } = renderHook(() => useSearchDraft('t1.flug', defaults, opts))
+    act(() => updateSearchDraft('t1.flug', { from: 'KIX', date: '2026-12-20' }))
+    expect(result.current.values).toMatchObject({ from: 'KIX', date: '2026-12-20' })
+    unmount()
+    localStorage.clear()
+    updateSearchDraft('t1.flug', { date: '2026-12-21' })
+    const other = renderHook(() => useSearchDraft('t1.flug', defaults, { ...opts, basis: 'anders' }))
+    expect(other.result.current.values.date).toBe('2026-12-21')
   })
 })

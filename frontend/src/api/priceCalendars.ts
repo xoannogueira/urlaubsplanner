@@ -34,8 +34,10 @@ export interface CalendarDay {
   stops: number | null
   options: number
   problem: string | null
-  /** Strecke des günstigsten Preises, z. B. „FRA-BCN“ (Aviasales) */
+  /** Strecke des günstigsten Preises, z. B. „FRA-BCN“ */
   route?: string | null
+  /** Flugnummer(n) des günstigsten Hinflugs (nur Google) */
+  flight?: string | null
 }
 
 export interface PriceCalendar {

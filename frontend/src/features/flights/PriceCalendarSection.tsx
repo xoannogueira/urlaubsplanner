@@ -21,8 +21,11 @@ import { Dialog } from '../../components/ui/Dialog'
 import { FormError } from '../../components/ui/Field'
 import { ProgressBar, Skeleton } from '../../components/ui/Feedback'
 import { euro } from '../../lib/chart'
+import { flightSegments } from '../../lib/flightSegments'
 import { formatShortDate, todayIso } from '../../lib/format'
-import { parseSignature } from '../../lib/flights'
+import { distanceKm, toLatLng } from '../../lib/geo'
+import { prepareFlightSearch } from './openFlightSearch'
+import { parseSignature, shiftDate } from '../../lib/flights'
 import {
   aviasalesRequests,
   byMonth,
@@ -129,15 +132,18 @@ export function PriceCalendarSection({ trip }: { trip: Trip }) {
         </ul>
       ) : null}
 
-      {shown && shown.days.some((d) => d.cheapest !== null) && <CalendarDetail calendar={shown} />}
+      {shown && shown.days.some((d) => d.cheapest !== null) && <CalendarDetail key={shown.id} trip={trip} calendar={shown} />}
 
       <LoadDialog open={dialog} trip={trip} onClose={() => setDialog(false)} onStarted={(id) => setOpenId(id)} />
     </section>
   )
 }
 
-function CalendarDetail({ calendar }: { calendar: PriceCalendar }) {
+function CalendarDetail({ trip, calendar }: { trip: Trip; calendar: PriceCalendar }) {
   const { open } = usePriceCalendarActions()
+  // Angeklickter Tag: zeigt den günstigsten Flug dieses Tages mit Weiterleitung.
+  const [picked, setPicked] = useState<string | null>(null)
+  const pickedDay = calendar.days.find((d) => d.date === picked && d.cheapest !== null) ?? null
   const openMutate = open.mutate
   // Öffnen zählt als „benutzt“ – wichtig fürs Auslagern nach 30 Tagen.
   useEffect(() => {
@@ -196,19 +202,38 @@ function CalendarDetail({ calendar }: { calendar: PriceCalendar }) {
                             : cell.day
                               ? `${formatShortDate(cell.date)}: keine Daten`
                               : `${formatShortDate(cell.date)}: nicht gesucht`
+                      const content = (
+                        <>
+                          <span className="block text-[10px] opacity-80">{dayNo}</span>
+                          {price !== null && <span className="block font-mono font-semibold tabular-nums">{Math.round(price)}</span>}
+                        </>
+                      )
                       return (
                         <td
                           key={ci}
                           title={label}
-                          aria-label={label}
                           className={clsx(
-                            'h-11 w-11 rounded-[4px] px-0.5 text-center align-middle leading-tight',
+                            'h-11 w-11 rounded-[4px] p-0 text-center align-middle leading-tight',
                             s === null && (cell.inRange && cell.day ? 'bg-surface-3 text-muted' : 'text-muted/60'),
+                            picked === cell.date && 'outline-2 outline-offset-1 outline-text',
                           )}
                           style={s === null ? undefined : { background: `var(--heat-${s})`, color: `var(--heat-ink-${s})` }}
                         >
-                          <span className="block text-[10px] opacity-80">{dayNo}</span>
-                          {price !== null && <span className="block font-mono font-semibold tabular-nums">{Math.round(price)}</span>}
+                          {price !== null ? (
+                            <button
+                              type="button"
+                              aria-label={`${label} – Details`}
+                              aria-pressed={picked === cell.date}
+                              onClick={() => setPicked(picked === cell.date ? null : cell.date)}
+                              className="flex size-full cursor-pointer flex-col items-center justify-center rounded-[4px] px-0.5 hover:brightness-110"
+                            >
+                              {content}
+                            </button>
+                          ) : (
+                            <span aria-label={label} className="flex size-full flex-col items-center justify-center px-0.5">
+                              {content}
+                            </span>
+                          )}
                         </td>
                       )
                     })}
@@ -227,7 +252,9 @@ function CalendarDetail({ calendar }: { calendar: PriceCalendar }) {
           ))}
         </span>
         <span>günstiger ({euro(min)}) · Zahl = Preis in €</span>
+        {!pickedDay && <span>· Tag anklicken für den günstigsten Flug</span>}
       </div>
+      {pickedDay && <DayPanel trip={trip} calendar={calendar} day={pickedDay} onClose={() => setPicked(null)} />}
 
       <div className="grid gap-5 xl:grid-cols-3">
         <Card title="Günstigste Abflugtage" note="Die fünf billigsten Tage im Zeitraum">
@@ -240,10 +267,15 @@ function CalendarDetail({ calendar }: { calendar: PriceCalendar }) {
                   className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-3 rounded-lg bg-surface-2 px-3 py-2"
                 >
                   <span className="font-mono text-xs text-muted">{i + 1}.</span>
-                  <span className="flex min-w-0 flex-col">
-                    <span className="font-semibold whitespace-nowrap">{formatShortDate(d.date)}</span>
+                  <button
+                    type="button"
+                    onClick={() => setPicked(d.date)}
+                    className="flex min-w-0 cursor-pointer flex-col text-left"
+                    title="Details zu diesem Tag"
+                  >
+                    <span className="font-semibold whitespace-nowrap underline-offset-2 hover:underline">{formatShortDate(d.date)}</span>
                     {info && <span className="truncate text-xs text-muted">{info}</span>}
-                  </span>
+                  </button>
                   <span className="flex items-center gap-2">
                     <span className="font-mono font-bold whitespace-nowrap tabular-nums">{euro(d.cheapest)}</span>
                     <GoogleCheck calendar={calendar} day={d} />
@@ -332,7 +364,7 @@ function SourceBadge({ source }: { source: PriceSource }) {
 /** Tag bei Google Flights öffnen – zum genauen Nachprüfen, kostet keine Suche. */
 function GoogleCheck({ calendar, day }: { calendar: PriceCalendar; day: PriceCalendar['days'][number] }) {
   const url = checkOnGoogleUrl(calendar, day)
-  if (!url || calendar.source !== 'Aviasales') return null
+  if (!url) return null
   return (
     <a
       href={url}
@@ -344,6 +376,115 @@ function GoogleCheck({ calendar, day }: { calendar: PriceCalendar; day: PriceCal
       Google <ExternalLink size={12} aria-hidden="true" />
     </a>
   )
+}
+
+/**
+ * Der angeklickte Tag: günstigster Flug (Strecke, Airline, Flugnummer, Umstiege, Preis) und wohin es weitergeht –
+ * Google Flights für genau diesen Tag (kostet nichts) oder die Flugsuche der App, schon ausgefüllt.
+ */
+function DayPanel({
+  trip,
+  calendar,
+  day,
+  onClose,
+}: {
+  trip: Trip
+  calendar: PriceCalendar
+  day: PriceCalendar['days'][number]
+  onClose: () => void
+}) {
+  const [origin, destination] = (day.route ?? `${calendar.origins[0]}-${calendar.destinations[0]}`).split('-')
+  const back = calendar.nights ? shiftDate(day.date, calendar.nights) : null
+  const lookup = useAirportLookup([origin, destination])
+  const from = lookup.data?.find((a) => a.code === origin) ?? null
+  const to = lookup.data?.find((a) => a.code === destination) ?? null
+  const google = checkOnGoogleUrl(calendar, day)
+  const indicative = calendar.source === 'Aviasales'
+  const stops = day.stops === null ? null : day.stops === 0 ? 'direkt' : day.stops === 1 ? '1 Umstieg' : `${day.stops} Umstiege`
+
+  const openSearch = () => {
+    if (!from || !to) return
+    // Passt die Strecke zu einem Weiterflug zwischen Etappen, dort öffnen – sonst als An-/Rückreise.
+    const hop = back ? null : flightSegments(trip.stages).find((s) => s.kind === 'hop' && near(from, s.from) && near(to, s.to))
+    if (hop) prepareFlightSearch(trip.id, hop, { outFrom: [from], outTo: [to], outDate: day.date })
+    else
+      prepareFlightSearch(
+        trip.id,
+        { id: 'trip', kind: 'trip' },
+        {
+          type: back ? 'roundtrip' : 'oneway',
+          outFrom: [from],
+          outTo: [to],
+          outDate: day.date,
+          ...(back ? { inDate: back } : {}),
+        },
+      )
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  return (
+    <section
+      aria-label={`Günstigster Flug am ${formatShortDate(day.date)}`}
+      className="flex flex-col gap-3 rounded-xl border-2 border-accent bg-surface-2 p-4"
+    >
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex flex-col gap-1">
+          <span className="text-xs font-bold tracking-[0.06em] text-muted uppercase">Günstigster Flug am {formatShortDate(day.date)}</span>
+          <span className="flex flex-wrap items-baseline gap-x-2 text-lg font-extrabold">
+            <span className="font-mono">
+              {origin} → {destination}
+            </span>
+            <span className="text-sm font-semibold text-muted">
+              {[from?.city, to?.city].every(Boolean) ? `${from?.city} → ${to?.city}` : ''}
+            </span>
+          </span>
+          <span className="text-sm">
+            {[day.airline, day.flight, stops].filter(Boolean).join(' · ') || 'Airline unbekannt'}
+            {back ? ` · zurück am ${formatShortDate(back)}` : ' · nur Hinflug'}
+          </span>
+          <span className="text-xs text-muted">
+            {indicative
+              ? `Richtpreis von Aviasales (einige Tage alt)${calendar.nights ? ', Hin- und Rückflug einzeln zusammengerechnet' : ''}`
+              : `Google-Preis vom ${formatShortDate(calendar.createdAt.slice(0, 10))} · ${day.options} Verbindungen verglichen`}
+          </span>
+        </div>
+        <div className="flex flex-col items-end gap-1">
+          <span className="font-mono text-2xl font-extrabold tabular-nums">{day.cheapest === null ? '–' : euro(day.cheapest)}</span>
+          <span className="text-xs text-muted">pro Person{back ? ', hin & zurück' : ''}</span>
+        </div>
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        {google && (
+          <a
+            href={google}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex h-9 items-center gap-1.5 rounded-xl bg-accent px-3.5 text-sm font-bold text-accent-ink hover:brightness-110"
+          >
+            Bei Google Flights ansehen <ExternalLink size={14} aria-hidden="true" />
+          </a>
+        )}
+        <Button
+          size="sm"
+          icon={<Search size={14} />}
+          onClick={openSearch}
+          disabled={!from || !to}
+          title="Füllt die Suche aus – gesucht wird erst auf Knopfdruck"
+        >
+          In der Flugsuche öffnen
+        </Button>
+        <Button size="sm" variant="ghost" onClick={onClose}>
+          Schließen
+        </Button>
+      </div>
+    </section>
+  )
+}
+
+/** Liegt der Flughafen bei der Etappe (bis 200 km)? */
+const near = (airport: { latitude: number; longitude: number }, stage: { latitude: number | null; longitude: number | null }) => {
+  const at = toLatLng(stage)
+  return !!at && distanceKm(airport, at) <= 200
 }
 
 /**

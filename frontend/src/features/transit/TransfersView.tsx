@@ -1,11 +1,15 @@
-import { ArrowRight, ChevronDown, ChevronUp, MapPinned, Route } from 'lucide-react'
+import { ArrowRight, ChevronDown, ChevronUp, MapPinned, Plane, Route } from 'lucide-react'
+import { useNavigate } from 'react-router'
 import { useMemo } from 'react'
 import { useSearchDraft } from '../../hooks/useSearchDraft'
 import { useAirportLookup } from '../../api/airports'
 import type { Trip } from '../../api/types'
 import { Button } from '../../components/ui/Button'
 import { EmptyState } from '../../components/ui/Feedback'
+import { flightSegments, type FlightSegment } from '../../lib/flightSegments'
 import { formatShortDate } from '../../lib/format'
+import { formatDistance } from '../../lib/geo'
+import { prepareFlightSearch } from '../flights/openFlightSearch'
 import { parseSignature } from '../../lib/flights'
 import { isChosen } from '../../lib/options'
 import { suggestTransfers, type TransferSuggestion } from '../../lib/transit'
@@ -32,6 +36,10 @@ export function TransfersView({ trip }: { trip: Trip }) {
   const setOpen = (v: string | null) => ui.set('open', v)
   const setFree = (change: (f: boolean) => boolean) => ui.set('free', change(free))
   const firstStage = [...trip.stages].sort((a, b) => a.startDate.localeCompare(b.startDate))[0]
+  const navigate = useNavigate()
+  // Weite Etappenwechsel (z. B. Osaka → Okinawa): dort lieber einen Flug suchen.
+  const hops = flightSegments(trip.stages).filter((x) => x.kind === 'hop')
+  const hopFor = (s: TransferSuggestion) => hops.find((h) => s.id === `etappe:${h.to.id}`) ?? null
 
   return (
     <div className="flex flex-col gap-4">
@@ -46,7 +54,16 @@ export function TransfersView({ trip }: { trip: Trip }) {
         <ul className="flex flex-col gap-3">
           {suggestions.map((s) => (
             <li key={s.id} className="flex flex-col gap-3">
-              <SuggestionCard suggestion={s} open={open === s.id} onToggle={() => setOpen(open === s.id ? null : s.id)} />
+              <SuggestionCard
+                suggestion={s}
+                open={open === s.id}
+                onToggle={() => setOpen(open === s.id ? null : s.id)}
+                flight={hopFor(s)}
+                onFlight={(hop) => {
+                  prepareFlightSearch(trip.id, hop)
+                  void navigate(`/trips/${trip.id}/fluege`)
+                }}
+              />
               {open === s.id && (
                 <TransitSearch
                   key={s.id}
@@ -82,7 +99,19 @@ export function TransfersView({ trip }: { trip: Trip }) {
   )
 }
 
-function SuggestionCard({ suggestion: s, open, onToggle }: { suggestion: TransferSuggestion; open: boolean; onToggle: () => void }) {
+function SuggestionCard({
+  suggestion: s,
+  open,
+  onToggle,
+  flight,
+  onFlight,
+}: {
+  suggestion: TransferSuggestion
+  open: boolean
+  onToggle: () => void
+  flight: Extract<FlightSegment, { kind: 'hop' }> | null
+  onFlight: (hop: Extract<FlightSegment, { kind: 'hop' }>) => void
+}) {
   return (
     <article className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-line bg-surface p-4">
       <div className="flex min-w-0 flex-col gap-1">
@@ -94,11 +123,25 @@ function SuggestionCard({ suggestion: s, open, onToggle }: { suggestion: Transfe
           <ArrowRight size={15} className="text-muted" />
           {s.to.name}
         </span>
-        <span className="text-xs text-muted">{s.hint}</span>
+        <span className="text-xs text-muted">
+          {s.hint}
+          {flight && ` · ${formatDistance(flight.distanceKm)} – meist schneller mit dem Flugzeug`}
+        </span>
       </div>
-      <Button variant={open ? 'secondary' : 'primary'} icon={open ? <ChevronUp size={16} /> : <ChevronDown size={16} />} onClick={onToggle}>
-        {open ? 'Schließen' : 'Verbindungen'}
-      </Button>
+      <div className="flex flex-wrap gap-2">
+        {flight && (
+          <Button variant="primary" icon={<Plane size={16} />} onClick={() => onFlight(flight)}>
+            Flug suchen
+          </Button>
+        )}
+        <Button
+          variant={open ? 'secondary' : 'primary'}
+          icon={open ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+          onClick={onToggle}
+        >
+          {open ? 'Schließen' : flight ? 'Bus & Bahn' : 'Verbindungen'}
+        </Button>
+      </div>
     </article>
   )
 }
