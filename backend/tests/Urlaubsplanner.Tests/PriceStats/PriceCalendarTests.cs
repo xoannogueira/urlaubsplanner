@@ -138,4 +138,31 @@ public sealed class PriceCalendarTests : IDisposable
         Assert.Throws<DomainException>(() => offload.Delete("../trips.json"));
         runner.Dispose();
     }
+
+    [Fact]
+    public void Ausgewaehltes_und_seit_30_Tagen_Ungenutztes_loeschen()
+    {
+        var (runner, store, archive, _) = Create(200);
+        var old = DateTimeOffset.UtcNow.AddDays(-40);
+        var segment = new FlightSegment("STR", null, "BCN", null, new DateTime(2026, 12, 1, 9, 0, 0), new DateTime(2026, 12, 1, 11, 0, 0), 120, "VY", "Vueling", null, "VY1", null);
+        var journey = new FlightJourney("x", [new FlightJourneyLeg("STR", "BCN", segment.Departure, segment.Arrival, 120, 0, [segment])], 120, [new FlightFare("B", null, 99, 99, "EUR", null, null, null, false, false, null, null)], "b", "g");
+        archive.Record([journey], null, "suche", old);
+        archive.Record([journey with { Signature = "frisch", Legs = [journey.Legs[0] with { Origin = "FRA" }] }], null, "suche", DateTimeOffset.UtcNow);
+        archive.Record([journey with { Signature = "bleibt", Legs = [journey.Legs[0] with { Origin = "MUC" }] }], null, "suche", DateTimeOffset.UtcNow);
+        store.Save(new PriceCalendar(Guid.NewGuid(), ["STR"], ["BCN"], new DateOnly(2026, 12, 1), new DateOnly(2026, 12, 31), null, CalendarPattern.Weekly, old, old, CalendarState.Done, 5, [], null));
+        var offload = new DataOffload(new AppPaths(true, _root), archive, store);
+
+        // Nur ausgewählt: die frische Strecke FRA → BCN
+        Assert.Equal(1, offload.DeleteSelected(new DeleteDataRequest(["strecke:FRA-BCN"], null, null), DateTimeOffset.UtcNow));
+        Assert.Empty(archive.Records("FRA", "BCN"));
+        Assert.Equal(3, offload.Stored().Count);
+
+        // Mit „Ungenutzte mitlöschen“: alte Strecke und alter Kalender, MUC → BCN bleibt
+        Assert.Equal(2, offload.DeleteSelected(new DeleteDataRequest([], [], 30), DateTimeOffset.UtcNow));
+        var left = Assert.Single(offload.Stored());
+        Assert.Equal("MUC-BCN", left.Key);
+        Assert.Empty(store.List());
+        Assert.Throws<DomainException>(() => offload.DeleteSelected(new DeleteDataRequest(null, null, 0), DateTimeOffset.UtcNow));
+        runner.Dispose();
+    }
 }

@@ -1,5 +1,5 @@
 import clsx from 'clsx'
-import { CalendarRange, Play, Square, Trash2 } from 'lucide-react'
+import { CalendarRange, Play, Square, Trash2, TriangleAlert } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { useAirportLookup, type Airport } from '../../api/airports'
 import { ApiError } from '../../api/client'
@@ -285,6 +285,66 @@ function LoadForm({ trip, onClose, onStarted }: { trip: Trip; onClose: () => voi
   return <Form initialFrom={find(preset.origins)} initialTo={find(preset.destinations)} onClose={onClose} onStarted={onStarted} />
 }
 
+const MAX_SEARCHES = 100
+/** So viele Suchen bleiben für normale Flugsuchen übrig. */
+const RESERVE = 10
+/** Ab so vielen Suchen muss man die Kosten bestätigen. */
+const ACK_FROM = 20
+
+/**
+ * Was das Laden kostet, als deutliche Warnung: Anzahl Google-Suchen groß, Anteil am restlichen Monatskontingent als
+ * Balken. Rot, wenn es zu viele sind (dann lässt es sich nicht starten).
+ */
+function CostWarning({ from, to, searches, left }: { from: string; to: string; searches: number; left: number | null }) {
+  const tooMany = searches > MAX_SEARCHES || (left !== null && searches > left - RESERVE)
+  const share = left !== null && left > 0 ? Math.min(1, searches / left) : null
+  const after = left !== null ? left - searches : null
+  return (
+    <div
+      role={tooMany ? 'alert' : 'note'}
+      aria-label="Kosten"
+      className={clsx('flex gap-3 rounded-xl border-2 px-4 py-3.5', tooMany ? 'border-danger bg-danger/10' : 'border-star bg-star/10')}
+    >
+      <TriangleAlert size={26} className={clsx('mt-0.5 shrink-0', tooMany ? 'text-danger' : 'text-star')} aria-hidden="true" />
+      <div className="flex min-w-0 flex-1 flex-col gap-2">
+        <div className="flex flex-wrap items-baseline gap-x-2">
+          <span className={clsx('text-2xl font-extrabold tabular-nums leading-none', tooMany ? 'text-danger' : 'text-star')}>
+            {searches} Google-Suchen
+          </span>
+          <span className="text-sm font-semibold">
+            werden verbraucht · {formatShortDate(from)} – {formatShortDate(to)}
+          </span>
+        </div>
+        {share !== null && (
+          <div className="flex flex-col gap-1">
+            <div
+              className="h-2.5 overflow-hidden rounded-full bg-surface-2"
+              role="meter"
+              aria-label="Anteil am restlichen Kontingent"
+              aria-valuemin={0}
+              aria-valuemax={left ?? 0}
+              aria-valuenow={Math.min(searches, left ?? 0)}
+            >
+              <div className={clsx('h-full rounded-full', tooMany ? 'bg-danger' : 'bg-star')} style={{ width: `${share * 100}%` }} />
+            </div>
+            <span className="text-[13px] text-muted">
+              {Math.round(share * 100)} % von deinen {left} übrigen Suchen diesen Monat
+              {after !== null && after >= 0 && ` · danach noch ${after}`}
+            </span>
+          </div>
+        )}
+        {tooMany && (
+          <span className="text-sm font-semibold text-danger">
+            {searches > MAX_SEARCHES
+              ? `Höchstens ${MAX_SEARCHES} auf einmal. Kürzeren Zeitraum oder seltenere Abflugtage wählen.`
+              : 'Das wäre fast das ganze Kontingent. Kürzeren Zeitraum oder seltenere Abflugtage wählen.'}
+          </span>
+        )}
+      </div>
+    </div>
+  )
+}
+
 function Form({
   initialFrom,
   initialTo,
@@ -311,7 +371,11 @@ function Form({
   const range = monthRange(startMonth, count, today, nights)
   const searches = range.from <= range.to ? calendarDates(range.from, range.to, pattern).length : 0
   const left = status.data?.quota?.left ?? null
-  const tooMany = searches > 100 || (left !== null && searches > left - 10)
+  const tooMany = searches > MAX_SEARCHES || (left !== null && searches > left - RESERVE)
+  // Ab einer gewissen Menge muss man die Kosten ausdrücklich bestätigen – gilt nur für genau diese Anzahl.
+  const [ackFor, setAckFor] = useState<number | null>(null)
+  const needsAck = !tooMany && searches > ACK_FROM
+  const acknowledged = ackFor === searches
 
   const submit = () => {
     setError(null)
@@ -391,15 +455,18 @@ function Form({
           </select>
         </label>
       </div>
-      <p className={clsx('rounded-xl px-3.5 py-2.5 text-sm', tooMany ? 'bg-danger/10 text-danger' : 'bg-surface-2')}>
-        {formatShortDate(range.from)} – {formatShortDate(range.to)}: <strong>{searches} Google-Suchen</strong>
-        {left !== null && ` · noch ${left} diesen Monat übrig`}
-        {searches > 100
-          ? ' – höchstens 100 auf einmal. Kürzer oder seltener wählen.'
-          : left !== null && searches > left - 10
-            ? ' – das wäre fast das ganze Kontingent. Kürzer oder seltener wählen.'
-            : ''}
-      </p>
+      <CostWarning from={range.from} to={range.to} searches={searches} left={left} />
+      {needsAck && (
+        <label className="flex cursor-pointer items-center gap-3 text-sm font-semibold">
+          <input
+            type="checkbox"
+            checked={acknowledged}
+            onChange={(e) => setAckFor(e.target.checked ? searches : null)}
+            className="size-4 shrink-0"
+          />
+          Mir ist klar, dass das {searches} Google-Suchen verbraucht.
+        </label>
+      )}
       <FormError message={error} />
       <div className="flex justify-end gap-2">
         <Button onClick={onClose}>Abbrechen</Button>
@@ -407,7 +474,7 @@ function Form({
           variant="primary"
           icon={<Play size={15} />}
           onClick={submit}
-          disabled={tooMany || searches === 0 || from.length === 0 || to.length === 0 || start.isPending}
+          disabled={tooMany || (needsAck && !acknowledged) || searches === 0 || from.length === 0 || to.length === 0 || start.isPending}
         >
           {searches} Suchen starten
         </Button>

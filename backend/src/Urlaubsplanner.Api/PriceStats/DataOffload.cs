@@ -13,6 +13,13 @@ public sealed record StoredData(string Kind, string Key, string Label, int Entri
 public sealed record OffloadedData(string Name, string Kind, string Label, int Entries, long Bytes, DateTimeOffset OffloadedAt);
 
 /// <summary>
+/// Was endgültig gelöscht werden soll: ausgewählte gespeicherte Daten (<paramref name="Stored"/> als „art:schlüssel“,
+/// z. B. „strecke:STR-BCN“), ausgewählte ausgelagerte Dateien und – wenn <paramref name="UnusedDays"/> gesetzt ist –
+/// zusätzlich alles, was so lange nicht benutzt wurde.
+/// </summary>
+public sealed record DeleteDataRequest(IReadOnlyList<string>? Stored, IReadOnlyList<string>? Offloaded, int? UnusedDays);
+
+/// <summary>
 /// Preisdaten, die länger nicht benutzt wurden, komprimiert in den Unterordner „ausgelagert“ verschieben. So bleibt
 /// die App schnell, nichts geht verloren: zurückholen oder endgültig löschen geht jederzeit.
 /// </summary>
@@ -89,6 +96,55 @@ public sealed partial class DataOffload(AppPaths paths, PriceArchive archive, Pr
     }
 
     public void Delete(string name) => File.Delete(FileFor(name));
+
+    /// <summary>
+    /// Ausgewähltes endgültig löschen, auf Wunsch samt allem, was seit <see cref="DeleteDataRequest.UnusedDays"/> Tagen
+    /// ungenutzt ist (gespeichert: zuletzt benutzt; ausgelagert: seit dem Auslagern). Gibt die Anzahl zurück.
+    /// Ein laufender Preiskalender wird nicht gelöscht.
+    /// </summary>
+    public int DeleteSelected(DeleteDataRequest request, DateTimeOffset now)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        if (request.UnusedDays is < 1 or > 3650)
+        {
+            throw new DomainException("unusedDays", "Zwischen 1 und 3650 Tagen.");
+        }
+
+        var stored = Stored();
+        var offloaded = Offloaded();
+        var storedKeys = new HashSet<string>(request.Stored ?? [], StringComparer.Ordinal);
+        var names = new HashSet<string>(request.Offloaded ?? [], StringComparer.Ordinal);
+        if (request.UnusedDays is { } days)
+        {
+            var limit = now.AddDays(-days);
+            storedKeys.UnionWith(stored.Where(d => d.LastUsed < limit).Select(d => $"{d.Kind}:{d.Key}"));
+            names.UnionWith(offloaded.Where(o => o.OffloadedAt < limit).Select(o => o.Name));
+        }
+
+        var count = 0;
+        foreach (var item in stored.Where(d => storedKeys.Contains($"{d.Kind}:{d.Key}")))
+        {
+            if (item.Kind == "strecke")
+            {
+                var parts = item.Key.Split('-');
+                archive.TakeRoute(parts[0], parts[1]);
+                count++;
+            }
+            else if (Guid.TryParse(item.Key, out var id) && calendars.Get(id) is { State: not CalendarState.Running } && calendars.Remove(id))
+            {
+                count++;
+            }
+        }
+
+        // Nur Namen, die wirklich im Ordner liegen – FileFor prüft zusätzlich das Muster.
+        foreach (var name in names.Where(n => offloaded.Any(o => o.Name == n)))
+        {
+            File.Delete(FileFor(name));
+            count++;
+        }
+
+        return count;
+    }
 
     private static string Label(PriceCalendar c) =>
         $"Preiskalender {string.Join("/", c.Origins)} → {string.Join("/", c.Destinations)}, {c.From:dd.MM.yy}–{c.To:dd.MM.yy}";

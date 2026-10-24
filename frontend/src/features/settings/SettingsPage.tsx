@@ -161,7 +161,7 @@ export function SettingsPage() {
 
             <Section
               title="Gespeicherte Preisdaten"
-              description="Preisarchiv und Preiskalender. Was du seit 30 Tagen nicht benutzt hast, kannst du auslagern: Es wird komprimiert im Datenordner abgelegt und lässt sich jederzeit zurückholen."
+              description="Preisarchiv und Preiskalender. Was du seit 30 Tagen nicht benutzt hast, kannst du auslagern: Es wird komprimiert im Datenordner abgelegt und lässt sich jederzeit zurückholen. Nicht mehr Gebrauchtes hakst du an und löschst es endgültig."
             >
               <StoredDataSection />
             </Section>
