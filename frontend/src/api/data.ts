@@ -42,8 +42,10 @@ export function useDataActions() {
       mutationFn: (name: string) => api<void>(`/data/offloaded/${encodeURIComponent(name)}/restore`, { method: 'POST' }),
       onSuccess,
     }),
-    remove: useMutation({
-      mutationFn: (name: string) => api<void>(`/data/offloaded/${encodeURIComponent(name)}`, { method: 'DELETE' }),
+    /** Ausgewähltes endgültig löschen; mit unusedDays zusätzlich alles, was so lange ungenutzt ist. */
+    deleteSelected: useMutation({
+      mutationFn: (body: { stored: string[]; offloaded: string[]; unusedDays: number | null }) =>
+        api<{ count: number }>('/data/delete', { method: 'POST', body: JSON.stringify(body) }),
       onSuccess,
     }),
   }
