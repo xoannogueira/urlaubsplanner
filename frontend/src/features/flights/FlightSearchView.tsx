@@ -1,6 +1,18 @@
 import { useQueryClient } from '@tanstack/react-query'
 import clsx from 'clsx'
-import { ArrowRight, CalendarSearch, Clock, KeyRound, Plane, Search, SearchX, TrainFront, TriangleAlert } from 'lucide-react'
+import {
+  ArrowLeftRight,
+  ArrowRight,
+  CalendarSearch,
+  Clock,
+  KeyRound,
+  Plane,
+  Search,
+  SearchX,
+  TrainFront,
+  TriangleAlert,
+  Undo2,
+} from 'lucide-react'
 import { useCallback, useMemo, useState, type ReactNode } from 'react'
 import { useAirportLookup, useNearbyAirports, type Airport } from '../../api/airports'
 import { ApiError } from '../../api/client'
@@ -394,13 +406,20 @@ function SearchArea({ trip, status, initialHome }: { trip: Trip; status: FlightS
         </div>
 
         <LegForm title="Hinflug">
-          <AirportPicker label="Von" value={origins} onChange={changeOrigins} placeholder="z. B. Stuttgart" />
-          <AirportPicker
-            label="Nach"
-            value={destinations}
-            onChange={setOutTo}
-            suggestions={nearOut.data}
-            suggestionLabel={firstStage ? `Nähe ${firstStage.name}` : undefined}
+          <RoutePair
+            label="Hinflug"
+            disabled={origins.length === 0 && destinations.length === 0}
+            onSwap={() => draft.patch({ outFrom: destinations, outTo: origins })}
+            from={<AirportPicker label="Von" value={origins} onChange={changeOrigins} placeholder="z. B. Stuttgart" />}
+            to={
+              <AirportPicker
+                label="Nach"
+                value={destinations}
+                onChange={setOutTo}
+                suggestions={nearOut.data}
+                suggestionLabel={firstStage ? `Nähe ${firstStage.name}` : undefined}
+              />
+            }
           />
           <DateAndRadius
             label="Abflug"
@@ -428,15 +447,33 @@ function SearchArea({ trip, status, initialHome }: { trip: Trip; status: FlightS
           </LegForm>
         )}
         {type === 'openjaw' && (
-          <LegForm title="Rückflug (über andere Flughäfen)">
-            <AirportPicker
-              label="Von"
-              value={returnFrom}
-              onChange={setInFrom}
-              suggestions={nearIn.data}
-              suggestionLabel={lastStage ? `Nähe ${lastStage.name}` : undefined}
+          <LegForm
+            title="Rückflug (über andere Flughäfen)"
+            actions={
+              <LegAction
+                icon={<Undo2 size={13} aria-hidden="true" />}
+                disabled={origins.length === 0 && destinations.length === 0}
+                onClick={() => draft.patch({ inFrom: destinations, inTo: origins })}
+              >
+                Hinflug umgedreht übernehmen
+              </LegAction>
+            }
+          >
+            <RoutePair
+              label="Rückflug"
+              disabled={returnFrom.length === 0 && returnTo.length === 0}
+              onSwap={() => draft.patch({ inFrom: returnTo, inTo: returnFrom })}
+              from={
+                <AirportPicker
+                  label="Von"
+                  value={returnFrom}
+                  onChange={setInFrom}
+                  suggestions={nearIn.data}
+                  suggestionLabel={lastStage ? `Nähe ${lastStage.name}` : undefined}
+                />
+              }
+              to={<AirportPicker label="Nach" value={returnTo} onChange={setInTo} placeholder="z. B. Stuttgart" />}
             />
-            <AirportPicker label="Nach" value={returnTo} onChange={setInTo} placeholder="z. B. Stuttgart" />
             <DateAndRadius
               label="Rückflug am"
               date={inDate}
@@ -736,12 +773,65 @@ function ReturnRoute({ from, to }: { from: Airport[]; to: Airport[] }) {
   )
 }
 
-function LegForm({ title, children }: { title: string; children: ReactNode }) {
+function LegForm({ title, actions, children }: { title: string; actions?: ReactNode; children: ReactNode }) {
   return (
     <fieldset className="flex flex-col gap-2">
-      <legend className="mb-1 text-sm font-extrabold">{title}</legend>
+      <legend className="mb-1 flex flex-wrap items-center gap-x-3 gap-y-1">
+        <span className="text-sm font-extrabold">{title}</span>
+        {actions}
+      </legend>
       <div className="grid gap-3 md:grid-cols-[1fr_1fr_auto]">{children}</div>
     </fieldset>
+  )
+}
+
+/**
+ * „Von“ und „Nach“ mit einem runden Tausch-Knopf dazwischen (wie bei Google Flights). Nimmt zwei Spalten der Strecke
+ * ein; auf dem Handy stehen die Felder untereinander und der Knopf dazwischen.
+ */
+function RoutePair({
+  label,
+  from,
+  to,
+  onSwap,
+  disabled,
+}: {
+  label: string
+  from: ReactNode
+  to: ReactNode
+  onSwap: () => void
+  disabled?: boolean
+}) {
+  return (
+    <div className="grid gap-3 md:col-span-2 md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] md:gap-2">
+      {from}
+      <button
+        type="button"
+        onClick={onSwap}
+        disabled={disabled}
+        aria-label={`${label}: Von und Nach tauschen`}
+        title="Von und Nach tauschen"
+        className="flex size-9 cursor-pointer items-center justify-center self-center justify-self-center rounded-full border border-line bg-surface-2 text-muted transition-colors hover:border-accent hover:text-accent disabled:cursor-not-allowed disabled:opacity-40 md:mt-[31px] md:self-start"
+      >
+        <ArrowLeftRight size={16} className="rotate-90 md:rotate-0" aria-hidden="true" />
+      </button>
+      {to}
+    </div>
+  )
+}
+
+/** Kleiner Knopf neben der Überschrift einer Strecke (Flughäfen tauschen oder übernehmen). */
+function LegAction({ icon, onClick, disabled, children }: { icon: ReactNode; onClick: () => void; disabled?: boolean; children: string }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className="inline-flex cursor-pointer items-center gap-1 rounded-lg px-2 py-1 text-xs font-semibold text-accent hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-40"
+    >
+      {icon}
+      {children}
+    </button>
   )
 }
 
