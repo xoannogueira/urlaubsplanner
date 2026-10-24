@@ -1,5 +1,5 @@
 import clsx from 'clsx'
-import { useState } from 'react'
+import { useSearchDraft } from '../../hooks/useSearchDraft'
 import type { Airport } from '../../api/airports'
 import { useTripActions } from '../../api/trips'
 import type { Trip } from '../../api/types'
@@ -12,7 +12,9 @@ import { TransitSearch } from './TransitSearch'
  * Startpunkt ist die Stadt des Heimatflughafens (änderbar, z. B. auf „Stuttgart Hbf“).
  */
 export function TransitAnreise({ trip, home }: { trip: Trip; home: Airport[] }) {
-  const [direction, setDirection] = useState<'hin' | 'rueck'>('hin')
+  const directionDraft = useSearchDraft(`${trip.id}.bahn`, { direction: 'hin' as 'hin' | 'rueck' })
+  const direction = directionDraft.values.direction
+  const setDirection = (v: 'hin' | 'rueck') => directionDraft.set('direction', v)
   const stages = [...trip.stages].sort((a, b) => a.startDate.localeCompare(b.startDate))
   const first = stages[0]
   const last = stages[stages.length - 1]
@@ -47,6 +49,7 @@ export function TransitAnreise({ trip, home }: { trip: Trip; home: Airport[] }) 
       {direction === 'hin' ? (
         <TransitSearch
           key="hin"
+          draftKey={`${trip.id}.bahn.hin`}
           trip={trip}
           scope="anreise"
           stageId={first?.id ?? null}
@@ -65,6 +68,7 @@ export function TransitAnreise({ trip, home }: { trip: Trip; home: Airport[] }) 
       ) : (
         <TransitSearch
           key="rueck"
+          draftKey={`${trip.id}.bahn.rueck`}
           trip={trip}
           scope="anreise"
           stageId={last?.id ?? null}

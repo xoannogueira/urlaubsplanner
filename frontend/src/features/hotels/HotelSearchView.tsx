@@ -1,7 +1,10 @@
+import { useQueryClient } from '@tanstack/react-query'
 import clsx from 'clsx'
 import { CalendarSearch, KeyRound, Minus, Plus, Search, SearchX, TriangleAlert } from 'lucide-react'
 import { useCallback, useMemo, useState, type ReactNode } from 'react'
 import { RememberButton } from '../../components/RememberButton'
+import { DraftResetButton, RepeatLastSearch } from '../../components/SearchDraftBar'
+import { isFreshResult, useSearchDraft } from '../../hooks/useSearchDraft'
 import { ApiError } from '../../api/client'
 import {
   mergeHotelPages,
@@ -48,6 +51,9 @@ interface HotelSearchViewProps {
 }
 
 /** Hotelsuche (Google Hotels über SerpApi oder LiteAPI) für eine Etappe: Ergebnisse als Liste und als Preis-Pins auf der Karte. */
+
+/** So lange gilt ein Ergebnis als frisch (wie staleTime der Hotelsuche) – länger zeigen würde neu suchen. */
+const HOTEL_RESULT_FRESH_MS = 15 * 60_000
 export function HotelSearchView({ trip, stage, onEditStage }: HotelSearchViewProps) {
   const status = useHotelSearchStatus()
   // Stabiles Objekt, damit Liste und Karte nicht bei jedem Rendern neu rechnen.
@@ -96,16 +102,39 @@ function SearchArea({
   const google = status?.provider === 'serpapi'
   const actions = useTripActions(trip.id)
   const preset = trip.searchSettings
-  const [rooms, setRooms] = useState(() => Math.min(preset?.hotelRooms ?? defaultRooms(trip.travelers), trip.travelers))
-  const [radius, setRadius] = useState(3000)
-  const [params, setParams] = useState<HotelSearchParams | null>(null)
-  const [filters, setFilters] = useState<HotelFilters>(() => ({
-    refundableOnly: preset?.hotelRefundableOnly ?? noFilters.refundableOnly,
-    minRating: preset?.hotelMinRating ?? noFilters.minRating,
-    minStars: preset?.hotelMinStars ?? noFilters.minStars,
-    maxPrice: preset?.hotelMaxPrice ?? noFilters.maxPrice,
-  }))
-  const [sort, setSort] = useState<HotelSort>('price')
+  const queryClient = useQueryClient()
+  // Eingaben pro Etappe merken; ändern sich Daten der Etappe oder Personen, gilt die letzte Suche nicht mehr.
+  const draft = useSearchDraft(
+    `${trip.id}.hotel.${stage.id}`,
+    {
+      rooms: Math.min(preset?.hotelRooms ?? defaultRooms(trip.travelers), trip.travelers),
+      radius: 3000,
+      filters: {
+        refundableOnly: preset?.hotelRefundableOnly ?? noFilters.refundableOnly,
+        minRating: preset?.hotelMinRating ?? noFilters.minRating,
+        minStars: preset?.hotelMinStars ?? noFilters.minStars,
+        maxPrice: preset?.hotelMaxPrice ?? noFilters.maxPrice,
+      } as HotelFilters,
+      sort: 'price' as HotelSort,
+      last: null as HotelSearchParams | null,
+    },
+    { basis: `${stage.startDate}|${stage.endDate}|${trip.travelers}`, basisKeys: ['last', 'rooms'], quietKeys: ['last', 'sort'] },
+  )
+  const { radius, filters, sort } = draft.values
+  const rooms = Math.min(Math.max(1, draft.values.rooms), trip.travelers)
+  const setRooms = (v: number) => draft.set('rooms', v)
+  const setRadius = (v: number) => draft.set('radius', v)
+  const setFilters = (change: (f: HotelFilters) => HotelFilters) => draft.set('filters', change(filters))
+  const setSort = (v: HotelSort) => draft.set('sort', v)
+  const last = draft.values.last
+  // Letzte Suche: frisches Ergebnis gleich zeigen, sonst „wiederholen“ anbieten (würde eine Suche kosten).
+  const [params, setParamsState] = useState<HotelSearchParams | null>(() =>
+    last && isFreshResult(queryClient.getQueryState(['hotels', 'search', last]), HOTEL_RESULT_FRESH_MS) ? last : null,
+  )
+  const setParams = (p: HotelSearchParams | null) => {
+    setParamsState(p)
+    draft.set('last', p)
+  }
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [savingId, setSavingId] = useState<string | null>(null)
   const [view, setView] = useState<'list' | 'map'>('list')
@@ -139,8 +168,9 @@ function SearchArea({
 
   /** Andere Aufteilung übernehmen: Suche mit dieser Zimmeranzahl (kommt meist schon aus dem Cache). */
   const pickRooms = (count: number) => {
-    setRooms(count)
-    setParams((p) => (p ? { ...p, rooms: count } : p))
+    const next = params ? { ...params, rooms: count } : null
+    setParamsState(next)
+    draft.patch({ rooms: count, last: next })
   }
 
   const savedIds = useMemo(
@@ -283,6 +313,13 @@ function SearchArea({
           {search.isFetching && !search.isFetchingNextPage ? 'Suche läuft …' : 'Hotels suchen'}
         </Button>
         {status?.quota && <QuotaBadge quota={status.quota} />}
+        <DraftResetButton
+          changed={draft.changed}
+          onReset={() => {
+            draft.reset()
+            setParamsState(null)
+          }}
+        />
         <RememberButton
           onRemember={() =>
             actions.setSearchSettings.mutateAsync({
@@ -296,7 +333,16 @@ function SearchArea({
         />
       </section>
 
-      {!params ? (
+      {!params && last ? (
+        <RepeatLastSearch
+          text="Die Ergebnisse deiner letzten Hotelsuche sind nicht mehr aktuell."
+          cost={google ? 'kann 1 Google-Suche kosten' : undefined}
+          onRepeat={() => {
+            setSelectedId(null)
+            setParamsState(last)
+          }}
+        />
+      ) : !params ? (
         <p className="rounded-2xl border border-dashed border-line px-4 py-3 text-sm text-muted">
           Ort, Daten und Personen kommen aus der Etappe.{' '}
           {google &&

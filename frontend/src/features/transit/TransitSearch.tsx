@@ -19,6 +19,8 @@ import {
   CircleDot,
 } from 'lucide-react'
 import { useMemo, useState, type ReactNode } from 'react'
+import { DraftResetButton } from '../../components/SearchDraftBar'
+import { useSearchDraft } from '../../hooks/useSearchDraft'
 import { RememberButton } from '../../components/RememberButton'
 import { ApiError } from '../../api/client'
 import { useTransitPlan, type TransitItinerary, type TransitLeg, type TransitQuery } from '../../api/transit'
@@ -67,23 +69,47 @@ interface TransitSearchProps {
   autoSearch?: boolean
   /** Anreise: Startpunkt und Uhrzeit als Standard der Reise merken */
   onRemember?: (from: TransitPoint | null, hour: number) => Promise<unknown>
+  /** Unter diesem Namen merkt sich die Maske eigene Eingaben und die letzte Suche, z. B. „<Reise>.bahn.hin“. */
+  draftKey: string
+}
+
+interface LastTransitSearch {
+  query: TransitQuery
+  searched: { date: string; time: string; arriveBy: boolean }
 }
 
 const pad = (n: number) => String(n).padStart(2, '0')
 
 /** Verbindungen mit Bus & Bahn suchen und merken (Transitous – kostenlos). */
-export function TransitSearch({ trip, scope, stageId, defaults, autoSearch = false, onRemember }: TransitSearchProps) {
+export function TransitSearch({ trip, scope, stageId, defaults, autoSearch = false, onRemember, draftKey }: TransitSearchProps) {
   const actions = useTripActions(trip.id)
-  const [fromText, setFromText] = useState(defaults.from?.name ?? '')
-  const [from, setFrom] = useState<LatLng | null>(defaults.from?.location ?? null)
-  const [toText, setToText] = useState(defaults.to?.name ?? '')
-  const [to, setTo] = useState<LatLng | null>(defaults.to?.location ?? null)
-  const [date, setDate] = useState(defaults.date)
-  const [time, setTime] = useState(`${pad(defaults.hour)}:${pad(defaults.minute)}`)
-  const [arriveBy, setArriveBy] = useState(defaults.arriveBy)
-  const [query, setQuery] = useState<TransitQuery | null>(() => (autoSearch ? build() : null))
+  // Eigene Eingaben bleiben (auch beim Tab-Wechsel); ändern sich die Vorschläge (z. B. anderes Datum), gelten die neuen.
+  const draft = useSearchDraft(
+    draftKey,
+    {
+      fromText: defaults.from?.name ?? '',
+      from: (defaults.from?.location ?? null) as LatLng | null,
+      toText: defaults.to?.name ?? '',
+      to: (defaults.to?.location ?? null) as LatLng | null,
+      date: defaults.date,
+      time: `${pad(defaults.hour)}:${pad(defaults.minute)}`,
+      arriveBy: defaults.arriveBy,
+      last: null as LastTransitSearch | null,
+    },
+    {
+      basis: [defaults.date, defaults.hour, defaults.minute, defaults.arriveBy, defaults.from?.name, defaults.to?.name].join('|'),
+      basisKeys: ['date', 'time', 'arriveBy', 'last'],
+      quietKeys: ['last'],
+    },
+  )
+  const { fromText, from, toText, to, date, time, arriveBy } = draft.values
+  const setDate = (v: string) => draft.set('date', v)
+  const setTime = (v: string) => draft.set('time', v)
+  const setArriveBy = (v: boolean) => draft.set('arriveBy', v)
+  // Bus & Bahn kostet nichts – die letzte Suche wird beim Zurückkommen einfach wieder gezeigt.
+  const [query, setQuery] = useState<TransitQuery | null>(() => draft.values.last?.query ?? (autoSearch ? build() : null))
   // Wofür zuletzt gesucht wurde – für die Ersatzsuche, wenn der Fahrplan für das Datum noch fehlt.
-  const [searched, setSearched] = useState(() => (autoSearch ? { date, time, arriveBy } : null))
+  const [searched, setSearched] = useState(() => draft.values.last?.searched ?? (autoSearch ? { date, time, arriveBy } : null))
   const [savingId, setSavingId] = useState<string | null>(null)
   const [saveError, setSaveError] = useState<string | null>(null)
   const plan = useTransitPlan(query)
@@ -123,8 +149,11 @@ export function TransitSearch({ trip, scope, stageId, defaults, autoSearch = fal
         className="flex flex-col gap-3 rounded-[20px] border border-line bg-surface p-4"
         onSubmit={(e) => {
           e.preventDefault()
-          setQuery(build())
-          setSearched({ date, time, arriveBy })
+          const next = build()
+          const what = { date, time, arriveBy }
+          setQuery(next)
+          setSearched(what)
+          draft.set('last', next ? { query: next, searched: what } : null)
         }}
       >
         <div className="grid gap-3 md:grid-cols-2">
@@ -133,12 +162,10 @@ export function TransitSearch({ trip, scope, stageId, defaults, autoSearch = fal
             value={fromText}
             coordinates={from}
             onTextChange={(t) => {
-              setFromText(t)
-              setFrom(null)
+              draft.patch({ fromText: t, from: null })
             }}
             onPick={(p) => {
-              setFromText(p.name)
-              setFrom({ latitude: p.latitude, longitude: p.longitude })
+              draft.patch({ fromText: p.name, from: { latitude: p.latitude, longitude: p.longitude } })
             }}
             near={to}
             placeholder="z. B. Stuttgart Hbf"
@@ -148,12 +175,10 @@ export function TransitSearch({ trip, scope, stageId, defaults, autoSearch = fal
             value={toText}
             coordinates={to}
             onTextChange={(t) => {
-              setToText(t)
-              setTo(null)
+              draft.patch({ toText: t, to: null })
             }}
             onPick={(p) => {
-              setToText(p.name)
-              setTo({ latitude: p.latitude, longitude: p.longitude })
+              draft.patch({ toText: p.name, to: { latitude: p.latitude, longitude: p.longitude } })
             }}
             near={from}
             placeholder="z. B. Hotel oder Bahnhof"
@@ -184,6 +209,14 @@ export function TransitSearch({ trip, scope, stageId, defaults, autoSearch = fal
           <span className={clsx('text-sm', problem ? 'text-star' : 'text-muted')}>
             {problem ?? 'Kostenlos – zählt nicht zu den Google-Suchen'}
           </span>
+          <DraftResetButton
+            changed={draft.changed}
+            onReset={() => {
+              draft.reset()
+              setQuery(null)
+              setSearched(null)
+            }}
+          />
           {onRemember && (
             <RememberButton
               label="Start & Uhrzeit als Standard merken"

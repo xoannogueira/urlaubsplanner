@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tansta
 import { api, json } from './client'
 import { adjustTripToFlight, announceAdjustment } from './flightAdjust'
 import { periodExtendedMessage } from '../lib/dates'
+import { clearSearchDrafts } from '../hooks/useSearchDraft'
 import { newMismatchMessage } from '../lib/hotelFit'
 import type {
   OptionInput,
@@ -50,6 +51,7 @@ export function useDeleteTrip() {
   return useMutation({
     mutationFn: (id: string) => api<void>(`/trips/${id}`, { method: 'DELETE' }),
     onSuccess: (_, id) => {
+      clearSearchDrafts(id)
       queryClient.removeQueries({ queryKey: tripKeys.detail(id) })
       void queryClient.invalidateQueries({ queryKey: tripKeys.all })
     },
