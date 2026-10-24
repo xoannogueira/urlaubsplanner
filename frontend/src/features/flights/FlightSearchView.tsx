@@ -1,3 +1,4 @@
+import { useQueryClient } from '@tanstack/react-query'
 import clsx from 'clsx'
 import { ArrowRight, CalendarSearch, Clock, KeyRound, Plane, Search, SearchX, TrainFront, TriangleAlert } from 'lucide-react'
 import { useCallback, useMemo, useState, type ReactNode } from 'react'
@@ -47,11 +48,15 @@ import { toLatLng } from '../../lib/geo'
 import { stageMarkers } from '../../lib/mapData'
 import { TransitAnreise } from '../transit/TransitAnreise'
 import { RememberButton } from '../../components/RememberButton'
+import { DraftResetButton, RepeatLastSearch } from '../../components/SearchDraftBar'
+import { isFreshResult, useSearchDraft } from '../../hooks/useSearchDraft'
 import { AirportPicker } from './AirportPicker'
 import { FlightDatesDialog } from './FlightDatesDialog'
 import { FlightResultCard } from './FlightResultCard'
 
 const HOME_KEY = 'urlaubsplanner.homeAirports'
+/** So lange gilt ein Ergebnis als frisch (wie staleTime der Flugsuche) – länger zeigen würde neu suchen. */
+const FLIGHT_RESULT_FRESH_MS = 15 * 60_000
 const MAX_ADULTS = 9
 const radiusOptions = [100, 150, 250]
 const tripTypes: { value: TripType; label: string }[] = [
@@ -167,27 +172,58 @@ function SearchArea({ trip, status, initialHome }: { trip: Trip; status: FlightS
   const firstCenter = useMemo(() => toLatLng(firstStage), [firstStage])
   const lastCenter = useMemo(() => toLatLng(lastStage), [lastStage])
 
-  const [type, setType] = useState<TripType>(() => suggestTripType(trip.stages))
-  const [cabin, setCabin] = useState<CabinClass>(() => (preset?.cabin as CabinClass | null | undefined) ?? 'Economy')
+  const queryClient = useQueryClient()
+  // Eingaben merken (pro Reise): Standardwerte aus Reise und Etappen, eigene Änderungen bleiben auch beim Tab-Wechsel.
+  // Ändert sich der Reisezeitraum, werden nur die Daten neu vorgeschlagen.
+  const draft = useSearchDraft(
+    `${trip.id}.flug`,
+    {
+      type: suggestTripType(trip.stages),
+      cabin: (preset?.cabin as CabinClass | null | undefined) ?? ('Economy' as CabinClass),
+      // null = noch nicht angefasst → Vorschlag (Heimat bzw. nächster Flughafen der Etappe)
+      outFrom: null as Airport[] | null,
+      outTo: null as Airport[] | null,
+      inFrom: null as Airport[] | null,
+      inTo: null as Airport[] | null,
+      outDate: firstStage?.startDate ?? trip.startDate ?? '',
+      inDate: lastStage?.endDate ?? trip.endDate ?? '',
+      radiusOut: 150,
+      radiusIn: 150,
+      filters: {
+        ...noFlightFilters,
+        nonstop: preset?.nonstop ?? false,
+        withBag: preset?.withBag ?? false,
+        departure: preset?.departFrom != null && preset.departTo != null ? [{ from: preset.departFrom, to: preset.departTo }] : [],
+      } as FlightFilters,
+      sort: 'best' as FlightSort,
+      last: null as FlightSearchParams | null,
+    },
+    {
+      basis: [firstStage?.startDate, lastStage?.endDate, trip.startDate, trip.endDate].join('|'),
+      basisKeys: ['outDate', 'inDate', 'last'],
+      quietKeys: ['last', 'sort'],
+    },
+  )
+  const { type, cabin, outFrom, outTo, inFrom, inTo, outDate, inDate, radiusOut, radiusIn, filters, sort } = draft.values
+  const setType = (v: TripType) => draft.set('type', v)
+  const setCabin = (v: CabinClass) => draft.set('cabin', v)
+  const setOutFrom = (v: Airport[]) => draft.set('outFrom', v)
+  const setOutTo = (v: Airport[]) => draft.set('outTo', v)
+  const setInFrom = (v: Airport[]) => draft.set('inFrom', v)
+  const setInTo = (v: Airport[]) => draft.set('inTo', v)
+  const setOutDate = (v: string) => draft.set('outDate', v)
+  const setInDate = (v: string) => draft.set('inDate', v)
+  const setRadiusOut = (v: number) => draft.set('radiusOut', v)
+  const setRadiusIn = (v: number) => draft.set('radiusIn', v)
+  const setFilters = (change: (f: FlightFilters) => FlightFilters) => draft.set('filters', change(filters))
+  const setSort = (v: FlightSort) => draft.set('sort', v)
   const [home, setHome] = useState<Airport[]>(() => initialHome ?? loadHome())
-  // null = noch nicht angefasst → Vorschlag (Heimat bzw. nächster Flughafen der Etappe)
-  const [outFrom, setOutFrom] = useState<Airport[] | null>(null)
-  const [outTo, setOutTo] = useState<Airport[] | null>(null)
-  const [inFrom, setInFrom] = useState<Airport[] | null>(null)
-  const [inTo, setInTo] = useState<Airport[] | null>(null)
-  const [outDate, setOutDate] = useState(firstStage?.startDate ?? trip.startDate ?? '')
-  const [inDate, setInDate] = useState(lastStage?.endDate ?? trip.endDate ?? '')
-  const [radiusOut, setRadiusOut] = useState(150)
-  const [radiusIn, setRadiusIn] = useState(150)
 
-  const [params, setParams] = useState<FlightSearchParams | null>(null)
-  const [filters, setFilters] = useState<FlightFilters>(() => ({
-    ...noFlightFilters,
-    nonstop: preset?.nonstop ?? false,
-    withBag: preset?.withBag ?? false,
-    departure: preset?.departFrom != null && preset.departTo != null ? [{ from: preset.departFrom, to: preset.departTo }] : [],
-  }))
-  const [sort, setSort] = useState<FlightSort>('best')
+  // Letzte Suche: frisches Ergebnis gleich zeigen, sonst „wiederholen“ anbieten (würde eine Suche kosten).
+  const last = draft.values.last
+  const [params, setParamsState] = useState<FlightSearchParams | null>(() =>
+    last && isFreshResult(queryClient.getQueryState(['flights', 'search', last]), FLIGHT_RESULT_FRESH_MS) ? last : null,
+  )
   const [timeValue, setTimeValue] = useState<TimeValue>(storedTimeValue)
   const [timesOpen, setTimesOpen] = useState(false)
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -262,7 +298,9 @@ function SearchArea({ trip, status, initialHome }: { trip: Trip; status: FlightS
       : plan
     if (planProblem(searchPlan, today, google)) return
     setSelectedId(null)
-    setParams({ legs: planLegs(searchPlan), adults, cabin })
+    const next = { legs: planLegs(searchPlan), adults, cabin }
+    setParamsState(next)
+    draft.patch({ last: next, ...(dates ? { outDate: dates.out, inDate: dates.in } : {}) })
   }
 
   const changeOrigins = (airports: Airport[]) => {
@@ -288,8 +326,7 @@ function SearchArea({ trip, status, initialHome }: { trip: Trip; status: FlightS
 
   const pickShift = (days: number) => {
     const dates = { out: shiftDate(outDate, days), in: inDate ? shiftDate(inDate, days) : inDate }
-    setOutDate(dates.out)
-    setInDate(dates.in)
+    draft.patch({ outDate: dates.out, inDate: dates.in })
     runSearch(dates)
   }
 
@@ -432,6 +469,13 @@ function SearchArea({ trip, status, initialHome }: { trip: Trip; status: FlightS
           </span>
           {status?.quota && <QuotaBadge quota={status.quota} />}
           <div className="flex-1" />
+          <DraftResetButton
+            changed={draft.changed}
+            onReset={() => {
+              draft.reset()
+              setParamsState(null)
+            }}
+          />
           <RememberButton
             onRemember={() => {
               const slot = filters.departure[0]
@@ -448,7 +492,16 @@ function SearchArea({ trip, status, initialHome }: { trip: Trip; status: FlightS
         </div>
       </section>
 
-      {!params ? (
+      {!params && last ? (
+        <RepeatLastSearch
+          text="Die Ergebnisse deiner letzten Suche sind nicht mehr aktuell."
+          cost={google ? 'kann 1 Google-Suche kosten' : undefined}
+          onRepeat={() => {
+            setSelectedId(null)
+            setParamsState(last)
+          }}
+        />
+      ) : !params ? (
         <p className="rounded-2xl border border-dashed border-line px-4 py-3 text-sm text-muted">
           {google
             ? 'Daten und Zielflughäfen kommen aus den Etappen. Preise kommen von Google Flights: Erst siehst du die Hinflüge mit dem günstigsten Gesamtpreis, dann wählst du den Rückflug. Mehrere Flughäfen pro Seite kosten keine Extra-Suche.'

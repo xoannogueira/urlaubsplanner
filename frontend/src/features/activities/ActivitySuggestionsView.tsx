@@ -16,6 +16,8 @@ import type { LatLng, Stage, Trip } from '../../api/types'
 import { TripMap } from '../../components/map/TripMap'
 import type { MapPin } from '../../components/map/types'
 import { RememberButton } from '../../components/RememberButton'
+import { DraftResetButton } from '../../components/SearchDraftBar'
+import { useSearchDraft } from '../../hooks/useSearchDraft'
 import { Button } from '../../components/ui/Button'
 import { EmptyState, ErrorState, Skeleton } from '../../components/ui/Feedback'
 import { activityOptionInput, categoryLabels, routeFromHotelUrl, stageHotel } from '../../lib/activities'
@@ -41,7 +43,10 @@ interface ActivitySuggestionsViewProps {
  * Umschalter: Sehenswertes oder Essen & Trinken (Restaurants, Cafés, Bars, Eis – rund ums Hotel, sonst um die Etappe).
  */
 export function ActivitySuggestionsView({ trip, stage, onEditStage }: ActivitySuggestionsViewProps) {
-  const [theme, setTheme] = useState<ActivityTheme>('Sights')
+  // Sehenswertes oder Essen – pro Etappe gemerkt.
+  const themeDraft = useSearchDraft(`${trip.id}.aktivitaeten.${stage?.id ?? 'keine'}`, { theme: 'Sights' as ActivityTheme })
+  const theme = themeDraft.values.theme
+  const setTheme = (v: ActivityTheme) => themeDraft.set('theme', v)
   const hotelAt = toLatLng(stageHotel(trip, stage?.id))
   // Essen & Trinken rund ums Hotel, sonst um die Etappe. Als Zahlen vergleichen, damit die Karte nicht ständig neu springt.
   const point = theme === 'Food' && hotelAt ? hotelAt : toLatLng(stage)
@@ -112,13 +117,26 @@ function Suggestions({
   const hotel = stageHotel(trip, stage.id)
   const food = theme === 'Food'
   const saved = food ? trip.searchSettings?.foodRadius : trip.searchSettings?.activityRadius
-  const [radius, setRadius] = useState(() => (saved && radiusOptions[theme].includes(saved) ? saved : defaultRadius[theme]))
-  const [category, setCategory] = useState<ActivityCategory | null>(null)
-  const [query, setQuery] = useState('')
-  const [sort, setSort] = useState<ActivitySort>('Popular')
+  // Umkreis, Kategorie, Suchtext, Sortierung und Ansicht pro Etappe und Art merken (auch beim Tab-Wechsel).
+  const draft = useSearchDraft(
+    `${trip.id}.aktivitaeten.${stage.id}.${theme}`,
+    {
+      radius: saved && radiusOptions[theme].includes(saved) ? saved : defaultRadius[theme],
+      category: null as ActivityCategory | null,
+      query: '',
+      sort: 'Popular' as ActivitySort,
+      view: 'list' as 'list' | 'map',
+    },
+    { quietKeys: ['view'] },
+  )
+  const { radius, category, query, sort, view } = draft.values
+  const setRadius = (v: number) => draft.set('radius', v)
+  const setCategory = (v: ActivityCategory | null) => draft.set('category', v)
+  const setQuery = (v: string) => draft.set('query', v)
+  const setSort = (v: ActivitySort) => draft.set('sort', v)
+  const setView = (v: 'list' | 'map') => draft.set('view', v)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [savingId, setSavingId] = useState<string | null>(null)
-  const [view, setView] = useState<'list' | 'map'>('list')
 
   const debouncedQuery = useDebouncedValue(query, 300)
   const filter = useMemo(() => ({ category, query: debouncedQuery, sort }), [category, debouncedQuery, sort])
@@ -223,6 +241,7 @@ function Suggestions({
             ))}
           </select>
         </label>
+        <DraftResetButton changed={draft.changed} onReset={draft.reset} />
         <RememberButton
           label="Umkreis merken"
           onRemember={() => actions.setSearchSettings.mutateAsync(food ? { foodRadius: radius } : { activityRadius: radius })}

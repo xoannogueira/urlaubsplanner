@@ -1,5 +1,6 @@
 import { ArrowRight, ChevronDown, ChevronUp, MapPinned, Route } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useMemo } from 'react'
+import { useSearchDraft } from '../../hooks/useSearchDraft'
 import { useAirportLookup } from '../../api/airports'
 import type { Trip } from '../../api/types'
 import { Button } from '../../components/ui/Button'
@@ -25,8 +26,11 @@ export function TransfersView({ trip }: { trip: Trip }) {
   )
   const airports = useAirportLookup(codes)
   const suggestions = useMemo(() => suggestTransfers(trip, airports.data ?? []), [trip, airports.data])
-  const [open, setOpen] = useState<string | null>(null)
-  const [free, setFree] = useState(false)
+  // Aufgeklappte Verbindung und freie Suche bleiben offen, wenn man zwischendurch woanders hinschaut.
+  const ui = useSearchDraft(`${trip.id}.transfer`, { open: null as string | null, free: false })
+  const { open, free } = ui.values
+  const setOpen = (v: string | null) => ui.set('open', v)
+  const setFree = (change: (f: boolean) => boolean) => ui.set('free', change(free))
   const firstStage = [...trip.stages].sort((a, b) => a.startDate.localeCompare(b.startDate))[0]
 
   return (
@@ -46,6 +50,7 @@ export function TransfersView({ trip }: { trip: Trip }) {
               {open === s.id && (
                 <TransitSearch
                   key={s.id}
+                  draftKey={`${trip.id}.transfer.${s.id}`}
                   trip={trip}
                   scope="transfer"
                   stageId={s.stageId}
@@ -65,6 +70,7 @@ export function TransfersView({ trip }: { trip: Trip }) {
         {free && (
           <TransitSearch
             key="frei"
+            draftKey={`${trip.id}.transfer.frei`}
             trip={trip}
             scope="transfer"
             stageId={firstStage?.id ?? null}

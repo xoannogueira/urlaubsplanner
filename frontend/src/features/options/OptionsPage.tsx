@@ -47,6 +47,7 @@ import { TransfersView } from '../transit/TransfersView'
 import { isTransitAnreise } from '../../lib/transit'
 import { OptionCard } from './OptionCard'
 import { OptionFormDialog } from './OptionFormDialog'
+import { useSearchDraft } from '../../hooks/useSearchDraft'
 
 const icons: Record<OptionKind, ReactNode> = {
   Flight: <Plane size={22} />,
@@ -65,16 +66,28 @@ export function OptionsPage({ kind }: { kind: OptionKind }) {
   const actions = useTripActions(trip.id)
   // Gemerkte Hotels lassen sich nur mit der Quelle neu prüfen, aus der sie stammen.
   const hotelStatus = useHotelSearchStatus()
-  const [stageFilter, setStageFilter] = useState<string>(ALL)
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
+  // Gewählter Tab (Gespeichert / Suchen / Statistik), Etappe und Filter bleiben beim Wechsel zwischen Seiten erhalten.
+  const page = useSearchDraft(`${trip.id}.seite.${kind}`, {
+    mode: 'saved' as 'saved' | 'search' | 'stats',
+    stageFilter: ALL as string,
+    statusFilter: 'all' as StatusFilter,
+    view: 'list' as 'list' | 'map',
+  })
+  const { mode, statusFilter, view } = page.values
+  // Gelöschte Etappe: wieder alle zeigen.
+  const stageFilter =
+    page.values.stageFilter === ALL || page.values.stageFilter === GENERAL || trip.stages.some((s) => s.id === page.values.stageFilter)
+      ? page.values.stageFilter
+      : ALL
+  const setStageFilter = (v: string) => page.set('stageFilter', v)
+  const setStatusFilter = (v: StatusFilter) => page.set('statusFilter', v)
+  const setView = (v: 'list' | 'map') => page.set('view', v)
+  const setMode = (v: 'saved' | 'search' | 'stats') => page.set('mode', v)
   const [dialog, setDialog] = useState<{ option?: TripOption } | null>(null)
   const [rentalDialog, setRentalDialog] = useState<{ option?: TripOption } | null>(null)
   const [privateDialog, setPrivateDialog] = useState<{ option?: TripOption } | null>(null)
   const [toDelete, setToDelete] = useState<TripOption | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [view, setView] = useState<'list' | 'map'>('list')
-  // Hotels und Flüge: gespeicherte Einträge oder Live-Suche
-  const [mode, setMode] = useState<'saved' | 'search' | 'stats'>('saved')
   const searchable = kind === 'Hotel' || kind === 'Flight' || kind === 'Activity' || kind === 'Transport'
   const searching = searchable && mode === 'search'
   const stats = kind === 'Flight' && mode === 'stats'
