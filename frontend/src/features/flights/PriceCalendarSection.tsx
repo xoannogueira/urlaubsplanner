@@ -23,6 +23,7 @@ import { ProgressBar, Skeleton } from '../../components/ui/Feedback'
 import { euro } from '../../lib/chart'
 import { flightSegments } from '../../lib/flightSegments'
 import { formatShortDate, todayIso } from '../../lib/format'
+import { routeFitsTrip } from '../../lib/tripRelevance'
 import { distanceKm, toLatLng } from '../../lib/geo'
 import { prepareFlightSearch } from './openFlightSearch'
 import { parseSignature, shiftDate } from '../../lib/flights'
@@ -57,8 +58,16 @@ export function PriceCalendarSection({ trip }: { trip: Trip }) {
   const actions = usePriceCalendarActions()
   const [dialog, setDialog] = useState(false)
   const [openId, setOpenId] = useState<string | null>(null)
-  const list = calendars.data ?? []
-  const running = list.find((c) => c.state === 'Running')
+  const all = calendars.data ?? []
+  // Nur Kalender dieser Reise: neue tragen die Reise, ältere werden über die Strecke zugeordnet.
+  const lookup = useAirportLookup(all.filter((c) => !c.tripId).flatMap((c) => [...c.origins, ...c.destinations]))
+  const fits = (c: PriceCalendar) =>
+    c.tripId ? c.tripId === trip.id : c.origins.some((o) => c.destinations.some((d) => routeFitsTrip(trip, o, d, lookup.data ?? [])))
+  const [showAll, setShowAll] = useState(false)
+  const mine = all.filter(fits)
+  const list = showAll ? all : mine
+  // Es lädt immer nur ein Kalender – auch wenn er zu einer anderen Reise gehört.
+  const running = all.find((c) => c.state === 'Running')
   // Ohne Auswahl: der laufende, sonst der neueste Kalender.
   const shown = list.find((c) => c.id === openId) ?? running ?? list[0] ?? null
 
@@ -131,6 +140,12 @@ export function PriceCalendarSection({ trip }: { trip: Trip }) {
           })}
         </ul>
       ) : null}
+      <OtherTripsToggle
+        hidden={all.length - mine.length}
+        showAll={showAll}
+        onToggle={() => setShowAll((v) => !v)}
+        what={['Kalender', 'Kalender']}
+      />
 
       {shown && shown.days.some((d) => d.cheapest !== null) && <CalendarDetail key={shown.id} trip={trip} calendar={shown} />}
 
@@ -349,7 +364,40 @@ function LoadForm({ trip, onClose, onStarted }: { trip: Trip; onClose: () => voi
   const lookup = useAirportLookup([...preset.origins, ...preset.destinations])
   if ((preset.origins.length > 0 || preset.destinations.length > 0) && lookup.isPending) return <Skeleton className="h-60" />
   const find = (codes: string[]) => codes.map((c) => lookup.data?.find((a) => a.code === c)).filter((a): a is Airport => !!a)
-  return <Form initialFrom={find(preset.origins)} initialTo={find(preset.destinations)} onClose={onClose} onStarted={onStarted} />
+  return (
+    <Form
+      tripId={trip.id}
+      initialFrom={find(preset.origins)}
+      initialTo={find(preset.destinations)}
+      onClose={onClose}
+      onStarted={onStarted}
+    />
+  )
+}
+
+/** „3 Kalender aus anderen Reisen ausgeblendet – anzeigen“ */
+export function OtherTripsToggle({
+  hidden,
+  showAll,
+  onToggle,
+  what,
+}: {
+  hidden: number
+  showAll: boolean
+  onToggle: () => void
+  /** Einzahl und Mehrzahl, z. B. ['Strecke', 'Strecken'] */
+  what: [string, string]
+}) {
+  if (hidden === 0) return null
+  const noun = hidden === 1 ? what[0] : what[1]
+  return (
+    <p className="text-xs text-muted">
+      {showAll ? `Zeigt auch ${hidden} ${noun} aus anderen Reisen.` : `${hidden} ${noun} aus anderen Reisen ausgeblendet.`}{' '}
+      <button type="button" onClick={onToggle} className="cursor-pointer font-semibold text-accent underline-offset-2 hover:underline">
+        {showAll ? 'Nur diese Reise' : 'Trotzdem anzeigen'}
+      </button>
+    </p>
+  )
 }
 
 /** Herkunft eines gespeicherten Kalenders. */
@@ -638,6 +686,7 @@ function CostWarning({ from, to, searches, left }: { from: string; to: string; s
 }
 
 function Form({
+  tripId,
   initialFrom,
   initialTo,
   onClose,
@@ -647,6 +696,7 @@ function Form({
   initialTo: Airport[]
   onClose: () => void
   onStarted: (id: string) => void
+  tripId: string
 }) {
   const { start } = usePriceCalendarActions()
   const status = useFlightSearchStatus()
@@ -689,6 +739,7 @@ function Form({
         nights,
         pattern: effectivePattern,
         source,
+        tripId,
       },
       {
         onSuccess: (c) => {

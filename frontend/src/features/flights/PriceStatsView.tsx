@@ -1,3 +1,4 @@
+import { useAirportLookup } from '../../api/airports'
 import clsx from 'clsx'
 import { BarChart3, Info } from 'lucide-react'
 import { useMemo, useState } from 'react'
@@ -21,6 +22,8 @@ import {
   type Matrix,
   type TripKind,
 } from '../../lib/priceStats'
+import { routeFitsTrip } from '../../lib/tripRelevance'
+import { OtherTripsToggle } from './PriceCalendarSection'
 
 /**
  * Preis-Statistik einer Flugstrecke aus dem eigenen Preisarchiv (jede Suche legt ihre Preise ab) und dem
@@ -47,16 +50,26 @@ function ArchiveStats({ trip }: { trip: Trip }) {
     return null
   }, [trip.options])
   const [picked, setPicked] = useState<string | null>(null)
+  const [showAll, setShowAll] = useState(false)
+  // Nur Strecken dieser Reise (gemerkte Flüge oder Flughafen nahe einer Etappe) – keine Barcelona-Preise bei Japan.
+  const lookup = useAirportLookup((routes.data ?? []).flatMap((r) => [r.origin, r.destination]))
 
-  if (routes.isPending) return <Skeleton className="h-72" />
+  if (routes.isPending || (routes.data?.length && lookup.isPending)) return <Skeleton className="h-72" />
   if (routes.error) return <ErrorState message={routes.error.message} onRetry={() => void routes.refetch()} />
-  const list = routes.data ?? []
+  const all = routes.data ?? []
+  const mine = all.filter((r) => routeFitsTrip(trip, r.origin, r.destination, lookup.data ?? []))
+  const list = showAll ? all : mine
   if (list.length === 0) {
     return (
       <EmptyState
         icon={<BarChart3 size={22} />}
-        title="Noch keine Preise im Archiv"
+        title="Noch keine Preise für diese Reise"
         text="Jede Flugsuche legt die gefundenen Preise hier ab – ohne zusätzliche Suche. Nach ein paar Suchen siehst du, welche Airline wann am günstigsten ist."
+        action={
+          all.length > 0 ? (
+            <OtherTripsToggle hidden={all.length} showAll={false} onToggle={() => setShowAll(true)} what={['Strecke', 'Strecken']} />
+          ) : undefined
+        }
       />
     )
   }
@@ -88,6 +101,12 @@ function ArchiveStats({ trip }: { trip: Trip }) {
           </select>
         </label>
       </section>
+      <OtherTripsToggle
+        hidden={all.length - mine.length}
+        showAll={showAll}
+        onToggle={() => setShowAll((v) => !v)}
+        what={['Strecke', 'Strecken']}
+      />
       <RouteStats key={key} origin={origin} destination={destination} />
     </div>
   )

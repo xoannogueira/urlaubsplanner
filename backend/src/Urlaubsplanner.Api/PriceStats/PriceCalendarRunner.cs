@@ -88,7 +88,8 @@ public sealed partial class PriceCalendarRunner(
                 dates.Count,
                 [],
                 null,
-                request.Source);
+                request.Source,
+                request.TripId);
             store.Save(calendar);
             _running = new CancellationTokenSource();
             _runningId = calendar.Id;

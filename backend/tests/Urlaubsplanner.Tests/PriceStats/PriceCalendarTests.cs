@@ -120,7 +120,9 @@ public sealed class PriceCalendarTests : IDisposable
     public async Task Kalender_laedt_jeden_Tag_und_fuellt_das_Archiv()
     {
         var (runner, store, archive, search) = Create(200);
-        var started = await runner.StartAsync(Request(20, 33, CalendarPattern.EveryOther, nights: 5), CancellationToken.None);
+        var tripId = Guid.NewGuid();
+        var started = await runner.StartAsync(Request(20, 33, CalendarPattern.EveryOther, nights: 5) with { TripId = tripId }, CancellationToken.None);
+        Assert.Equal(tripId, started.TripId);
         Assert.Equal(7, started.Total);
 
         for (var i = 0; i < 100 && store.Get(started.Id)!.State == CalendarState.Running; i++)
