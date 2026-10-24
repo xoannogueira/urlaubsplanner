@@ -26,6 +26,17 @@ public enum CalendarPattern
     Weekly,
 }
 
+/// <summary>Woher die Preise kommen.</summary>
+[JsonConverter(typeof(JsonStringEnumConverter))]
+public enum PriceSource
+{
+    /// <summary>Google Flights über SerpApi: genau und aktuell, kostet eine Suche pro Tag.</summary>
+    Google,
+
+    /// <summary>Aviasales über Travelpayouts: kostenlose Richtpreise (einige Tage alt), eine Abfrage pro Monat.</summary>
+    Aviasales,
+}
+
 [JsonConverter(typeof(JsonStringEnumConverter))]
 public enum CalendarState
 {
@@ -42,10 +53,12 @@ public sealed record PriceCalendarRequest(
     DateOnly From,
     DateOnly To,
     int? Nights,
-    CalendarPattern Pattern);
+    CalendarPattern Pattern,
+    PriceSource Source = PriceSource.Google);
 
 /// <summary>Ergebnis für einen Abflugtag: günstigster Preis pro Person mit Airline.</summary>
-public sealed record CalendarDay(DateOnly Date, decimal? Cheapest, string? Airline, int? Stops, int Options, string? Problem);
+/// <param name="Route">Strecke des günstigsten Preises, z. B. „FRA-BCN“ (bei mehreren Flughäfen; Aviasales).</param>
+public sealed record CalendarDay(DateOnly Date, decimal? Cheapest, string? Airline, int? Stops, int Options, string? Problem, string? Route = null);
 
 /// <summary>Ein gespeicherter Preiskalender: Strecke, Zeitraum, Fortschritt und Tagespreise.</summary>
 public sealed record PriceCalendar(
@@ -61,7 +74,8 @@ public sealed record PriceCalendar(
     CalendarState State,
     int Total,
     IReadOnlyList<CalendarDay> Days,
-    string? Problem);
+    string? Problem,
+    PriceSource Source = PriceSource.Google);
 
 public static class PriceCalendarRules
 {
@@ -121,7 +135,8 @@ public static class PriceCalendarRules
             }
         }
 
-        if (dates.Count > MaxSearches)
+        // Nur Google-Suchen kosten etwas – Aviasales fragt einmal pro Monat ab.
+        if (request.Source == PriceSource.Google && dates.Count > MaxSearches)
         {
             throw new DomainException("pattern", $"Das wären {dates.Count} Google-Suchen – höchstens {MaxSearches}. Kürzerer Zeitraum oder seltener suchen.");
         }

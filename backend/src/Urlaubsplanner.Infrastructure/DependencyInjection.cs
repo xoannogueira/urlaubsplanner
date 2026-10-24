@@ -17,6 +17,7 @@ using Urlaubsplanner.Infrastructure.Persistence;
 using Urlaubsplanner.Infrastructure.Places;
 using Urlaubsplanner.Infrastructure.SerpApi;
 using Urlaubsplanner.Infrastructure.Transit;
+using Urlaubsplanner.Infrastructure.Travelpayouts;
 using Urlaubsplanner.Infrastructure.Weather;
 
 namespace Urlaubsplanner.Infrastructure;
@@ -41,6 +42,15 @@ public static class DependencyInjection
         // Mit "Hotels:Provider" = "liteapi" bzw. "serpapi" lässt sich die Quelle fest wählen.
         // Umgekehrte Ortssuche über Photon – ohne Photon (z. B. in Tests) gibt es einfach keine Namen.
         services.AddTransient<IPlaceNames>(sp => sp.GetRequiredService<IPlaceSearch>() as IPlaceNames ?? new NoPlaceNames());
+
+        // Kostenlose Richtpreise (Aviasales über Travelpayouts) für den Preiskalender.
+        services.Configure<TravelpayoutsOptions>(configuration.GetSection(TravelpayoutsOptions.Section));
+        services.AddHttpClient<IIndicativeFares, TravelpayoutsFares>(http =>
+        {
+            http.BaseAddress = new Uri(configuration[$"{TravelpayoutsOptions.Section}:BaseUrl"] ?? "https://api.travelpayouts.com/");
+            http.Timeout = TimeSpan.FromSeconds(20);
+            http.DefaultRequestHeaders.UserAgent.ParseAdd("Urlaubsplanner/1.0 (privates Hobbyprojekt)");
+        });
 
         services.Configure<LiteApiOptions>(configuration.GetSection(LiteApiOptions.Section));
         services.Configure<SerpApiOptions>(configuration.GetSection(SerpApiOptions.Section));

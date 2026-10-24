@@ -3,6 +3,17 @@ import { api, json } from './client'
 
 export type CalendarPattern = 'Daily' | 'EveryOther' | 'EveryThird' | 'Weekends' | 'Weekly'
 export type CalendarState = 'Running' | 'Done' | 'Cancelled' | 'Failed'
+/** Google: genau, eine Suche pro Tag. Aviasales: kostenlose Richtpreise. */
+export type PriceSource = 'Google' | 'Aviasales'
+export type PriceSourceState = 'Ok' | 'Missing' | 'Rejected' | 'Limited' | 'Unreachable'
+
+export interface PriceSourceStatus {
+  state: PriceSourceState
+  /** null = Prüfung beim Start läuft noch */
+  checkedAt: string | null
+  message: string
+  usable: boolean
+}
 
 export interface PriceCalendarRequest {
   origins: string[]
@@ -12,6 +23,7 @@ export interface PriceCalendarRequest {
   /** Reisedauer bei Hin & zurück, null = nur Hinflug */
   nights: number | null
   pattern: CalendarPattern
+  source: PriceSource
 }
 
 export interface CalendarDay {
@@ -22,6 +34,8 @@ export interface CalendarDay {
   stops: number | null
   options: number
   problem: string | null
+  /** Strecke des günstigsten Preises, z. B. „FRA-BCN“ (Aviasales) */
+  route?: string | null
 }
 
 export interface PriceCalendar {
@@ -38,9 +52,29 @@ export interface PriceCalendar {
   total: number
   days: CalendarDay[]
   problem: string | null
+  source: PriceSource
 }
 
 const key = ['price-calendars'] as const
+const sourceKey = ['price-source'] as const
+
+/** Ob die kostenlose Quelle (Aviasales) geht – wird beim Start der App geprüft. */
+export function usePriceSource() {
+  return useQuery({
+    queryKey: sourceKey,
+    queryFn: () => api<PriceSourceStatus>('/price-source'),
+    // Solange die Startprüfung läuft, kurz nachfragen.
+    refetchInterval: (q) => (q.state.data && q.state.data.checkedAt === null ? 1500 : false),
+  })
+}
+
+export function useRecheckPriceSource() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: () => api<PriceSourceStatus>('/price-source/check', { method: 'POST' }),
+    onSuccess: (status) => queryClient.setQueryData(sourceKey, status),
+  })
+}
 
 /** Gespeicherte Preiskalender – solange einer lädt, alle 3 Sekunden neu. */
 export function usePriceCalendars() {
@@ -56,6 +90,7 @@ export function usePriceCalendarActions() {
   const refresh = () => {
     void queryClient.invalidateQueries({ queryKey: key })
     void queryClient.invalidateQueries({ queryKey: ['flights', 'status'] })
+    void queryClient.invalidateQueries({ queryKey: sourceKey })
   }
   return {
     preview: useMutation({

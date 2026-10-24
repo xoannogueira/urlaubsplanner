@@ -1,6 +1,17 @@
 import { describe, expect, it } from 'vitest'
 import type { CalendarDay } from '../api/priceCalendars'
-import { byMonth, byWeekday, calendarDates, cheapestDays, monthGrids, monthRange, upcomingMonths } from './priceCalendar'
+import { parseSignature } from './flights'
+import {
+  aviasalesRequests,
+  byMonth,
+  byWeekday,
+  calendarDates,
+  checkOnGoogleUrl,
+  cheapestDays,
+  monthGrids,
+  monthRange,
+  upcomingMonths,
+} from './priceCalendar'
 
 const day = (date: string, cheapest: number | null): CalendarDay => ({
   date,
@@ -48,5 +59,21 @@ describe('Preiskalender', () => {
       ['Jan 27', 90],
     ])
     expect(cheapestDays(days, 1)[0].date).toBe('2027-01-05')
+  })
+})
+
+describe('Aviasales', () => {
+  it('zählt die Abfragen pro Monat und Strecke', () => {
+    expect(aviasalesRequests('2026-11-01', '2026-12-31', null, 1)).toBe(2)
+    // Rückflüge reichen bis in den Januar
+    expect(aviasalesRequests('2026-11-01', '2026-12-31', 7, 2)).toBe((2 + 3) * 2)
+  })
+
+  it('verlinkt den Tag bei Google Flights mit der günstigsten Strecke', () => {
+    const url = checkOnGoogleUrl({ origins: ['STR', 'FRA'], destinations: ['BCN'], nights: 7 }, { date: '2026-12-07', route: 'FRA-BCN' })
+    expect(url).toMatch(/^https:\/\/www\.google\.com\/travel\/flights\/search\?tfs=/)
+    const oneWay = checkOnGoogleUrl({ origins: ['STR'], destinations: ['BCN'], nights: null }, { date: '2026-12-07', route: null })
+    expect(oneWay).not.toBe(url)
+    expect(parseSignature('FRA-BCN@2026-12-07:|BCN-FRA@2026-12-14:')?.legs).toHaveLength(2)
   })
 })

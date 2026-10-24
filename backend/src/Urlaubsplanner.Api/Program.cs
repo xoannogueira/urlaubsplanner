@@ -19,6 +19,9 @@ var builder = WebApplication.CreateBuilder(new WebApplicationOptions
 var paths = AppPaths.Resolve(desktop, builder.Configuration[$"{JsonStorageOptions.Section}:FilePath"]);
 Directory.CreateDirectory(paths.DataDirectory);
 
+// Beim Bauen der Desktop-App mitgelieferte Werte (z. B. der Aviasales-Token), nicht im Repo.
+builder.Configuration.AddJsonFile(Path.Combine(AppContext.BaseDirectory, "bundled.json"), optional: true, reloadOnChange: false);
+
 // In der App eingetragene Einstellungen (z. B. der eigene SerpApi-Key) – überschreiben alles andere.
 builder.Configuration.AddJsonFile(paths.SettingsFile, optional: true, reloadOnChange: true);
 
@@ -79,6 +82,8 @@ builder.Services.AddSingleton<Urlaubsplanner.Api.PriceStats.PriceArchive>();
 builder.Services.AddSingleton<Urlaubsplanner.Api.PriceStats.PriceCalendarStore>();
 builder.Services.AddSingleton<Urlaubsplanner.Api.PriceStats.PriceCalendarRunner>();
 builder.Services.AddSingleton<Urlaubsplanner.Api.PriceStats.DataOffload>();
+builder.Services.AddSingleton<Urlaubsplanner.Api.PriceStats.PriceSourceMonitor>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<Urlaubsplanner.Api.PriceStats.PriceSourceMonitor>());
 builder.Services.AddHostedService<Urlaubsplanner.Api.PriceWatch.PriceWatcher>();
 builder.Services.AddSingleton<Urlaubsplanner.Api.Packing.PackingTemplateStore>();
 builder.Services.AddSingleton<AppInstallation>();

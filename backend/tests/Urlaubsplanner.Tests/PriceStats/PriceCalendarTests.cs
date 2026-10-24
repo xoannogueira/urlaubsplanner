@@ -66,15 +66,53 @@ public sealed class PriceCalendarTests : IDisposable
         public Task<SearchQuota?> GetQuotaAsync(CancellationToken cancellationToken) => Task.FromResult<SearchQuota?>(new SearchQuota(left, 250));
     }
 
+    /// <summary>Aviasales-Ersatz: STR→LIS kostet 40 € + Tag, LIS→STR 30 €; FRA→LIS nur an geraden Tagen 20 €.</summary>
+    private sealed class FakeFares : IIndicativeFares
+    {
+        public IndicativeSourceState? Fail { get; set; }
+
+        public List<string> Calls { get; } = [];
+
+        public bool IsConfigured => true;
+
+        public Task<IndicativeSourceState> CheckAsync(CancellationToken cancellationToken) => Task.FromResult(Fail ?? IndicativeSourceState.Ok);
+
+        public Task<IReadOnlyList<IndicativeFare>> MonthAsync(string origin, string destination, DateOnly month, CancellationToken cancellationToken)
+        {
+            Calls.Add($"{origin}-{destination}-{month:yyyy-MM}");
+            if (Fail is { } state)
+            {
+                throw new IndicativeFaresException(state, "Fehler");
+            }
+
+            var days = Enumerable.Range(0, DateTime.DaysInMonth(month.Year, month.Month)).Select(month.AddDays);
+            IReadOnlyList<IndicativeFare> fares = (origin, destination) switch
+            {
+                ("STR", "LIS") => [.. days.Select(d => new IndicativeFare(d, 40 + d.Day, "EW", 0))],
+                ("LIS", "STR") => [.. days.Select(d => new IndicativeFare(d, 30, "EW", 0))],
+                ("FRA", "LIS") => [.. days.Where(d => d.Day % 2 == 0).Select(d => new IndicativeFare(d, 20, "FR", 0))],
+                ("LIS", "FRA") => [.. days.Select(d => new IndicativeFare(d, 25, "FR", 0))],
+                _ => [],
+            };
+            return Task.FromResult(fares);
+        }
+    }
+
+    private FakeFares _fares = new();
+
+    private PriceSourceMonitor? _monitor;
+
     private (PriceCalendarRunner Runner, PriceCalendarStore Store, PriceArchive Archive, FakeSearch Search) Create(int quotaLeft)
     {
         var paths = new AppPaths(true, _root);
         var search = new FakeSearch(quotaLeft);
-        var services = new ServiceCollection().AddSingleton<IFlightSearch>(search).BuildServiceProvider();
+        var services = new ServiceCollection().AddSingleton<IFlightSearch>(search).AddSingleton<IIndicativeFares>(_fares).BuildServiceProvider();
+        _monitor = new PriceSourceMonitor(services.GetRequiredService<IServiceScopeFactory>(), TimeProvider.System, NullLogger<PriceSourceMonitor>.Instance);
         var store = new PriceCalendarStore(paths);
         var archive = new PriceArchive(paths, NullLogger<PriceArchive>.Instance);
         PriceCalendarRunner.Pause = TimeSpan.Zero;
-        var runner = new PriceCalendarRunner(store, archive, services.GetRequiredService<IServiceScopeFactory>(), TimeProvider.System, NullLogger<PriceCalendarRunner>.Instance);
+        PriceCalendarRunner.AviasalesPause = TimeSpan.Zero;
+        var runner = new PriceCalendarRunner(store, archive, services.GetRequiredService<IServiceScopeFactory>(), TimeProvider.System, _monitor, NullLogger<PriceCalendarRunner>.Instance);
         return (runner, store, archive, search);
     }
 
@@ -164,5 +202,67 @@ public sealed class PriceCalendarTests : IDisposable
         Assert.Empty(store.List());
         Assert.Throws<DomainException>(() => offload.DeleteSelected(new DeleteDataRequest(null, null, 0), DateTimeOffset.UtcNow));
         runner.Dispose();
+    }
+
+    private static async Task<PriceCalendar> WaitAsync(PriceCalendarStore store, Guid id)
+    {
+        for (var i = 0; i < 100 && store.Get(id)!.State == CalendarState.Running; i++)
+        {
+            await Task.Delay(50);
+        }
+
+        return store.Get(id)!;
+    }
+
+    [Fact]
+    public async Task Aviasales_setzt_Hin_und_Rueckflug_zusammen_und_kostet_keine_Google_Suche()
+    {
+        var (runner, store, archive, search) = Create(200);
+        // Jeden Tag über mehr als 100 Tage – bei Google zu viel, bei Aviasales kein Problem.
+        var request = new PriceCalendarRequest(["STR", "FRA"], ["LIS"], Today.AddDays(10), Today.AddDays(130), 7, CalendarPattern.Daily, PriceSource.Aviasales);
+        var started = await runner.StartAsync(request, CancellationToken.None);
+        var done = await WaitAsync(store, started.Id);
+
+        Assert.Equal(CalendarState.Done, done.State);
+        Assert.Equal(PriceSource.Aviasales, done.Source);
+        Assert.Equal(121, done.Days.Count);
+        foreach (var day in done.Days)
+        {
+            // FRA an geraden Tagen: 20 + 25 = 45; sonst STR: 40 + Tag + 30
+            var expected = day.Date.Day % 2 == 0 ? 45m : 70 + day.Date.Day;
+            Assert.Equal(Math.Min(expected, 70 + day.Date.Day), day.Cheapest);
+            Assert.Equal(day.Date.Day % 2 == 0 ? "FRA-LIS" : "STR-LIS", day.Route);
+        }
+
+        Assert.Equal(0, search.Calls);
+        Assert.Empty(archive.Records("STR", "LIS"));
+        // Jede Strecke und jeder Monat nur einmal abgefragt
+        Assert.Equal(_fares.Calls.Count, _fares.Calls.Distinct().Count());
+        runner.Dispose();
+    }
+
+    [Fact]
+    public async Task Abgelehnter_Aviasales_Token_bricht_ab_und_sperrt_die_Quelle()
+    {
+        _fares.Fail = IndicativeSourceState.Rejected;
+        var (runner, store, _, _) = Create(200);
+        var request = Request(10, 40, CalendarPattern.Daily) with { Source = PriceSource.Aviasales };
+        var done = await WaitAsync(store, (await runner.StartAsync(request, CancellationToken.None)).Id);
+
+        Assert.Equal(CalendarState.Failed, done.State);
+        Assert.Equal(IndicativeSourceState.Rejected, _monitor!.Current.State);
+        await Assert.ThrowsAsync<DomainException>(() => runner.StartAsync(request, CancellationToken.None));
+        runner.Dispose();
+    }
+
+    [Fact]
+    public async Task Startpruefung_meldet_den_Stand_der_Quelle()
+    {
+        Create(200).Runner.Dispose();
+        Assert.True((await _monitor!.CheckAsync(CancellationToken.None)).Usable);
+        _fares.Fail = IndicativeSourceState.Rejected;
+        var status = await _monitor.CheckAsync(CancellationToken.None);
+        Assert.False(status.Usable);
+        Assert.Contains("Google", status.Message, StringComparison.Ordinal);
     }
 }

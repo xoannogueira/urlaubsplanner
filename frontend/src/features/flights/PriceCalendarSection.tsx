@@ -1,10 +1,18 @@
 import clsx from 'clsx'
-import { CalendarRange, Play, Square, Trash2, TriangleAlert } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { CalendarRange, ExternalLink, Gift, Play, RefreshCw, Search, Square, Trash2, TriangleAlert } from 'lucide-react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useAirportLookup, type Airport } from '../../api/airports'
 import { ApiError } from '../../api/client'
 import { useFlightSearchStatus } from '../../api/flights'
-import { usePriceCalendarActions, usePriceCalendars, type CalendarPattern, type PriceCalendar } from '../../api/priceCalendars'
+import {
+  usePriceCalendarActions,
+  usePriceCalendars,
+  usePriceSource,
+  useRecheckPriceSource,
+  type CalendarPattern,
+  type PriceCalendar,
+  type PriceSource,
+} from '../../api/priceCalendars'
 import type { Trip } from '../../api/types'
 import { Card } from '../../components/charts/ChartParts'
 import { GroupBars } from '../../components/charts/GroupBars'
@@ -16,9 +24,11 @@ import { euro } from '../../lib/chart'
 import { formatShortDate, todayIso } from '../../lib/format'
 import { parseSignature } from '../../lib/flights'
 import {
+  aviasalesRequests,
   byMonth,
   byWeekday,
   calendarDates,
+  checkOnGoogleUrl,
   cheapestDays,
   monthGrids,
   monthRange,
@@ -35,8 +45,9 @@ const describe = (c: PriceCalendar) =>
   `${formatShortDate(c.from)} – ${formatShortDate(c.to)} · ${c.nights ? `${c.nights} Nächte` : 'nur Hinflug'} · ${patternLabels[c.pattern]}`
 
 /**
- * Preiskalender: für mehrere Monate pro Abflugtag den günstigsten Preis laden (eine Google-Suche pro Tag),
- * speichern und als Monatskalender, nach Wochentag und nach Monat zeigen.
+ * Preiskalender: für mehrere Monate pro Abflugtag den günstigsten Preis laden und als Monatskalender, nach Wochentag
+ * und nach Monat zeigen. Quelle: kostenlose Richtpreise von Aviasales (wenn verfügbar) oder genau über Google
+ * (eine Suche pro Tag).
  */
 export function PriceCalendarSection({ trip }: { trip: Trip }) {
   const calendars = usePriceCalendars()
@@ -57,8 +68,8 @@ export function PriceCalendarSection({ trip }: { trip: Trip }) {
             Preiskalender über mehrere Monate
           </h2>
           <p className="text-[13px] text-muted">
-            Sucht für jeden gewählten Abflugtag den günstigsten Flug und speichert das Ergebnis. So siehst du, in welchen Monaten und an
-            welchen Tagen es am billigsten ist. Jeder Tag kostet eine Google-Suche – vorher steht, wie viele.
+            Lädt für jeden gewählten Abflugtag den günstigsten Flug und speichert das Ergebnis. So siehst du, in welchen Monaten und an
+            welchen Tagen es am billigsten ist. Kostenlos über Aviasales (Richtpreise) oder genau über Google (eine Suche pro Tag).
           </p>
         </div>
         <Button variant="primary" icon={<Play size={15} />} onClick={() => setDialog(true)} disabled={!!running}>
@@ -82,7 +93,10 @@ export function PriceCalendarSection({ trip }: { trip: Trip }) {
                 )}
               >
                 <button type="button" onClick={() => setOpenId(c.id)} className="flex min-w-0 flex-1 cursor-pointer flex-col text-left">
-                  <span className="font-bold">{title(c)}</span>
+                  <span className="flex flex-wrap items-center gap-2 font-bold">
+                    {title(c)}
+                    <SourceBadge source={c.source} />
+                  </span>
                   <span className="text-[13px] text-muted">{describe(c)}</span>
                 </button>
                 {c.state === 'Running' ? (
@@ -138,12 +152,20 @@ function CalendarDetail({ calendar }: { calendar: PriceCalendar }) {
   const months = byMonth(calendar.days)
   const best = cheapestDays(calendar.days, 5)
   const unit = calendar.nights ? `Hin & zurück (${calendar.nights} Nächte), pro Person` : 'nur Hinflug, pro Person'
+  const indicative = calendar.source === 'Aviasales'
 
   return (
     <div className="flex flex-col gap-5">
       <p className="text-[13px] text-muted">
         {title(calendar)} · {unit} · {prices.length} Tage mit Preis
       </p>
+      {indicative && (
+        <p className="rounded-xl border border-line bg-surface-2 px-3.5 py-2.5 text-[13px]">
+          <strong>Richtpreise von Aviasales:</strong> aus Suchen anderer Nutzer der letzten Tage, nicht live.
+          {calendar.nights ? ' Hin & zurück = günstigster Hinflug + günstigster Rückflug.' : ''} Gut für Trends – vor dem Buchen bei Google
+          nachprüfen (Knopf bei den günstigsten Tagen, kostet keine Suche).
+        </p>
+      )}
       <div className="flex flex-wrap gap-5">
         {grids.map((g) => (
           <div key={g.key} className="flex flex-col gap-1.5">
@@ -171,7 +193,9 @@ function CalendarDetail({ calendar }: { calendar: PriceCalendar }) {
                           ? `${formatShortDate(cell.date)}: ab ${euro(price)}${cell.day?.airline ? ` mit ${cell.day.airline}` : ''}`
                           : cell.day?.problem
                             ? `${formatShortDate(cell.date)}: ${cell.day.problem}`
-                            : `${formatShortDate(cell.date)}: nicht gesucht`
+                            : cell.day
+                              ? `${formatShortDate(cell.date)}: keine Daten`
+                              : `${formatShortDate(cell.date)}: nicht gesucht`
                       return (
                         <td
                           key={ci}
@@ -208,14 +232,25 @@ function CalendarDetail({ calendar }: { calendar: PriceCalendar }) {
       <div className="grid gap-5 xl:grid-cols-3">
         <Card title="Günstigste Abflugtage" note="Die fünf billigsten Tage im Zeitraum">
           <ol className="flex flex-col gap-1.5 text-sm">
-            {best.map((d, i) => (
-              <li key={d.date} className="flex items-center gap-3 rounded-lg bg-surface-2 px-3 py-2">
-                <span className="font-mono text-xs text-muted">{i + 1}.</span>
-                <span className="flex-1 font-semibold">{formatShortDate(d.date)}</span>
-                <span className="text-xs text-muted">{d.airline}</span>
-                <span className="font-mono font-bold tabular-nums">{euro(d.cheapest)}</span>
-              </li>
-            ))}
+            {best.map((d, i) => {
+              const info = [d.route?.replace('-', ' → '), d.airline].filter(Boolean).join(' · ')
+              return (
+                <li
+                  key={d.date}
+                  className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-3 rounded-lg bg-surface-2 px-3 py-2"
+                >
+                  <span className="font-mono text-xs text-muted">{i + 1}.</span>
+                  <span className="flex min-w-0 flex-col">
+                    <span className="font-semibold whitespace-nowrap">{formatShortDate(d.date)}</span>
+                    {info && <span className="truncate text-xs text-muted">{info}</span>}
+                  </span>
+                  <span className="flex items-center gap-2">
+                    <span className="font-mono font-bold whitespace-nowrap tabular-nums">{euro(d.cheapest)}</span>
+                    <GoogleCheck calendar={calendar} day={d} />
+                  </span>
+                </li>
+              )
+            })}
           </ol>
         </Card>
         <Card title="Nach Wochentag" note="Günstigster Preis je Abflug-Wochentag">
@@ -260,7 +295,7 @@ function LoadDialog({
       open={open}
       onClose={onClose}
       title="Preiskalender laden"
-      description="Eine Google-Suche pro Abflugtag. Die Suche läuft im Hintergrund weiter, solange die App offen ist."
+      description="Lädt im Hintergrund weiter, solange die App offen ist."
       width="lg"
     >
       {open && <LoadForm trip={trip} onClose={onClose} onStarted={onStarted} />}
@@ -283,6 +318,122 @@ function LoadForm({ trip, onClose, onStarted }: { trip: Trip; onClose: () => voi
   if ((preset.origins.length > 0 || preset.destinations.length > 0) && lookup.isPending) return <Skeleton className="h-60" />
   const find = (codes: string[]) => codes.map((c) => lookup.data?.find((a) => a.code === c)).filter((a): a is Airport => !!a)
   return <Form initialFrom={find(preset.origins)} initialTo={find(preset.destinations)} onClose={onClose} onStarted={onStarted} />
+}
+
+/** Herkunft eines gespeicherten Kalenders. */
+function SourceBadge({ source }: { source: PriceSource }) {
+  return source === 'Aviasales' ? (
+    <span className="rounded-md bg-accent-soft px-2 py-0.5 text-[11px] font-semibold text-accent">Aviasales · Richtpreise</span>
+  ) : (
+    <span className="rounded-md bg-surface-3 px-2 py-0.5 text-[11px] font-semibold text-muted">Google</span>
+  )
+}
+
+/** Tag bei Google Flights öffnen – zum genauen Nachprüfen, kostet keine Suche. */
+function GoogleCheck({ calendar, day }: { calendar: PriceCalendar; day: PriceCalendar['days'][number] }) {
+  const url = checkOnGoogleUrl(calendar, day)
+  if (!url || calendar.source !== 'Aviasales') return null
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noreferrer"
+      className="inline-flex items-center gap-1 rounded-lg border border-line px-2 py-1 text-xs font-semibold hover:bg-surface-3"
+      aria-label={`${formatShortDate(day.date)} bei Google Flights prüfen`}
+    >
+      Google <ExternalLink size={12} aria-hidden="true" />
+    </a>
+  )
+}
+
+/**
+ * Quelle wählen: kostenlos über Aviasales (Standard, wenn die Startprüfung ok war) oder genau über Google. Geht
+ * Aviasales nicht, ist die Karte gesperrt und sagt warum – mit „Erneut prüfen“.
+ */
+function SourcePicker({
+  source,
+  aviasales,
+  onChange,
+}: {
+  source: PriceSource
+  aviasales: { usable: boolean; message: string; checkedAt: string | null } | null
+  onChange: (s: PriceSource) => void
+}) {
+  const recheck = useRecheckPriceSource()
+  const checking = recheck.isPending || (aviasales !== null && aviasales.checkedAt === null)
+  const usable = aviasales?.usable ?? false
+  const option = (value: PriceSource, icon: ReactNode, title: string, text: string, disabled: boolean) => (
+    <label
+      className={clsx(
+        'flex flex-1 cursor-pointer gap-3 rounded-xl border-2 px-3.5 py-3 text-sm',
+        source === value ? 'border-accent bg-accent-soft/40' : 'border-line bg-surface-2',
+        disabled && 'cursor-not-allowed opacity-60',
+      )}
+    >
+      <input
+        type="radio"
+        name="quelle"
+        value={value}
+        checked={source === value}
+        disabled={disabled}
+        onChange={() => onChange(value)}
+        className="mt-0.5 size-4 shrink-0"
+      />
+      <span className="flex flex-col gap-0.5">
+        <span className="flex items-center gap-1.5 font-bold">
+          {icon}
+          {title}
+        </span>
+        <span className="text-[13px] text-muted">{text}</span>
+      </span>
+    </label>
+  )
+  return (
+    <fieldset className="flex flex-col gap-2">
+      <legend className="mb-1.5 text-[13px] font-bold text-muted">Quelle</legend>
+      <div className="flex flex-col gap-2 sm:flex-row">
+        {option(
+          'Aviasales',
+          <Gift size={15} aria-hidden="true" />,
+          'Kostenlos (Aviasales)',
+          usable
+            ? 'Richtpreise aus Suchen anderer Nutzer, einige Tage alt. Ideal für Trends.'
+            : checking
+              ? 'Wird geprüft …'
+              : (aviasales?.message ?? 'Wird geprüft …'),
+          !usable,
+        )}
+        {option(
+          'Google',
+          <Search size={15} aria-hidden="true" />,
+          'Genau (Google)',
+          'Live-Preise wie bei Google Flights. Kostet eine Suche pro Tag.',
+          false,
+        )}
+      </div>
+      {!usable && !checking && aviasales?.checkedAt && (
+        <Button size="sm" className="self-start" icon={<RefreshCw size={14} />} onClick={() => recheck.mutate()}>
+          Aviasales erneut prüfen
+        </Button>
+      )}
+    </fieldset>
+  )
+}
+
+/** Kostenlose Quelle: statt Kosten ein Hinweis, was man bekommt. */
+function FreeNote({ from, to, days, requests }: { from: string; to: string; days: number; requests: number }) {
+  return (
+    <div role="note" aria-label="Kosten" className="flex gap-3 rounded-xl border-2 border-accent bg-accent-soft/40 px-4 py-3.5">
+      <Gift size={24} className="mt-0.5 shrink-0 text-accent" aria-hidden="true" />
+      <div className="flex min-w-0 flex-col gap-1">
+        <span className="text-lg font-extrabold text-accent">Kostenlos · 0 Google-Suchen</span>
+        <span className="text-sm">
+          {days} Abflugtage · {formatShortDate(from)} – {formatShortDate(to)} · etwa {requests} Abfragen bei Aviasales
+        </span>
+        <span className="text-[13px] text-muted">Richtpreise, einige Tage alt. Tage ohne Daten bleiben leer.</span>
+      </div>
+    </div>
+  )
 }
 
 const MAX_SEARCHES = 100
@@ -358,6 +509,12 @@ function Form({
 }) {
   const { start } = usePriceCalendarActions()
   const status = useFlightSearchStatus()
+  const sourceStatus = usePriceSource()
+  const aviasalesOk = sourceStatus.data?.usable ?? false
+  const [chosen, setChosen] = useState<PriceSource | null>(null)
+  // Standard: kostenlos, wenn Aviasales geht – sonst Google als Ersatz.
+  const source: PriceSource = chosen === 'Google' || !aviasalesOk ? 'Google' : 'Aviasales'
+  const google = source === 'Google'
   const today = todayIso()
   const months = upcomingMonths(today)
   const [from, setFrom] = useState(initialFrom)
@@ -365,22 +522,33 @@ function Form({
   const [startMonth, setStartMonth] = useState(months[1]?.value ?? months[0].value)
   const [count, setCount] = useState(2)
   const [nights, setNights] = useState<number | null>(7)
-  const [pattern, setPattern] = useState<CalendarPattern>('EveryOther')
+  const [pattern, setPattern] = useState<CalendarPattern | null>(null)
+  // Kostenlos lohnt sich jeder Tag, bei Google spart jeder 2. Tag die Hälfte der Suchen.
+  const effectivePattern: CalendarPattern = pattern ?? (google ? 'EveryOther' : 'Daily')
   const [error, setError] = useState<string | null>(null)
 
   const range = monthRange(startMonth, count, today, nights)
-  const searches = range.from <= range.to ? calendarDates(range.from, range.to, pattern).length : 0
+  const searches = range.from <= range.to ? calendarDates(range.from, range.to, effectivePattern).length : 0
   const left = status.data?.quota?.left ?? null
-  const tooMany = searches > MAX_SEARCHES || (left !== null && searches > left - RESERVE)
+  const tooMany = google && (searches > MAX_SEARCHES || (left !== null && searches > left - RESERVE))
   // Ab einer gewissen Menge muss man die Kosten ausdrücklich bestätigen – gilt nur für genau diese Anzahl.
   const [ackFor, setAckFor] = useState<number | null>(null)
-  const needsAck = !tooMany && searches > ACK_FROM
+  const needsAck = google && !tooMany && searches > ACK_FROM
+  const routes = from.reduce((n, a) => n + to.filter((b) => b.code !== a.code).length, 0)
   const acknowledged = ackFor === searches
 
   const submit = () => {
     setError(null)
     start.mutate(
-      { origins: from.map((a) => a.code), destinations: to.map((a) => a.code), from: range.from, to: range.to, nights, pattern },
+      {
+        origins: from.map((a) => a.code),
+        destinations: to.map((a) => a.code),
+        from: range.from,
+        to: range.to,
+        nights,
+        pattern: effectivePattern,
+        source,
+      },
       {
         onSuccess: (c) => {
           onStarted(c.id)
@@ -393,6 +561,14 @@ function Form({
 
   return (
     <div className="flex flex-col gap-4">
+      <SourcePicker
+        source={source}
+        aviasales={sourceStatus.data ?? null}
+        onChange={(s) => {
+          setChosen(s)
+          setAckFor(null)
+        }}
+      />
       <div className="grid gap-4 sm:grid-cols-2">
         <AirportPicker label="Von" value={from} onChange={setFrom} placeholder="z. B. Stuttgart" />
         <AirportPicker label="Nach" value={to} onChange={setTo} placeholder="z. B. Lissabon" />
@@ -443,7 +619,7 @@ function Form({
         <label className="flex flex-col gap-1.5">
           <span className="text-[13px] font-bold text-muted">Abflugtage</span>
           <select
-            value={pattern}
+            value={effectivePattern}
             onChange={(e) => setPattern(e.target.value as CalendarPattern)}
             className="h-11 rounded-xl border border-line bg-surface-2 px-3 text-[15px]"
           >
@@ -455,7 +631,16 @@ function Form({
           </select>
         </label>
       </div>
-      <CostWarning from={range.from} to={range.to} searches={searches} left={left} />
+      {google ? (
+        <CostWarning from={range.from} to={range.to} searches={searches} left={left} />
+      ) : (
+        <FreeNote
+          from={range.from}
+          to={range.to}
+          days={searches}
+          requests={aviasalesRequests(range.from, range.to, nights, Math.max(routes, 1))}
+        />
+      )}
       {needsAck && (
         <label className="flex cursor-pointer items-center gap-3 text-sm font-semibold">
           <input
@@ -476,7 +661,7 @@ function Form({
           onClick={submit}
           disabled={tooMany || (needsAck && !acknowledged) || searches === 0 || from.length === 0 || to.length === 0 || start.isPending}
         >
-          {searches} Suchen starten
+          {google ? `${searches} Suchen starten` : 'Kostenlos laden'}
         </Button>
       </div>
     </div>

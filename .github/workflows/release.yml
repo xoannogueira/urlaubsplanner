@@ -37,6 +37,9 @@ jobs:
           "$RUNNER_TEMP/dmg/bin/pip" install --quiet dmgbuild pyobjc-framework-Quartz
           echo "$RUNNER_TEMP/dmg/bin" >> "$GITHUB_PATH"
       - run: packaging/build-app.sh mac 2>&1 | tee build.log
+        env:
+          # Kostenlose Richtpreise (Aviasales) – Token kommt aus den Repo-Secrets, steht nie im Code.
+          TRAVELPAYOUTS_TOKEN: ${{ secrets.TRAVELPAYOUTS_TOKEN }}
       - name: Fehler anzeigen
         if: failure()
         run: grep -iE "error|fehl|not found|No such" build.log | tail -n 15 | sed 's/^/::error::/' || tail -n 15 build.log | sed 's/^/::error::/'
@@ -58,6 +61,8 @@ jobs:
           for i in $(seq 1 30); do curl -sf http://127.0.0.1:51770/api/app/info && break; sleep 1; done
           curl -sf http://127.0.0.1:51770/api/app/info | grep -q urlaubsplanner
           curl -sf http://127.0.0.1:51770/ | grep -q '<div id="root">'
+          # Startprüfung der kostenlosen Preisquelle (zeigt nur den Stand, nie den Token)
+          sleep 6; echo "::notice::Aviasales: $(curl -s http://127.0.0.1:51770/api/price-source)"
           curl -sf -X POST http://127.0.0.1:51770/api/app/closing
           sleep 12
           ! curl -sf http://127.0.0.1:51770/api/app/info
@@ -121,6 +126,9 @@ jobs:
         shell: pwsh
         run: if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) { choco install innosetup --no-progress -y }
       - run: packaging/build-app.sh windows 2>&1 | tee build.log
+        env:
+          # Kostenlose Richtpreise (Aviasales) – Token kommt aus den Repo-Secrets, steht nie im Code.
+          TRAVELPAYOUTS_TOKEN: ${{ secrets.TRAVELPAYOUTS_TOKEN }}
       - name: Fehler anzeigen
         if: failure()
         run: grep -iE "error|fehl|not found|No such" build.log | tail -n 15 | sed 's/^/::error::/' || tail -n 15 build.log | sed 's/^/::error::/'

@@ -40,6 +40,18 @@ publish() { # $1 = Runtime, $2 = Zielordner, weitere Argumente gehen an dotnet p
     -p:Version="$NUMERIC_VERSION" -p:InformationalVersion="$VERSION" "$@"
   # Kennzeichnet den Ordner als Desktop-App: Datenordner im Benutzerverzeichnis, eigenes Fenster, Beenden beim Schließen.
   echo '{ "Desktop": { "Enabled": true } }' > "$out/desktop.json"
+  # Aviasales-Token für die kostenlosen Richtpreise mitliefern (GitHub-Secret TRAVELPAYOUTS_TOKEN), damit Freunde
+  # sich nicht selbst anmelden müssen. Nie ausgeben – nur in die Datei schreiben.
+  if [ -n "${TRAVELPAYOUTS_TOKEN:-}" ]; then
+    if ! [[ "$TRAVELPAYOUTS_TOKEN" =~ ^[A-Za-z0-9_-]+$ ]]; then
+      echo "TRAVELPAYOUTS_TOKEN enthält unerwartete Zeichen" >&2
+      exit 1
+    fi
+    printf '{ "Travelpayouts": { "Token": "%s" } }\n' "$TRAVELPAYOUTS_TOKEN" > "$out/bundled.json"
+    echo "  Aviasales-Token mitgeliefert"
+  else
+    echo "  Ohne Aviasales-Token (Preiskalender nur mit Google)"
+  fi
   rm -f "$out"/*.pdb
 }
 
