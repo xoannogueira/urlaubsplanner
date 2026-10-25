@@ -46,11 +46,27 @@ public sealed class TravelpayoutsFares(HttpClient http, IOptionsMonitor<Travelpa
 
         var first = new DateOnly(month.Year, month.Month, 1);
         var common = $"origin={Uri.EscapeDataString(origin)}&destination={Uri.EscapeDataString(destination)}&currency=eur&market={Uri.EscapeDataString(Options.Market)}";
-        var url = $"v2/prices/month-matrix?{common}&month={first:yyyy-MM-dd}&show_to_affiliates=true";
+        // limit=31: sonst fehlt in langen Monaten der letzte Tag.
+        var url = $"v2/prices/month-matrix?{common}&month={first:yyyy-MM-dd}&limit=31&show_to_affiliates=true";
         using var document = await GetAsync(url, cancellationToken).ConfigureAwait(false);
         var data = document.RootElement.TryGetProperty("data", out var d) ? d : default;
         var fares = ParseMatrix(data);
         return [.. fares.Where(f => f.Date.Year == first.Year && f.Date.Month == first.Month && f.Price > 0).OrderBy(f => f.Date)];
+    }
+
+    public async Task<IReadOnlyList<IndicativeFlight>> DayAsync(string origin, string destination, DateOnly day, CancellationToken cancellationToken)
+    {
+        if (!IsConfigured)
+        {
+            throw new IndicativeFaresException(IndicativeSourceState.Missing, "Kein Travelpayouts-Token hinterlegt.");
+        }
+
+        var url = $"aviasales/v3/prices_for_dates?origin={Uri.EscapeDataString(origin)}&destination={Uri.EscapeDataString(destination)}"
+            + $"&departure_at={day:yyyy-MM-dd}&one_way=true&direct=false&currency=eur&market={Uri.EscapeDataString(Options.Market)}"
+            + "&sorting=price&unique=false&limit=5";
+        using var document = await GetAsync(url, cancellationToken).ConfigureAwait(false);
+        var data = document.RootElement.TryGetProperty("data", out var d) ? d : default;
+        return [.. ParseFlights(data).Where(f => f.Departure.StartsWith(day.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), StringComparison.Ordinal)).OrderBy(f => f.Price)];
     }
 
     private async Task<JsonDocument> GetAsync(string url, CancellationToken cancellationToken)
@@ -124,11 +140,57 @@ public sealed class TravelpayoutsFares(HttpClient http, IOptionsMonitor<Travelpa
 
         foreach (var x in data.EnumerateArray())
         {
+            // „actual: false“ = Angebot gilt laut Aviasales nicht mehr.
+            if (x.TryGetProperty("actual", out var actual) && actual.ValueKind == JsonValueKind.False)
+            {
+                continue;
+            }
+
             if (Date(x, "depart_date") is { } date && Number(x, "value") is { } price)
             {
-                yield return new IndicativeFare(date, price, Text(x, "airline"), (int?)Number(x, "number_of_changes"));
+                yield return new IndicativeFare(date, price, Text(x, "airline"), (int?)Number(x, "number_of_changes"), Date(x, "found_at"));
             }
         }
+    }
+
+    /// <summary>prices_for_dates: Liste mit departure_at, price, airline, flight_number, transfers, duration_to, link.</summary>
+    private static IEnumerable<IndicativeFlight> ParseFlights(JsonElement data)
+    {
+        if (data.ValueKind != JsonValueKind.Array)
+        {
+            yield break;
+        }
+
+        foreach (var x in data.EnumerateArray())
+        {
+            if (Text(x, "departure_at") is not { Length: >= 16 } departure || Number(x, "price") is not { } price)
+            {
+                continue;
+            }
+
+            // Nur Pfade auf Aviasales selbst übernehmen – nie eine fremde Adresse aus der Antwort.
+            var path = Text(x, "link");
+            var link = path is not null && path.StartsWith("/search/", StringComparison.Ordinal) ? "https://www.aviasales.com" + path : null;
+            yield return new IndicativeFlight(
+                departure[..16],
+                price,
+                Text(x, "airline"),
+                Text(x, "flight_number"),
+                (int?)Number(x, "transfers"),
+                (int?)(Number(x, "duration_to") ?? Number(x, "duration")),
+                link,
+                SearchDate(path));
+        }
+    }
+
+    /// <summary>Im Link steht, wann gesucht wurde: „search_date=21102026“.</summary>
+    private static DateOnly? SearchDate(string? link)
+    {
+        var at = link?.IndexOf("search_date=", StringComparison.Ordinal) ?? -1;
+        return at >= 0 && link!.Length >= at + 20
+            && DateOnly.TryParseExact(link.Substring(at + 12, 8), "ddMMyyyy", CultureInfo.InvariantCulture, DateTimeStyles.None, out var d)
+            ? d
+            : null;
     }
 
     private static DateOnly? Date(JsonElement x, string name) =>

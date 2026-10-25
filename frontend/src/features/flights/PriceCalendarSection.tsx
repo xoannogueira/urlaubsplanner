@@ -3,13 +3,15 @@ import { CalendarRange, ExternalLink, Gift, Play, RefreshCw, Search, Square, Tra
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useAirportLookup, type Airport } from '../../api/airports'
 import { ApiError } from '../../api/client'
-import { useFlightSearchStatus } from '../../api/flights'
+import { useFlightSearch, useFlightSearchStatus, type FlightJourney, type FlightSearchParams } from '../../api/flights'
 import {
+  useDayFlights,
   usePriceCalendarActions,
   usePriceCalendars,
   usePriceSource,
   useRecheckPriceSource,
   type CalendarPattern,
+  type IndicativeFlight,
   type PriceCalendar,
   type PriceSource,
 } from '../../api/priceCalendars'
@@ -26,7 +28,7 @@ import { formatShortDate, todayIso } from '../../lib/format'
 import { routeFitsTrip } from '../../lib/tripRelevance'
 import { distanceKm, toLatLng } from '../../lib/geo'
 import { prepareFlightSearch } from './openFlightSearch'
-import { parseSignature, shiftDate } from '../../lib/flights'
+import { formatDuration, parseSignature, shiftDate } from '../../lib/flights'
 import {
   aviasalesRequests,
   byMonth,
@@ -182,9 +184,9 @@ function CalendarDetail({ trip, calendar }: { trip: Trip; calendar: PriceCalenda
       </p>
       {indicative && (
         <p className="rounded-xl border border-line bg-surface-2 px-3.5 py-2.5 text-[13px]">
-          <strong>Richtpreise von Aviasales:</strong> aus Suchen anderer Nutzer der letzten Tage, nicht live.
-          {calendar.nights ? ' Hin & zurück = günstigster Hinflug + günstigster Rückflug.' : ''} Gut für Trends – vor dem Buchen bei Google
-          nachprüfen (Knopf bei den günstigsten Tagen, kostet keine Suche).
+          <strong>Richtpreise von Aviasales:</strong> aus Suchen anderer Nutzer der letzten 7 Tage, nicht live – pro Person, nur Flug ohne
+          Aufgabegepäck, oft von einem Online-Reisebüro statt direkt von der Airline. Tag anklicken: genauer Flug mit Link zum Angebot.
+          {calendar.nights ? ' Hin & zurück = günstigster Hinflug + günstigster Rückflug.' : ''}
         </p>
       )}
       <div className="flex flex-wrap gap-5">
@@ -211,7 +213,7 @@ function CalendarDetail({ trip, calendar }: { trip: Trip; calendar: PriceCalenda
                       const dayNo = Number(cell.date.slice(8, 10))
                       const label =
                         price !== null
-                          ? `${formatShortDate(cell.date)}: ab ${euro(price)}${cell.day?.airline ? ` mit ${cell.day.airline}` : ''}`
+                          ? `${formatShortDate(cell.date)}: ab ${euro(price)}${cell.day?.airline ? ` mit ${cell.day.airline}` : ''}${cell.day?.found ? `, gefunden ${ageLabel(cell.day.found)}` : ''}`
                           : cell.day?.problem
                             ? `${formatShortDate(cell.date)}: ${cell.day.problem}`
                             : cell.day
@@ -448,7 +450,18 @@ function DayPanel({
   const to = lookup.data?.find((a) => a.code === destination) ?? null
   const google = checkOnGoogleUrl(calendar, day)
   const indicative = calendar.source === 'Aviasales'
-  const stops = day.stops === null ? null : day.stops === 0 ? 'direkt' : day.stops === 1 ? '1 Umstieg' : `${day.stops} Umstiege`
+  const stops = stopsLabel(day.stops)
+  // Aviasales: den konkreten Flug zu diesem Tag holen (kostenlos) – mit Link zum Angebot, von dem der Preis stammt.
+  const flights = useDayFlights(indicative ? { origin, destination, date: day.date, nights: calendar.nights } : null)
+  // Genau prüfen: eine echte Google-Suche für genau diesen Tag (kostet eine Suche, nur auf Knopfdruck).
+  const status = useFlightSearchStatus()
+  const canCheck = status.data?.configured === true
+  const [checkParams, setCheckParams] = useState<FlightSearchParams | null>(null)
+  const check = useFlightSearch(checkParams)
+  const exact = check.data?.journeys.reduce<FlightJourney | null>(
+    (best, j) => (j.fares.length > 0 && (!best || j.fares[0].pricePerAdult < best.fares[0].pricePerAdult) ? j : best),
+    null,
+  )
 
   const openSearch = () => {
     if (!from || !to) return
@@ -492,7 +505,7 @@ function DayPanel({
           </span>
           <span className="text-xs text-muted">
             {indicative
-              ? `Richtpreis von Aviasales (einige Tage alt)${calendar.nights ? ', Hin- und Rückflug einzeln zusammengerechnet' : ''}`
+              ? `Richtpreis von Aviasales${day.found ? `, gefunden ${ageLabel(day.found)}` : ''} · pro Person, ohne Aufgabegepäck · Verkäufer kann ein Reisebüro sein${calendar.nights ? ' · Hin- und Rückflug einzeln zusammengerechnet' : ''}`
               : `Google-Preis vom ${formatShortDate(calendar.createdAt.slice(0, 10))} · ${day.options} Verbindungen verglichen`}
           </span>
         </div>
@@ -501,6 +514,35 @@ function DayPanel({
           <span className="text-xs text-muted">pro Person{back ? ', hin & zurück' : ''}</span>
         </div>
       </div>
+      {indicative && (
+        <div className="flex flex-col gap-1.5" aria-busy={flights.isPending}>
+          {flights.isPending ? (
+            <span className="text-sm text-muted">Hole den genauen Flug von Aviasales …</span>
+          ) : flights.error ? (
+            <span className="text-sm text-muted">Den genauen Flug konnte Aviasales gerade nicht liefern.</span>
+          ) : (
+            <>
+              <FlightLine label="Hinflug" flight={flights.data?.outbound[0] ?? null} />
+              {back && <FlightLine label="Rückflug" flight={flights.data?.inbound[0] ?? null} />}
+            </>
+          )}
+        </div>
+      )}
+      {checkParams && (
+        <p className="rounded-lg bg-surface px-3 py-2 text-sm" role="status">
+          {check.isPending
+            ? 'Google-Suche läuft …'
+            : check.error
+              ? `Google-Suche fehlgeschlagen: ${check.error.message}`
+              : exact
+                ? `Google jetzt: ab ${euro(exact.fares[0].pricePerAdult)} pro Person${back ? ' (hin & zurück)' : ''} – ${exact.legs[0].segments
+                    .map((x) => `${x.carrierCode}${x.flightNumber}`)
+                    .join(
+                      ' + ',
+                    )} um ${exact.legs[0].departure.slice(11, 16)}${day.cheapest !== null ? ` · ${diffLabel(exact.fares[0].pricePerAdult - day.cheapest)}` : ''}`
+                : 'Google findet für diesen Tag keinen Flug.'}
+        </p>
+      )}
       <div className="flex flex-wrap items-center gap-2">
         {google && (
           <a
@@ -521,6 +563,26 @@ function DayPanel({
         >
           In der Flugsuche öffnen
         </Button>
+        {canCheck && (
+          <Button
+            size="sm"
+            icon={<RefreshCw size={14} />}
+            disabled={check.isFetching}
+            onClick={() =>
+              setCheckParams({
+                legs: [
+                  { origins: [origin], destinations: [destination], date: day.date },
+                  ...(back ? [{ origins: [destination], destinations: [origin], date: back }] : []),
+                ],
+                adults: 1,
+                cabin: 'Economy',
+              })
+            }
+            title="Sucht genau diesen Tag bei Google – kostet eine Google-Suche"
+          >
+            Genau prüfen (1 Google-Suche)
+          </Button>
+        )}
         <Button size="sm" variant="ghost" onClick={onClose}>
           Schließen
         </Button>
@@ -528,6 +590,57 @@ function DayPanel({
     </section>
   )
 }
+
+/** Der konkrete Flug laut Aviasales mit Link zum Angebot. */
+function FlightLine({ label, flight }: { label: string; flight: IndicativeFlight | null }) {
+  if (!flight) {
+    return (
+      <span className="text-sm text-muted">
+        {label}: Aviasales kennt dafür gerade keinen konkreten Flug mehr – der Richtpreis ist vermutlich schon weg.
+      </span>
+    )
+  }
+  const number = flight.airline && flight.flightNumber ? `${flight.airline}${flight.flightNumber}` : flight.airline
+  return (
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg bg-surface px-3 py-2 text-sm">
+      <span className="text-xs font-bold text-muted">{label}</span>
+      <span className="font-mono font-semibold">{number ?? 'Flug'}</span>
+      <span>
+        {formatShortDate(flight.departure.slice(0, 10))}, {flight.departure.slice(11, 16)} Uhr
+      </span>
+      {flight.durationMinutes != null && <span className="text-muted">{formatDuration(flight.durationMinutes)}</span>}
+      <span className="text-muted">{stopsLabel(flight.stops)}</span>
+      <span className="font-mono font-bold tabular-nums">{euro(flight.price)}</span>
+      {flight.found && <span className="text-xs text-muted">gefunden {ageLabel(flight.found)}</span>}
+      {flight.link && (
+        <a
+          href={flight.link}
+          target="_blank"
+          rel="noreferrer"
+          className="ml-auto inline-flex items-center gap-1 rounded-lg border border-line px-2 py-1 text-xs font-semibold hover:bg-surface-3"
+        >
+          Bei Aviasales ansehen <ExternalLink size={12} aria-hidden="true" />
+        </a>
+      )}
+    </div>
+  )
+}
+
+const stopsLabel = (stops: number | null) =>
+  stops === null ? null : stops === 0 ? 'direkt' : stops === 1 ? '1 Umstieg' : `${stops} Umstiege`
+
+/** „heute“, „gestern“, „vor 4 Tagen“ */
+function ageLabel(found: string, today: string = todayIso()) {
+  const days = Math.round((Date.parse(today) - Date.parse(found)) / 86_400_000)
+  return days <= 0 ? 'heute' : days === 1 ? 'gestern' : `vor ${days} Tagen`
+}
+
+const diffLabel = (diff: number) =>
+  Math.abs(diff) < 1
+    ? 'gleich wie der Richtpreis'
+    : diff > 0
+      ? `${euro(diff)} teurer als der Richtpreis`
+      : `${euro(-diff)} günstiger als der Richtpreis`
 
 /** Liegt der Flughafen bei der Etappe (bis 200 km)? */
 const near = (airport: { latitude: number; longitude: number }, stage: { latitude: number | null; longitude: number | null }) => {

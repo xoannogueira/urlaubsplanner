@@ -20,6 +20,9 @@ public sealed partial class PriceCalendarRunner(
     /// <summary>Pause zwischen zwei Suchen.</summary>
     public static TimeSpan Pause { get; set; } = TimeSpan.FromSeconds(1.5);
 
+    /// <summary>Ältere Aviasales-Preise sind meist schon weg – lieber keinen Preis als einen falschen zeigen.</summary>
+    public const int MaxFareAgeDays = 7;
+
     /// <summary>Pause zwischen zwei Aviasales-Abfragen (kostenlos, aber nicht unnötig belasten).</summary>
     public static TimeSpan AviasalesPause { get; set; } = TimeSpan.FromSeconds(0.5);
 
@@ -182,7 +185,9 @@ public sealed partial class PriceCalendarRunner(
             {
                 ct.ThrowIfCancellationRequested();
                 using var scope = scopes.CreateScope();
-                fares = await scope.ServiceProvider.GetRequiredService<IIndicativeFares>().MonthAsync(origin, destination, month, ct).ConfigureAwait(false);
+                var oldest = FlightEndpoints.Today(clock).AddDays(-MaxFareAgeDays);
+                fares = [.. (await scope.ServiceProvider.GetRequiredService<IIndicativeFares>().MonthAsync(origin, destination, month, ct).ConfigureAwait(false))
+                    .Where(f => f.Found is null || f.Found >= oldest)];
                 loaded[(origin, destination, month)] = fares;
                 await Task.Delay(AviasalesPause, clock, ct).ConfigureAwait(false);
             }
@@ -198,7 +203,7 @@ public sealed partial class PriceCalendarRunner(
                 var days = new List<CalendarDay>();
                 foreach (var date in monthDates)
                 {
-                    var options = new List<(decimal Price, string? Airline, int? Stops, string Route)>();
+                    var options = new List<(decimal Price, string? Airline, int? Stops, string Route, DateOnly? Found)>();
                     foreach (var (origin, destination) in routes)
                     {
                         var outbound = (await FaresAsync(origin, destination, date).ConfigureAwait(false)).FirstOrDefault(f => f.Date == date);
@@ -213,17 +218,17 @@ public sealed partial class PriceCalendarRunner(
                             var inbound = (await FaresAsync(destination, origin, back).ConfigureAwait(false)).FirstOrDefault(f => f.Date == back);
                             if (inbound is not null)
                             {
-                                options.Add((outbound.Price + inbound.Price, outbound.Airline, Math.Max(outbound.Stops ?? 0, inbound.Stops ?? 0), $"{origin}-{destination}"));
+                                options.Add((outbound.Price + inbound.Price, outbound.Airline, Math.Max(outbound.Stops ?? 0, inbound.Stops ?? 0), $"{origin}-{destination}", Older(outbound.Found, inbound.Found)));
                             }
                         }
                         else
                         {
-                            options.Add((outbound.Price, outbound.Airline, outbound.Stops, $"{origin}-{destination}"));
+                            options.Add((outbound.Price, outbound.Airline, outbound.Stops, $"{origin}-{destination}", outbound.Found));
                         }
                     }
 
-                    var cheapest = options.Count > 0 ? options.MinBy(o => o.Price) : default((decimal Price, string? Airline, int? Stops, string Route)?);
-                    days.Add(new CalendarDay(date, cheapest?.Price, cheapest?.Airline, cheapest?.Stops, options.Count, null, cheapest?.Route));
+                    var cheapest = options.Count > 0 ? options.MinBy(o => o.Price) : default((decimal Price, string? Airline, int? Stops, string Route, DateOnly? Found)?);
+                    days.Add(new CalendarDay(date, cheapest?.Price, cheapest?.Airline, cheapest?.Stops, options.Count, null, cheapest?.Route, null, cheapest?.Found));
                 }
 
                 store.Update(calendar.Id, c => c with { Days = [.. c.Days, .. days] });
@@ -256,6 +261,8 @@ public sealed partial class PriceCalendarRunner(
             }
         }
     }
+
+    private static DateOnly? Older(DateOnly? a, DateOnly? b) => a is null ? b : b is null ? a : a < b ? a : b;
 
     private async Task<CalendarDay> SearchDayAsync(PriceCalendarRequest request, DateOnly date, CancellationToken ct)
     {
