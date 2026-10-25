@@ -4,7 +4,24 @@ namespace Urlaubsplanner.Domain.Flights;
 /// Richtpreis für einen Abflugtag aus einer kostenlosen Quelle (Aviasales über Travelpayouts): zwischengespeicherte
 /// Ergebnisse aus Suchen anderer Nutzer, einige Tage alt – gut für Trends, vor dem Buchen genau nachprüfen.
 /// </summary>
-public sealed record IndicativeFare(DateOnly Date, decimal Price, string? Airline, int? Stops);
+/// <param name="Found">Wann jemand den Preis gefunden hat (Alter des Richtpreises).</param>
+public sealed record IndicativeFare(DateOnly Date, decimal Price, string? Airline, int? Stops, DateOnly? Found = null);
+
+/// <summary>
+/// Der konkrete günstigste Flug eines Tages laut Aviasales: Airline, Flugnummer, Abflug (Ortszeit), Dauer, Umstiege
+/// und Link zum Angebot bei Aviasales – dort stammt der Preis her und lässt sich nachprüfen.
+/// </summary>
+/// <param name="Departure">Abflug in Ortszeit, z. B. „2026-12-14T06:45“.</param>
+/// <param name="Link">Vollständige Adresse des Angebots bei Aviasales.</param>
+public sealed record IndicativeFlight(
+    string Departure,
+    decimal Price,
+    string? Airline,
+    string? FlightNumber,
+    int? Stops,
+    int? DurationMinutes,
+    string? Link,
+    DateOnly? Found);
 
 /// <summary>Ist die kostenlose Preisquelle nutzbar?</summary>
 public enum IndicativeSourceState
@@ -46,4 +63,8 @@ public interface IIndicativeFares
     /// </summary>
     /// <exception cref="IndicativeFaresException">Key abgelehnt, zu viele Abfragen oder nicht erreichbar.</exception>
     Task<IReadOnlyList<IndicativeFare>> MonthAsync(string origin, string destination, DateOnly month, CancellationToken cancellationToken);
+
+    /// <summary>Die günstigsten konkreten Flüge (einfach) an einem Tag, billigster zuerst. Leer, wenn nichts bekannt ist.</summary>
+    /// <exception cref="IndicativeFaresException">Key abgelehnt, zu viele Abfragen oder nicht erreichbar.</exception>
+    Task<IReadOnlyList<IndicativeFlight>> DayAsync(string origin, string destination, DateOnly day, CancellationToken cancellationToken);
 }

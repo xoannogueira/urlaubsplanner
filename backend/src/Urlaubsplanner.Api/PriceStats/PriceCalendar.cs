@@ -61,6 +61,7 @@ public sealed record PriceCalendarRequest(
 /// <summary>Ergebnis für einen Abflugtag: günstigster Preis pro Person mit Airline.</summary>
 /// <param name="Route">Strecke des günstigsten Preises, z. B. „FRA-BCN“ (wichtig bei mehreren Flughäfen).</param>
 /// <param name="Flight">Flugnummer(n) des günstigsten Hinflugs, z. B. „EW2520“ (nur Google).</param>
+/// <param name="Found">Aviasales: wann der Preis gefunden wurde (bei Hin &amp; zurück der ältere der beiden).</param>
 public sealed record CalendarDay(
     DateOnly Date,
     decimal? Cheapest,
@@ -69,7 +70,8 @@ public sealed record CalendarDay(
     int Options,
     string? Problem,
     string? Route = null,
-    string? Flight = null);
+    string? Flight = null,
+    DateOnly? Found = null);
 
 /// <summary>Ein gespeicherter Preiskalender: Strecke, Zeitraum, Fortschritt und Tagespreise.</summary>
 public sealed record PriceCalendar(

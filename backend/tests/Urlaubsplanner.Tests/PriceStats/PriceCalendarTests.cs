@@ -75,6 +75,12 @@ public sealed class PriceCalendarTests : IDisposable
 
         public bool IsConfigured => true;
 
+        /// <summary>STR → LIS an Tagen, die durch 7 teilbar sind: Preis zu alt (vor 10 Tagen gefunden).</summary>
+        public bool StaleSome { get; set; }
+
+        public Task<IReadOnlyList<IndicativeFlight>> DayAsync(string origin, string destination, DateOnly day, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<IndicativeFlight>>([]);
+
         public Task<IndicativeSourceState> CheckAsync(CancellationToken cancellationToken) => Task.FromResult(Fail ?? IndicativeSourceState.Ok);
 
         public Task<IReadOnlyList<IndicativeFare>> MonthAsync(string origin, string destination, DateOnly month, CancellationToken cancellationToken)
@@ -88,7 +94,7 @@ public sealed class PriceCalendarTests : IDisposable
             var days = Enumerable.Range(0, DateTime.DaysInMonth(month.Year, month.Month)).Select(month.AddDays);
             IReadOnlyList<IndicativeFare> fares = (origin, destination) switch
             {
-                ("STR", "LIS") => [.. days.Select(d => new IndicativeFare(d, 40 + d.Day, "EW", 0))],
+                ("STR", "LIS") => [.. days.Select(d => new IndicativeFare(d, 40 + d.Day, "EW", 0, StaleSome && d.Day % 7 == 0 ? Today.AddDays(-10) : Today.AddDays(-1)))],
                 ("LIS", "STR") => [.. days.Select(d => new IndicativeFare(d, 30, "EW", 0))],
                 ("FRA", "LIS") => [.. days.Where(d => d.Day % 2 == 0).Select(d => new IndicativeFare(d, 20, "FR", 0))],
                 ("LIS", "FRA") => [.. days.Select(d => new IndicativeFare(d, 25, "FR", 0))],
@@ -268,5 +274,18 @@ public sealed class PriceCalendarTests : IDisposable
         var status = await _monitor.CheckAsync(CancellationToken.None);
         Assert.False(status.Usable);
         Assert.Contains("Google", status.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Aviasales_verwirft_zu_alte_Preise_und_merkt_sich_das_Alter()
+    {
+        _fares.StaleSome = true;
+        var (runner, store, _, _) = Create(200);
+        var request = new PriceCalendarRequest(["STR"], ["LIS"], Today.AddDays(10), Today.AddDays(40), null, CalendarPattern.Daily, PriceSource.Aviasales);
+        var done = await WaitAsync(store, (await runner.StartAsync(request, CancellationToken.None)).Id);
+
+        Assert.All(done.Days.Where(d => d.Date.Day % 7 == 0), d => Assert.Null(d.Cheapest));
+        Assert.All(done.Days.Where(d => d.Date.Day % 7 != 0), d => Assert.Equal(Today.AddDays(-1), d.Found));
+        runner.Dispose();
     }
 }

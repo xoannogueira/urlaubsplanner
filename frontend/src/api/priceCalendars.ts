@@ -40,6 +40,35 @@ export interface CalendarDay {
   route?: string | null
   /** Flugnummer(n) des günstigsten Hinflugs (nur Google) */
   flight?: string | null
+  /** Aviasales: wann der Preis gefunden wurde (yyyy-MM-dd) */
+  found?: string | null
+}
+
+/** Konkreter Flug eines Tages laut Aviasales, mit Link zum Angebot. */
+export interface IndicativeFlight {
+  /** Ortszeit, z. B. „2026-12-14T06:45“ */
+  departure: string
+  price: number
+  airline: string | null
+  flightNumber: string | null
+  stops: number | null
+  durationMinutes: number | null
+  link: string | null
+  found: string | null
+}
+
+/** Günstigste konkrete Flüge eines Tages (Aviasales, kostenlos) – Hin- und ggf. Rückflug. */
+export function useDayFlights(q: { origin: string; destination: string; date: string; nights: number | null } | null) {
+  return useQuery({
+    queryKey: ['aviasales-day', q],
+    queryFn: () =>
+      api<{ outbound: IndicativeFlight[]; inbound: IndicativeFlight[] }>(
+        `/price-calendars/day-flights?origin=${q!.origin}&destination=${q!.destination}&date=${q!.date}${q!.nights ? `&nights=${q!.nights}` : ''}`,
+      ),
+    enabled: q !== null,
+    staleTime: 30 * 60_000,
+    retry: false,
+  })
 }
 
 export interface PriceCalendar {

@@ -11,7 +11,8 @@ public sealed class TravelpayoutsFaresTests
     // So antwortet month-matrix (gekürzt): ein Eintrag pro Abflugtag, auch Tage aus anderen Monaten kommen vor.
     private const string Matrix = """
         { "success": true, "data": [
-          { "depart_date": "2026-12-07", "value": 23, "number_of_changes": 0, "origin": "FRA", "destination": "BCN", "gate": "Ryanair" },
+          { "depart_date": "2026-12-07", "value": 23, "number_of_changes": 0, "origin": "FRA", "destination": "BCN", "found_at": "2026-10-21T08:00:00+04:00", "actual": true },
+          { "depart_date": "2026-12-09", "value": 15, "number_of_changes": 0, "actual": false },
           { "depart_date": "2026-12-04", "value": 58.5, "number_of_changes": 1 },
           { "depart_date": "2027-01-02", "value": 99, "number_of_changes": 0 },
           { "depart_date": "kaputt", "value": 10 }
@@ -62,6 +63,35 @@ public sealed class TravelpayoutsFaresTests
         Assert.DoesNotContain("geheim", call.RequestUri!.ToString(), StringComparison.Ordinal);
         Assert.Contains("month=2026-12-01", call.RequestUri.Query, StringComparison.Ordinal);
         Assert.Contains("market=de", call.RequestUri.Query, StringComparison.Ordinal);
+        Assert.Contains("limit=31", call.RequestUri.Query, StringComparison.Ordinal);
+        Assert.Equal(new DateOnly(2026, 10, 21), result[1].Found); // nicht mehr gültiges Angebot (9.12.) fehlt
+    }
+
+    // So antwortet prices_for_dates für einen Tag (gekürzt, wie im Test mit echtem Token).
+    private const string Day = """
+        { "success": true, "data": [
+          { "departure_at": "2026-12-14T06:45:00+01:00", "price": 43, "airline": "EW", "flight_number": 2520, "transfers": 0, "duration_to": 110,
+            "link": "/search/STR1412BCN1?t=EW1797&search_date=21102026&expected_price=43" },
+          { "departure_at": "2026-12-14T17:15:00+01:00", "price": 61, "airline": "VY", "flight_number": "1209", "transfers": 0, "duration": 120,
+            "link": "https://boese.example/weiter" },
+          { "departure_at": "2026-12-15T06:45:00+01:00", "price": 30, "airline": "EW", "flight_number": 2520, "transfers": 0 }
+        ] }
+        """;
+
+    [Fact]
+    public async Task Konkreter_Flug_eines_Tages_mit_Link_zu_Aviasales()
+    {
+        var (fares, handler) = Create(_ => Json(Day));
+        var flights = await fares.DayAsync("STR", "BCN", new DateOnly(2026, 12, 14), CancellationToken.None);
+
+        Assert.Equal(2, flights.Count); // anderer Tag fällt raus
+        var first = flights[0];
+        Assert.Equal("2026-12-14T06:45", first.Departure);
+        Assert.Equal(("EW", "2520", 0, 110), (first.Airline, first.FlightNumber, first.Stops, first.DurationMinutes));
+        Assert.StartsWith("https://www.aviasales.com/search/STR1412BCN1", first.Link, StringComparison.Ordinal);
+        Assert.Equal(new DateOnly(2026, 10, 21), first.Found);
+        Assert.Null(flights[1].Link); // fremde Adressen werden nicht übernommen
+        Assert.Contains("departure_at=2026-12-14", handler.Calls[0].RequestUri!.Query, StringComparison.Ordinal);
     }
 
     [Theory]
